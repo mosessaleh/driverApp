@@ -1,4 +1,5 @@
 import io, { Socket } from 'socket.io-client';
+import { jwtDecode } from 'jwt-decode';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -14,6 +15,15 @@ export const connectSocket = (token: string): Socket => {
   });
   socket.on('connect', () => {
     console.log('Connected to socket');
+    // Decode token to get driverId
+    try {
+      const decoded: any = jwtDecode(token);
+      const driverId = decoded.driverId;
+      socket?.emit('join', { driverId });
+      console.log('Joined driver room:', driverId);
+    } catch (error) {
+      console.error('Error decoding token for socket join:', error);
+    }
   });
   socket.on('disconnect', () => {
     console.log('Disconnected from socket');

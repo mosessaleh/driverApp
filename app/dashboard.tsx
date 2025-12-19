@@ -1,72 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
-import { toggleDriverOnline, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import RideOfferModal from '../src/components/RideOfferModal';
 import { Ride, Booking } from '../src/types';
 
-// Map component showing location info and OpenStreetMap attribution
-const MapComponent = ({
-  currentLocation,
-  isTracking,
-  onStartTracking,
-  onStopTracking
-}: {
-  currentLocation: { latitude: number; longitude: number } | null;
-  isTracking: boolean;
-  onStartTracking: () => void;
-  onStopTracking: () => void;
-}) => {
-  if (!currentLocation) {
-    return (
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapPlaceholderText}>Location not available</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.mapContainer}>
-      <View style={styles.locationInfo}>
-        <Text style={styles.locationTitle}>Your Current Location</Text>
-        <Text style={styles.locationCoords}>
-          Latitude: {currentLocation.latitude.toFixed(6)}
-        </Text>
-        <Text style={styles.locationCoords}>
-          Longitude: {currentLocation.longitude.toFixed(6)}
-        </Text>
-        <TouchableOpacity
-          style={[styles.trackingButton, isTracking && styles.trackingButtonActive]}
-          onPress={isTracking ? onStopTracking : onStartTracking}
-        >
-          <Text style={styles.trackingButtonText}>
-            {isTracking ? '⏹️ Stop Tracking' : '▶️ Start Tracking'}
-          </Text>
-        </TouchableOpacity>
-        {isTracking && (
-          <Text style={styles.trackingStatus}>🔴 Tracking Active...</Text>
-        )}
-      </View>
-      <View style={styles.mapAttribution}>
-        <Text style={styles.attributionText}>
-          🗺️ Map uses OpenStreetMap
-        </Text>
-        <Text style={styles.attributionText}>
-          © OpenStreetMap contributors
-        </Text>
-      </View>
-    </View>
-  );
-};
-
 const { width, height } = Dimensions.get('window');
 
 export default function DashboardScreen() {
-  const { authState } = useAuth();
+  const { authState, logout } = useAuth();
   const router = useRouter();
   const [driverOnline, setDriverOnline] = useState(false);
+  const [driverBusy, setDriverBusy] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState(false);
   const [locationSubscription, setLocationSubscription] = useState<any>(null);
@@ -78,6 +26,31 @@ export default function DashboardScreen() {
   const [endKM, setEndKM] = useState('');
   const [rideOffer, setRideOffer] = useState<Ride | null>(null);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+
+  // Animation for GO button text
+  const textOpacityAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!driverOnline) {
+      // Text opacity animation
+      const textFade = Animated.loop(
+        Animated.sequence([
+          Animated.timing(textOpacityAnim, {
+            toValue: 0.3,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(textOpacityAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      textFade.start();
+      return () => textFade.stop();
+    }
+  }, [driverOnline, textOpacityAnim]);
 
   useEffect(() => {
     if (authState.token) {
@@ -105,8 +78,18 @@ export default function DashboardScreen() {
       const res = await getDriverStatus(authState.token);
       console.log('Driver status response:', res);
       if (res.isOnline !== undefined) {
+        const wasOnline = driverOnline;
         setDriverOnline(res.isOnline);
         console.log('Driver online status set to:', res.isOnline);
+        // Auto start tracking if became online
+        if (res.isOnline && !wasOnline) {
+          console.log('Auto starting location tracking');
+          startLocationTracking();
+        }
+      }
+      if (res.isBusy !== undefined) {
+        setDriverBusy(res.isBusy);
+        console.log('Driver busy status set to:', res.isBusy);
       }
     } catch (e) {
       console.error('Error loading driver status:', e);
@@ -118,7 +101,7 @@ export default function DashboardScreen() {
 
     try {
       const res = await getDriverStatus(authState.token);
-      if (res.currentRideId && !rideOffer) {
+      if (res.currentRideId && res.rideAccepted === 0 && !rideOffer) {
         // Fetch ride details
         const rideRes = await getRide(res.currentRideId, authState.token);
         if (rideRes.success && rideRes.data) {
@@ -150,7 +133,7 @@ export default function DashboardScreen() {
             }
           }
         }
-      } else if (!res.currentRideId && rideOffer) {
+      } else if ((!res.currentRideId || res.rideAccepted !== 0) && rideOffer) {
         setRideOffer(null);
         setEtaMinutes(null);
       }
@@ -259,6 +242,9 @@ export default function DashboardScreen() {
         setShowEndKMModal(false);
         setEndKM('');
         alert(`Shift ended successfully!\nWork time: ${data.shiftData.workTime.toFixed(2)} hours\nTotal salary: ${data.shiftData.totalSalary} DKK\nHourly salary: ${data.shiftData.hourSalary.toFixed(2)} DKK`);
+
+        // Logout after ending shift
+        await logout();
       } catch (error) {
         console.error('Error ending shift:', error);
         alert('Error ending shift: ' + (error as any).message);
@@ -282,6 +268,18 @@ export default function DashboardScreen() {
       }
     } catch (e) {
       console.error('Error toggling online status:', e);
+    }
+  };
+
+  const handleToggleBusy = async () => {
+    if (!authState.token) return;
+    try {
+      const res = await toggleDriverBusy(!driverBusy, authState.token);
+      if (res.success) {
+        setDriverBusy(!driverBusy);
+      }
+    } catch (e) {
+      console.error('Error toggling busy status:', e);
     }
   };
 
@@ -338,49 +336,78 @@ export default function DashboardScreen() {
       {showMenu && (
         <View style={styles.menuOverlay}>
           <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              setShowMenu(false);
-              goToProfile();
-            }}
-          >
-            <Text style={styles.menuItemText}>Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              setShowMenu(false);
-              goToSettings();
-            }}
-          >
-            <Text style={styles.menuItemText}>Settings</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              setShowMenu(false);
-              setShowEndKMModal(true);
-            }}
-          >
-            <Text style={styles.menuItemText}>End Shift</Text>
-          </TouchableOpacity>
+             style={styles.menuItem}
+             onPress={() => {
+               setShowMenu(false);
+               goToProfile();
+             }}
+           >
+             <Text style={styles.menuItemText}>Profile</Text>
+           </TouchableOpacity>
+           <TouchableOpacity
+             style={styles.menuItem}
+             onPress={() => {
+               setShowMenu(false);
+               goToSettings();
+             }}
+           >
+             <Text style={styles.menuItemText}>Settings</Text>
+           </TouchableOpacity>
+           {!driverBusy && driverOnline && (
+             <TouchableOpacity
+               style={styles.menuItem}
+               onPress={() => {
+                 setShowMenu(false);
+                 handleToggleBusy();
+               }}
+             >
+               <Text style={styles.menuItemText}>Pause</Text>
+             </TouchableOpacity>
+           )}
+           {driverBusy && driverOnline && (
+             <TouchableOpacity
+               style={styles.menuItem}
+               onPress={() => {
+                 setShowMenu(false);
+                 handleToggleBusy();
+               }}
+             >
+               <Text style={styles.menuItemText}>End Pause</Text>
+             </TouchableOpacity>
+           )}
+           <TouchableOpacity
+             style={styles.menuItem}
+             onPress={() => {
+               setShowMenu(false);
+               setShowEndKMModal(true);
+             }}
+           >
+             <Text style={styles.menuItemText}>End Shift</Text>
+           </TouchableOpacity>
         </View>
       )}
 
       {/* Map View - Full Screen */}
       <View style={styles.mapContainer}>
         {currentLocation ? (
-          <MapComponent
-            currentLocation={currentLocation}
-            isTracking={isTracking}
-            onStartTracking={startLocationTracking}
-            onStopTracking={stopLocationTracking}
+          <MapView
+            style={styles.map}
+            provider="google"
+            initialRegion={{
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+            showsUserLocation={true}
+            followsUserLocation={isTracking}
           />
         ) : (
           <Text style={styles.mapPlaceholderText}>
             {locationPermission ? 'Getting location...' : 'Location permission required'}
           </Text>
         )}
+
       </View>
 
       {/* End KM Modal */}
@@ -423,7 +450,7 @@ export default function DashboardScreen() {
       {/* Floating Go Button */}
       {!driverOnline && (
         <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
-          <Text style={styles.floatingGoButtonText}>GO</Text>
+          <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>GO</Animated.Text>
         </TouchableOpacity>
       )}
 
@@ -444,7 +471,7 @@ const styles = StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    top: 50,
+    top: 20,
     left: 20,
     zIndex: 1000,
   },
@@ -647,23 +674,30 @@ const styles = StyleSheet.create({
   floatingGoButton: {
     position: 'absolute',
     bottom: 30,
-    right: 30,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    left: '50%',
+    marginLeft: -40, // Half of width to center
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#28a745',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 15,
+    // Add gradient-like effect with border
+    borderWidth: 3,
+    borderColor: '#fff',
   },
   floatingGoButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   modalOverlay: {
     position: 'absolute',

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthState, User } from '../types';
-import { loginDriver } from '../services/api';
+import { loginDriver, getDriverStatus, logoutDriver } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 
 const AuthContext = createContext<{
@@ -26,7 +26,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userStr = await AsyncStorage.getItem('user');
         if (token && userStr) {
           const user = JSON.parse(userStr);
-          setAuthState({ user, token, isLoading: false });
+          // Validate token by checking driver status
+          try {
+            await getDriverStatus(token);
+            setAuthState({ user, token, isLoading: false });
+          } catch (error) {
+            console.error('Token validation failed:', error);
+            // Clear invalid stored data
+            await AsyncStorage.removeItem('token');
+            await AsyncStorage.removeItem('user');
+            setAuthState({ user: null, token: null, isLoading: false });
+          }
         } else {
           setAuthState({ user: null, token: null, isLoading: false });
         }
@@ -72,6 +82,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    try {
+      if (authState.token) {
+        await logoutDriver(authState.token);
+      }
+    } catch (error) {
+      console.error('Server logout failed:', error);
+    }
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
     setAuthState({ user: null, token: null, isLoading: false });

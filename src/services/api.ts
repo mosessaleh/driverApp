@@ -82,10 +82,18 @@ export const toggleDriverOnline = async (online: boolean, token: string) => {
   return api.post('/api/driver/status', { online }, token);
 };
 
+export const toggleDriverBusy = async (busy: boolean, token: string) => {
+  return api.post('/api/driver/status', { busy }, token);
+};
+
 export const getDriverStatus = async (token: string) => {
   return api.get('/api/driver/status', token);
 };
 
 export const updateDriverLocation = async (latitude: number, longitude: number, token: string, timestamp?: string) => {
   return api.post('/api/driver/location-update', { latitude, longitude, timestamp }, token);
+};
+
+export const logoutDriver = async (token: string) => {
+  return api.post('/api/auth/logout', {}, token);
 };

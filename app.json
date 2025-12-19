@@ -19,6 +19,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location for ride tracking.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location even when not in use for ride tracking."
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyDlYuoRX68-6aL9CLQqYcc6zWVmGMkGdxw"
       }
     },
     "android": {
@@ -33,7 +36,12 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDlYuoRX68-6aL9CLQqYcc6zWVmGMkGdxw"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
@@ -10,8 +10,26 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [startKM, setStartKM] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, authState } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    const checkAndRedirect = async () => {
+      if (!authState.isLoading && authState.user && authState.token) {
+        try {
+          const { getDriverStatus } = await import('../src/services/api');
+          const status = await getDriverStatus(authState.token);
+          if (status.hasActiveShift) {
+            router.replace('/dashboard');
+          }
+        } catch (error) {
+          console.error('Error checking driver status:', error);
+          // If error, perhaps token invalid, stay in login
+        }
+      }
+    };
+    checkAndRedirect();
+  }, [authState, router]);
 
   const handleLogin = async () => {
     if (!username || !password || !startKM) {
@@ -83,7 +101,7 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.loginButtonText}>Login</Text>
+              <Text style={styles.loginButtonText}>Start Shift</Text>
             )}
           </TouchableOpacity>
         </View>
