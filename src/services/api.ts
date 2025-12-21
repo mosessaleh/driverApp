@@ -1,6 +1,6 @@
 // For Expo Go on physical device, use your computer's IP address
 // Set EXPO_PUBLIC_API_URL in .env file or change this value based on your network
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'; // Set EXPO_PUBLIC_API_URL in .env
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.146:3000'; // Set EXPO_PUBLIC_API_URL in .env
 
 const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
   try {

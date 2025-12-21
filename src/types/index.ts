@@ -45,6 +45,7 @@ export interface Ride extends Booking {
   paymentMethod: string;
   scheduled: boolean;
   explanation?: string;
+  startLatLon?: { lat: number; lon: number };
 }
 
 export interface Driver {

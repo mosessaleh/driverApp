@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import RideOfferModal from '../src/components/RideOfferModal';
 import { Ride, Booking } from '../src/types';
+import { getSocket } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
@@ -26,9 +27,13 @@ export default function DashboardScreen() {
   const [endKM, setEndKM] = useState('');
   const [rideOffer, setRideOffer] = useState<Ride | null>(null);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<[number, number]> | null>(null);
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
+
+  // Map ref for animating to location
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
     if (!driverOnline) {
@@ -58,15 +63,62 @@ export default function DashboardScreen() {
       getCurrentLocation();
       // Start polling for ride offers
       const interval = setInterval(checkForRideOffer, 1000); // Check every 1 second
+
+      // Listen for new ride socket events
+      const socket = getSocket();
+      if (socket) {
+        socket.on('newRide', (data) => {
+          console.log('Received new ride via socket:', data);
+          // Note: Local notification removed due to Expo Go limitations
+
+          // Set ride offer immediately
+          if (!rideOffer) {
+            const ride = {
+              id: data.rideId,
+              riderName: data.riderName,
+              pickupAddress: data.pickupAddress,
+              dropoffAddress: data.dropoffAddress,
+              price: data.price,
+              status: 'PENDING',
+              pickupTime: new Date().toISOString(),
+              distanceKm: data.distanceKm,
+              durationMin: data.durationMin,
+              vehicleType: data.vehicleType,
+              passengers: data.passengers,
+              paymentStatus: 'PENDING_PAYMENT',
+              paymentMethod: data.paymentMethod || 'card',
+              scheduled: data.scheduled || false,
+            };
+            setRideOffer(ride);
+            setEtaMinutes(data.etaMinutes || 5);
+          }
+        });
+      }
+
       return () => {
         clearInterval(interval);
         stopLocationTracking();
+        if (socket) {
+          socket.off('newRide');
+        }
       };
     }
     return () => {
       stopLocationTracking();
     };
   }, [authState.token]);
+
+  // Animate map to current location when it changes
+  useEffect(() => {
+    if (currentLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    }
+  }, [currentLocation]);
 
   const loadDriverStatus = async () => {
     if (!authState.token) {
@@ -102,6 +154,7 @@ export default function DashboardScreen() {
     try {
       const res = await getDriverStatus(authState.token);
       if (res.currentRideId && res.rideAccepted === 0 && !rideOffer) {
+        console.log('تم تلقي رحلة جديدة عبر الـ polling');
         // Fetch ride details
         const rideRes = await getRide(res.currentRideId, authState.token);
         if (rideRes.success && rideRes.data) {
@@ -123,11 +176,15 @@ export default function DashboardScreen() {
             scheduled: ride.scheduled || false,
           });
 
-          // Calculate ETA
+          // Calculate ETA and get route
           if (currentLocation && ride.startLatLon) {
             const etaRes = await api.get(`/api/route?startLat=${currentLocation.latitude}&startLon=${currentLocation.longitude}&endLat=${ride.startLatLon.lat}&endLon=${ride.startLatLon.lon}`);
             if (etaRes.ok && etaRes.route && etaRes.route.duration) {
               setEtaMinutes(Math.ceil(etaRes.route.duration / 60));
+              // Store route coordinates for drawing the path
+              if (etaRes.route.geometry && etaRes.route.geometry.coordinates) {
+                setRouteCoordinates(etaRes.route.geometry.coordinates);
+              }
             } else {
               setEtaMinutes(5); // fallback
             }
@@ -136,6 +193,7 @@ export default function DashboardScreen() {
       } else if ((!res.currentRideId || res.rideAccepted !== 0) && rideOffer) {
         setRideOffer(null);
         setEtaMinutes(null);
+        setRouteCoordinates(null);
       }
     } catch (e) {
       console.error('Error checking for ride offer:', e);
@@ -294,6 +352,7 @@ export default function DashboardScreen() {
       if (res.ok) {
         setRideOffer(null);
         setEtaMinutes(null);
+        setRouteCoordinates(null);
         // Navigate to active ride
         router.push(`/active-ride?id=${rideId}`);
       } else {
@@ -308,6 +367,7 @@ export default function DashboardScreen() {
   const handleDeclineRide = () => {
     setRideOffer(null);
     setEtaMinutes(null);
+    setRouteCoordinates(null);
   };
 
   const goToSettings = () => {
@@ -391,6 +451,7 @@ export default function DashboardScreen() {
       <View style={styles.mapContainer}>
         {currentLocation ? (
           <MapView
+            ref={mapRef}
             style={styles.map}
             provider="google"
             initialRegion={{
@@ -401,7 +462,28 @@ export default function DashboardScreen() {
             }}
             showsUserLocation={true}
             followsUserLocation={isTracking}
-          />
+          >
+            {rideOffer && rideOffer.startLatLon && (
+              <Marker
+                coordinate={{
+                  latitude: rideOffer.startLatLon.lat,
+                  longitude: rideOffer.startLatLon.lon,
+                }}
+              >
+                <PersonIcon />
+              </Marker>
+            )}
+            {routeCoordinates && (
+              <Polyline
+                coordinates={routeCoordinates.map(coord => ({
+                  latitude: coord[1],
+                  longitude: coord[0],
+                }))}
+                strokeColor="#007bff"
+                strokeWidth={4}
+              />
+            )}
+          </MapView>
         ) : (
           <Text style={styles.mapPlaceholderText}>
             {locationPermission ? 'Getting location...' : 'Location permission required'}
@@ -464,6 +546,13 @@ export default function DashboardScreen() {
     </View>
   );
 }
+
+const PersonIcon = () => (
+  <View style={styles.personIcon}>
+    <View style={styles.personHead} />
+    <View style={styles.personBody} />
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -720,5 +809,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#f9f9f9',
     textAlign: 'center',
+  },
+  personIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'gray',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  personHead: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
+    position: 'absolute',
+    top: 4,
+  },
+  personBody: {
+    width: 4,
+    height: 12,
+    backgroundColor: 'white',
+    position: 'absolute',
+    bottom: 4,
   },
 });
