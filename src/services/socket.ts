@@ -14,7 +14,7 @@ export const connectSocket = (token: string): Socket => {
     transports: ['websocket'],
   });
   socket.on('connect', () => {
-    console.log('Connected to socket');
+    console.log('Socket connected successfully');
     // Decode token to get driverId
     try {
       const decoded: any = jwtDecode(token);
@@ -29,6 +29,18 @@ export const connectSocket = (token: string): Socket => {
     console.log('Disconnected from socket');
   });
   return socket;
+};
+
+export const onDriverStatusUpdate = (callback: (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void) => {
+  if (socket) {
+    socket.on('driverStatusUpdate', callback);
+  }
+};
+
+export const offDriverStatusUpdate = () => {
+  if (socket) {
+    socket.off('driverStatusUpdate');
+  }
 };
 
 export const disconnectSocket = () => {

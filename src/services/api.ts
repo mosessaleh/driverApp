@@ -19,6 +19,7 @@ export const api = {
     return retry(async () => {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
       };
       if (token) {
         headers.Authorization = `Bearer ${token}`;
@@ -37,7 +38,9 @@ export const api = {
   },
   get: async (endpoint: string, token?: string) => {
     return retry(async () => {
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'Cache-Control': 'no-cache',
+      };
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
@@ -47,6 +50,27 @@ export const api = {
       });
       if (!response.ok) {
         throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+      return response.json();
+    });
+  },
+  put: async (endpoint: string, data: any, token?: string) => {
+    return retry(async () => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`API Error ${response.status}: ${response.statusText || errorText}`);
       }
       return response.json();
     });
