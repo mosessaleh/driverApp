@@ -106,11 +106,11 @@ export default function DashboardScreen() {
 
       let pollingInterval: NodeJS.Timeout | null = null;
 
-      // Polling every 5 seconds only if no active ride
+      // Polling every 15 seconds only if no active ride
       if (!activeRide) {
         pollingInterval = setInterval(() => {
           loadDriverStatus();
-        }, 5000);
+        }, 15000);
       }
 
       // Listen for real-time driver status updates
