@@ -312,13 +312,19 @@ export default function DashboardScreen() {
     if (rideSound) {
       try {
         const status = await rideSound.getStatusAsync();
-        if (status.isLoaded) {
+        if (status.isLoaded && status.isPlaying) {
           await rideSound.stopAsync();
         }
         await rideSound.unloadAsync();
         setRideSound(null);
       } catch (error) {
         console.error('Error stopping sound:', error);
+        // Force unload even if error
+        try {
+          await rideSound.unloadAsync();
+        } catch (unloadError) {
+          console.error('Error unloading sound:', unloadError);
+        }
         setRideSound(null);
       }
     }
@@ -534,6 +540,8 @@ export default function DashboardScreen() {
     if (!rideId) {
       return;
     }
+    // Play pickup beep sound
+    playPickupBeep();
     setIsPickupLoading(true);
     try {
       // Update ride status to PICKED_UP and set pickedAt timestamp
@@ -559,6 +567,8 @@ export default function DashboardScreen() {
   const handleDropoffConfirm = async () => {
     const rideId = activeRide?.id;
     if (!rideId) return;
+    // Play dropoff beep sound
+    playDropoffBeep();
     setIsDropoffLoading(true);
     try {
       const res = await api.put(`/api/driver/rides/${rideId}/status`, {
@@ -646,6 +656,9 @@ export default function DashboardScreen() {
     setIsAcceptingRide(true);
 
     await stopRideSound();
+
+    // Play accept beep sound
+    playAcceptBeep();
 
     // Double-check ride availability before accepting
     const rideRes = await getRide(currentRideOffer.id, authState.token);
