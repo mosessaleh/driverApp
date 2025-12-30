@@ -29,6 +29,7 @@ export default function DashboardScreen() {
   const [showEndKMModal, setShowEndKMModal] = useState(false);
   const [endKM, setEndKM] = useState('');
   const [currentRideOffer, setCurrentRideOffer] = useState<any>(null);
+  const [offerRide, setOfferRide] = useState<any>(null);
   const [isAcceptingRide, setIsAcceptingRide] = useState(false);
   const [rideSound, setRideSound] = useState<Audio.Sound | null>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
@@ -36,6 +37,7 @@ export default function DashboardScreen() {
   const [showPickupModal, setShowPickupModal] = useState(false);
   const [showDropoffModal, setShowDropoffModal] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+  const [offerRouteCoordinates, setOfferRouteCoordinates] = useState<any[]>([]);
   const [isPickupLoading, setIsPickupLoading] = useState(false);
   const [isDropoffLoading, setIsDropoffLoading] = useState(false);
 
@@ -147,6 +149,14 @@ export default function DashboardScreen() {
             distanceKm: ride.distanceKm,
             riderName: ride.riderName,
           });
+          setOfferRide(ride);
+          // Fetch directions from driver to pickup point
+          if (currentLocation) {
+            fetchOfferDirections(
+              { lat: currentLocation.latitude, lng: currentLocation.longitude },
+              { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
+            );
+          }
           // Play sound when ride offer is received
           await playRideSound();
         }
@@ -203,6 +213,37 @@ export default function DashboardScreen() {
     }
   }, [currentLocation]);
 
+  // Fit map to show both driver location and pickup point when ride offer is shown
+  useEffect(() => {
+    if (offerRide && currentLocation && mapRef.current) {
+      const coordinates = [
+        { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+        { latitude: offerRide.startLatLon.lat, longitude: offerRide.startLatLon.lon }
+      ];
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
+        animated: true,
+      });
+    }
+  }, [offerRide, currentLocation]);
+
+  // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
+  useEffect(() => {
+    if ((showPickupModal || showDropoffModal) && activeRide && mapRef.current) {
+      const coordinates = showPickupModal ? [
+        { latitude: currentLocation?.latitude || 0, longitude: currentLocation?.longitude || 0 },
+        { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon }
+      ] : [
+        { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
+        { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
+      ];
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
+        animated: true,
+      });
+    }
+  }, [showPickupModal, showDropoffModal, activeRide, currentLocation]);
+
   const loadDriverStatus = async () => {
     if (!authState.token) {
       return;
@@ -235,6 +276,14 @@ export default function DashboardScreen() {
               distanceKm: ride.distanceKm,
               riderName: ride.riderName,
             });
+            setOfferRide(ride);
+            // Fetch directions from driver to pickup point
+            if (currentLocation) {
+              fetchOfferDirections(
+                { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
+              );
+            }
             await playRideSound();
           } else if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
             // Accepted, show pickup modal
@@ -242,7 +291,7 @@ export default function DashboardScreen() {
             setShowPickupModal(true);
             sliderPositionRef.current = sliderWidth * 0.05;
             setSliderPosition(sliderWidth * 0.05); // Reset slider
-            // Fetch directions after a short delay to ensure location is available
+            // Fetch directions from driver to pickup point (since not picked up yet)
             setTimeout(() => {
               if (currentLocation) {
                 fetchDirections(
@@ -255,15 +304,20 @@ export default function DashboardScreen() {
             // Picked up, show dropoff modal
             setActiveRide(ride);
             setShowDropoffModal(true);
-            fetchDirections(
-              { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-              { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
-            );
+            // Fetch directions after a short delay to ensure map is ready
+            setTimeout(() => {
+              fetchDirections(
+                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
+              );
+            }, 1000);
           }
         }
       } else if (!res.currentRideId) {
         // Clear any existing ride displays
         setCurrentRideOffer(null);
+        setOfferRide(null);
+        setOfferRouteCoordinates([]);
         setActiveRide(null);
         setShowPickupModal(false);
         setShowDropoffModal(false);
@@ -383,6 +437,8 @@ export default function DashboardScreen() {
       }
     } else if ((!status?.currentRideId || status?.rideAccepted !== 0) && currentRideOffer) {
       setCurrentRideOffer(null);
+      setOfferRide(null);
+      setOfferRouteCoordinates([]);
       // Stop sound when ride offer is cleared
       await stopRideSound();
     }
@@ -553,6 +609,12 @@ export default function DashboardScreen() {
         setIsPickupLoading(false);
         setShowPickupModal(false);
         setShowDropoffModal(true);
+        // Clear previous route and fetch new route from pickup to dropoff
+        setRouteCoordinates([]);
+        fetchDirections(
+          { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
+        );
       } else {
         setIsPickupLoading(false);
         alert('Failed to update ride status');
@@ -579,6 +641,9 @@ export default function DashboardScreen() {
         setShowDropoffModal(false);
         setActiveRide(null);
         setCurrentRideId(null);
+        setRouteCoordinates([]);
+        setOfferRouteCoordinates([]);
+        setOfferRide(null);
         if (res.paymentResult && !res.paymentResult.success) {
           alert(`Ride completed but payment failed: ${res.paymentResult.error}`);
         } else {
@@ -611,6 +676,28 @@ export default function DashboardScreen() {
       console.error('Error fetching directions:', error);
       // Fallback to straight line
       setRouteCoordinates([
+        { latitude: origin.lat, longitude: origin.lng },
+        { latitude: destination.lat, longitude: destination.lng },
+      ]);
+    }
+  };
+
+  const fetchOfferDirections = async (origin: { lat: number; lng: number }, destination: { lat: number; lng: number }) => {
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.routes && data.routes.length > 0) {
+        const points = data.routes[0].overview_polyline.points;
+        // Decode polyline
+        const coordinates = decodePolyline(points);
+        setOfferRouteCoordinates(coordinates);
+      }
+    } catch (error) {
+      console.error('Error fetching offer directions:', error);
+      // Fallback to straight line
+      setOfferRouteCoordinates([
         { latitude: origin.lat, longitude: origin.lng },
         { latitude: destination.lat, longitude: destination.lng },
       ]);
@@ -681,6 +768,8 @@ export default function DashboardScreen() {
           setActiveRide(rideRes.data);
           setCurrentRideId(currentRideOffer.id);
           setCurrentRideOffer(null);
+          setOfferRide(null);
+          setOfferRouteCoordinates([]);
           setShowPickupModal(true);
           sliderPositionRef.current = sliderWidth * 0.05;
           setSliderPosition(sliderWidth * 0.05); // Reset slider
@@ -716,10 +805,14 @@ export default function DashboardScreen() {
       }, authState.token);
 
       setCurrentRideOffer(null);
+      setOfferRide(null);
+      setOfferRouteCoordinates([]);
     } catch (e) {
       console.error('Error rejecting ride:', e);
       // Still clear the offer locally
       setCurrentRideOffer(null);
+      setOfferRide(null);
+      setOfferRouteCoordinates([]);
     }
   };
 
@@ -834,7 +927,26 @@ export default function DashboardScreen() {
             showsUserLocation={true}
             followsUserLocation={isTracking}
           >
-            {activeRide && (
+            {offerRide && (
+              <>
+                <Marker
+                  coordinate={{
+                    latitude: offerRide.startLatLon.lat,
+                    longitude: offerRide.startLatLon.lon,
+                  }}
+                  title="Pickup"
+                  pinColor="green"
+                />
+                {offerRouteCoordinates.length > 0 && (
+                  <Polyline
+                    coordinates={offerRouteCoordinates}
+                    strokeColor="#007bff"
+                    strokeWidth={3}
+                  />
+                )}
+              </>
+            )}
+            {activeRide && showPickupModal && (
               <>
                 <Marker
                   coordinate={{
@@ -851,16 +963,41 @@ export default function DashboardScreen() {
                     strokeWidth={3}
                   />
                 )}
-                {showDropoffModal && (
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.endLatLon.lat,
-                      longitude: activeRide.endLatLon.lon,
-                    }}
-                    title="Dropoff"
-                    pinColor="red"
+                <Marker
+                  coordinate={{
+                    latitude: activeRide.endLatLon.lat,
+                    longitude: activeRide.endLatLon.lon,
+                  }}
+                  title="Dropoff"
+                  pinColor="red"
+                />
+              </>
+            )}
+            {activeRide && showDropoffModal && (
+              <>
+                <Marker
+                  coordinate={{
+                    latitude: activeRide.startLatLon.lat,
+                    longitude: activeRide.startLatLon.lon,
+                  }}
+                  title="Pickup"
+                  pinColor="green"
+                />
+                {routeCoordinates.length > 0 && (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor="#007bff"
+                    strokeWidth={3}
                   />
                 )}
+                <Marker
+                  coordinate={{
+                    latitude: activeRide.endLatLon.lat,
+                    longitude: activeRide.endLatLon.lon,
+                  }}
+                  title="Dropoff"
+                  pinColor="red"
+                />
               </>
             )}
           </MapView>
