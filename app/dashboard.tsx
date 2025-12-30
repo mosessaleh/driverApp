@@ -98,10 +98,20 @@ export default function DashboardScreen() {
     if (authState.token) {
       getCurrentLocation();
 
-      // Polling every 5 seconds
-      const pollingInterval = setInterval(() => {
-        loadDriverStatus();
-      }, 5000);
+      // Load driver status immediately on mount
+      const loadInitialStatus = async () => {
+        await loadDriverStatus();
+      };
+      loadInitialStatus();
+
+      let pollingInterval: NodeJS.Timeout | null = null;
+
+      // Polling every 5 seconds only if no active ride
+      if (!activeRide) {
+        pollingInterval = setInterval(() => {
+          loadDriverStatus();
+        }, 5000);
+      }
 
       // Listen for real-time driver status updates
       const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean }) => {
@@ -112,13 +122,34 @@ export default function DashboardScreen() {
         if (data.isBusy !== driverBusy) {
           setDriverBusy(data.isBusy);
         }
-        // Check for ride offers immediately with the status data
-        checkForRideOffers(data);
+        // Check for ride offers immediately with the status data only if no active ride
+        if (!activeRide) {
+          checkForRideOffers(data);
+        }
       };
 
       // Listen for ride offers
       const handleRideOffer = async (data: { rideId: number; timestamp: number }) => {
-        // Removed getRide to stop API calls
+        if (!authState.token) return;
+        // Fetch ride details to show offer
+        const rideRes = await getRide(data.rideId.toString(), authState.token);
+        if (rideRes.ok && rideRes.data) {
+          const ride = rideRes.data;
+          // Check if ride is still available
+          if (ride.driverId || ride.status !== 'CONFIRMED') {
+            // Ride not available, ignore
+            return;
+          }
+          // Show ride offer
+          setCurrentRideOffer({
+            id: ride.id,
+            price: ride.price,
+            distanceKm: ride.distanceKm,
+            riderName: ride.riderName,
+          });
+          // Play sound when ride offer is received
+          await playRideSound();
+        }
       };
 
       // Add listeners only if no active ride
@@ -127,13 +158,23 @@ export default function DashboardScreen() {
         onDriverStatusUpdate(handleDriverStatusUpdate);
       }
 
+      // Listen for socket connect to check for existing rides
+      const handleSocketConnect = () => {
+        loadDriverStatus();
+      };
+      // Assuming socket has connect event, but since it's not exposed, we can call loadDriverStatus on mount
+      // For now, call it once on mount if no active ride
+      if (!activeRide) {
+        loadDriverStatus();
+      }
+
       return () => {
-        clearInterval(pollingInterval);
-        stopLocationTracking();
-        if (!activeRide) {
-          offDriverStatusUpdate();
-          offRideOffer();
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
         }
+        stopLocationTracking();
+        offDriverStatusUpdate();
+        offRideOffer();
         // Cleanup sound
         if (rideSound) {
           try {
@@ -180,43 +221,11 @@ export default function DashboardScreen() {
         setDriverBusy(res.isBusy);
       }
 
-      // Check for current active ride
-      if (res.currentRideId) {
+      // Check for current active ride - re-enabled for initial detection
+      if (res.currentRideId && !activeRide) {
         const rideRes = await getRide(res.currentRideId.toString(), authState.token);
         if (rideRes.ok && rideRes.data) {
           const ride = rideRes.data;
-
-          // Clear any existing modals first, but preserve activeRide if it's the same ride
-          const shouldClear = !(activeRide && activeRide.id === res.currentRideId);
-          if (shouldClear) {
-            setCurrentRideOffer(null);
-            setActiveRide(null);
-            setShowPickupModal(false);
-            setShowDropoffModal(false);
-          } else if (!activeRide && res.currentRideId) {
-            // Set activeRide if not set
-            setActiveRide(ride);
-            if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
-              setShowPickupModal(true);
-              sliderPositionRef.current = sliderWidth * 0.05;
-              setSliderPosition(sliderWidth * 0.05);
-              // Fetch directions
-              setTimeout(() => {
-                if (currentLocation) {
-                  fetchDirections(
-                    { lat: currentLocation.latitude, lng: currentLocation.longitude },
-                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
-                  );
-                }
-              }, 1000);
-            } else if (ride.status === 'PICKED_UP') {
-              setShowDropoffModal(true);
-              fetchDirections(
-                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-                { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
-              );
-            }
-          }
 
           if (ride.status === 'CONFIRMED') {
             // Assigned but not accepted, show offer
@@ -252,7 +261,7 @@ export default function DashboardScreen() {
             );
           }
         }
-      } else {
+      } else if (!res.currentRideId) {
         // Clear any existing ride displays
         setCurrentRideOffer(null);
         setActiveRide(null);
@@ -303,25 +312,30 @@ export default function DashboardScreen() {
     if (rideSound) {
       try {
         const status = await rideSound.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
+        if (status.isLoaded) {
           await rideSound.stopAsync();
         }
-        if (status.isLoaded) {
-          await rideSound.unloadAsync();
-        }
+        await rideSound.unloadAsync();
         setRideSound(null);
       } catch (error) {
         console.error('Error stopping sound:', error);
-        // Force unload and cleanup
-        try {
-          await rideSound.unloadAsync();
-        } catch (unloadError) {
-          console.error('Error unloading sound:', unloadError);
-        }
         setRideSound(null);
       }
     }
   };
+
+  const playBeepSound = async (soundFile: any) => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(soundFile, { shouldPlay: true });
+      // No need to set state since it's a short beep
+    } catch (error) {
+      console.error('Error playing beep sound:', error);
+    }
+  };
+
+  const playAcceptBeep = () => playBeepSound(require('../assets/music/beep-accept.mp3'));
+  const playPickupBeep = () => playBeepSound(require('../assets/music/beep-pickup.mp3'));
+  const playDropoffBeep = () => playBeepSound(require('../assets/music/beep-dropoff.mp3'));
 
   const checkForRideOffers = async (status?: any) => {
     if (isAcceptingRide || activeRide) return;

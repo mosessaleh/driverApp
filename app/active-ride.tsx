@@ -19,11 +19,8 @@ export default function ActiveRideScreen() {
 
   useEffect(() => {
     if (authState.token && id) {
-      // Polling every 5 seconds
-      const pollingInterval = setInterval(() => {
-        fetchRide();
-      }, 5000);
-      return () => clearInterval(pollingInterval);
+      // Initial fetch - commented out to test WebSocket only
+      // fetchRide();
     }
   }, [authState.token, id]);
 
