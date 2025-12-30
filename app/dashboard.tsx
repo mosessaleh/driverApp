@@ -393,9 +393,9 @@ export default function DashboardScreen() {
     }
   };
 
-  const playAcceptBeep = () => playBeepSound(require('../assets/music/beep-accept.mp3'));
-  const playPickupBeep = () => playBeepSound(require('../assets/music/beep-pickup.mp3'));
-  const playDropoffBeep = () => playBeepSound(require('../assets/music/beep-dropoff.mp3'));
+  const playAcceptBeep = () => playBeepSound(require('../assets/music/AcceptRide.mp3'));
+  const playPickupBeep = () => playBeepSound(require('../assets/music/PickUp.mp3'));
+  const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
 
   const checkForRideOffers = async (status?: any) => {
     if (isAcceptingRide || activeRide) return;
