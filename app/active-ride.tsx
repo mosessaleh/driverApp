@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { getRide, startRide, endRide, updateDriverLocation } from '../src/services/api';
 import { Ride } from '../src/types';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { getSocket } from '../src/services/socket';
+import { getSocket, onDriverStatusUpdate, offDriverStatusUpdate } from '../src/services/socket';
 import { watchLocation } from '../src/services/location';
 
 export default function ActiveRideScreen() {
@@ -13,10 +13,17 @@ export default function ActiveRideScreen() {
   const { id } = useLocalSearchParams();
   const [ride, setRide] = useState<Ride | null>(null);
   const [rideStatus, setRideStatus] = useState('');
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (authState.token && id) {
-      fetchRide();
+      // Polling every 5 seconds
+      const pollingInterval = setInterval(() => {
+        fetchRide();
+      }, 5000);
+      return () => clearInterval(pollingInterval);
     }
   }, [authState.token, id]);
 
@@ -46,17 +53,31 @@ export default function ActiveRideScreen() {
     const socket = getSocket();
     if (socket) {
       const handleRideUpdate = (data: any) => {
-        if (data.rideId === id) {
+        if (data.rideId === id && data.status !== rideStatus) {
           setRideStatus(data.status);
-          fetchRide();
         }
       };
       socket.on('ride-update', handleRideUpdate);
+
+      const handleDriverStatusUpdate = (data: any) => {
+        // Removed fetchRide to stop API calls
+      };
+      onDriverStatusUpdate(handleDriverStatusUpdate);
+
+      // Chat functionality
+      socket.emit('joinChat', { bookingId: id });
+      const handleNewMessage = (data: any) => {
+        setChatMessages(prev => [...prev, data]);
+      };
+      socket.on('newMessage', handleNewMessage);
+
       return () => {
         socket.off('ride-update', handleRideUpdate);
+        offDriverStatusUpdate();
+        socket.off('newMessage', handleNewMessage);
       };
     }
-  }, [id]);
+  }, [id, rideStatus]);
 
   const fetchRide = async () => {
     if (!authState.token || !id) return;
@@ -95,6 +116,23 @@ export default function ActiveRideScreen() {
     }
   };
 
+  const sendMessage = () => {
+    const socket = getSocket();
+    if (socket && chatInput.trim()) {
+      socket.emit('sendMessage', {
+        bookingId: id,
+        message: chatInput.trim(),
+        sender: 'driver'
+      });
+      setChatMessages(prev => [...prev, {
+        message: chatInput.trim(),
+        sender: 'driver',
+        timestamp: new Date().toISOString()
+      }]);
+      setChatInput('');
+    }
+  };
+
   if (!ride) {
     return (
       <View style={styles.container}>
@@ -127,7 +165,34 @@ export default function ActiveRideScreen() {
             <Text>End Ride</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.chatButton} onPress={() => setShowChat(!showChat)}>
+          <Text>{showChat ? 'Hide Chat' : 'Chat with Passenger'}</Text>
+        </TouchableOpacity>
       </View>
+
+      {showChat && (
+        <View style={styles.chatContainer}>
+          <View style={styles.chatMessages}>
+            {chatMessages.map((msg, idx) => (
+              <View key={idx} style={[styles.message, msg.sender === 'driver' ? styles.myMessage : styles.theirMessage]}>
+                <Text style={styles.messageText}>{msg.message}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.chatInput}>
+            <TextInput
+              style={styles.input}
+              value={chatInput}
+              onChangeText={setChatInput}
+              placeholder="Type message..."
+              onSubmitEditing={sendMessage}
+            />
+            <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+              <Text>Send</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
       <Link href="/dashboard" style={styles.backLink}>
         <Text>Back to Dashboard</Text>
       </Link>
@@ -167,5 +232,60 @@ const styles = StyleSheet.create({
   backLink: {
     alignSelf: 'center',
     marginTop: 20,
+  },
+  chatButton: {
+    backgroundColor: '#28a745',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  chatContainer: {
+    height: 200,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  chatMessages: {
+    flex: 1,
+    padding: 10,
+  },
+  message: {
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 5,
+    maxWidth: '80%',
+  },
+  myMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#007bff',
+  },
+  theirMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e9ecef',
+  },
+  messageText: {
+    color: '#000',
+  },
+  chatInput: {
+    flexDirection: 'row',
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ccc',
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 10,
+    marginRight: 10,
+  },
+  sendButton: {
+    backgroundColor: '#007bff',
+    padding: 10,
+    borderRadius: 5,
+    justifyContent: 'center',
   },
 });

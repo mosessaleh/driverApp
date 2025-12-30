@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
 import * as Linking from 'expo-linking';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
@@ -21,21 +21,53 @@ export default function DashboardScreen() {
   const [locationPermission, setLocationPermission] = useState(false);
   const [locationSubscription, setLocationSubscription] = useState<any>(null);
   const [isTracking, setIsTracking] = useState(false);
+  const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
+  const [lastStatusCheck, setLastStatusCheck] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showEndKMModal, setShowEndKMModal] = useState(false);
   const [endKM, setEndKM] = useState('');
   const [currentRideOffer, setCurrentRideOffer] = useState<any>(null);
+  const [isAcceptingRide, setIsAcceptingRide] = useState(false);
   const [rideSound, setRideSound] = useState<Audio.Sound | null>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
+  const [currentRideId, setCurrentRideId] = useState<number | null>(null);
   const [showPickupModal, setShowPickupModal] = useState(false);
   const [showDropoffModal, setShowDropoffModal] = useState(false);
-  const [pickupProgress, setPickupProgress] = useState(new Animated.Value(0));
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+  const [isPickupLoading, setIsPickupLoading] = useState(false);
+  const [isDropoffLoading, setIsDropoffLoading] = useState(false);
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
+
+  // Slider refs and state
+  const sliderPositionRef = useRef(0);
+  const [sliderPosition, setSliderPosition] = useState(0);
+  const sliderWidth = Dimensions.get('window').width * 0.8; // Assuming slider takes 80% of screen width
+
+  // Slider pan responder
+  const sliderPanResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => {
+      // Optional: start animation
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const newPosition = Math.max(0, Math.min(sliderWidth, sliderPositionRef.current + gestureState.dx));
+      setSliderPosition(newPosition);
+      sliderPositionRef.current = newPosition;
+    },
+    onPanResponderRelease: () => {
+      if (sliderPosition >= sliderWidth * 0.8) { // If slid far enough
+        handlePickupConfirm();
+      } else {
+        // Reset slider
+        setSliderPosition(0);
+        sliderPositionRef.current = 0;
+      }
+    },
+  });
 
   // Map ref for animating to location
   const mapRef = useRef<MapView>(null);
@@ -64,55 +96,59 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (authState.token) {
-      loadDriverStatus();
       getCurrentLocation();
 
-      // Listen for real-time driver status updates
-      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => {
-        console.log('Received driverStatusUpdate event:', data);
-        setDriverOnline(prev => prev); // Keep online status, or update if needed
-        setDriverBusy(data.isBusy);
-        console.log('Updated local state from event: driverBusy =', data.isBusy);
-        // Check for ride offers immediately
-        checkForRideOffers();
-      };
-
-      onDriverStatusUpdate(handleDriverStatusUpdate);
-
-      // Check status every 5 seconds and check for rides
-      const statusLogInterval = setInterval(async () => {
-        try {
-          const res = await getDriverStatus(authState.token!);
-
-          // Update local state if changed
-          if (res.isOnline !== driverOnline) {
-            setDriverOnline(res.isOnline);
-          }
-          if (res.isBusy !== driverBusy) {
-            setDriverBusy(res.isBusy);
-          }
-
-          // Check for ride offers
-          checkForRideOffers();
-        } catch (e) {
-          console.error('Error checking status:', e);
-        }
+      // Polling every 5 seconds
+      const pollingInterval = setInterval(() => {
+        loadDriverStatus();
       }, 5000);
 
+      // Listen for real-time driver status updates
+      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean }) => {
+        // Update driver status based on WebSocket data
+        if (data.isOnline !== undefined && data.isOnline !== driverOnline) {
+          setDriverOnline(data.isOnline);
+        }
+        if (data.isBusy !== driverBusy) {
+          setDriverBusy(data.isBusy);
+        }
+        // Check for ride offers immediately with the status data
+        checkForRideOffers(data);
+      };
+
+      // Listen for ride offers
+      const handleRideOffer = async (data: { rideId: number; timestamp: number }) => {
+        // Removed getRide to stop API calls
+      };
+
+      // Add listeners only if no active ride
+      if (!activeRide) {
+        onRideOffer(handleRideOffer);
+        onDriverStatusUpdate(handleDriverStatusUpdate);
+      }
+
       return () => {
+        clearInterval(pollingInterval);
         stopLocationTracking();
-        offDriverStatusUpdate();
-        clearInterval(statusLogInterval);
+        if (!activeRide) {
+          offDriverStatusUpdate();
+          offRideOffer();
+        }
         // Cleanup sound
         if (rideSound) {
-          rideSound.unloadAsync();
+          try {
+            rideSound.unloadAsync();
+          } catch (error) {
+            console.error('Error unloading sound on cleanup:', error);
+          }
         }
       };
     }
     return () => {
       stopLocationTracking();
     };
-  }, [authState.token, driverOnline, driverBusy, currentRideOffer]);
+  }, [authState.token, activeRide]);
+
 
   // Animate map to current location when it changes
   useEffect(() => {
@@ -128,35 +164,60 @@ export default function DashboardScreen() {
 
   const loadDriverStatus = async () => {
     if (!authState.token) {
-      console.log('No auth token for loading driver status');
       return;
     }
     try {
-      console.log('Loading driver status...');
       const res = await getDriverStatus(authState.token);
-      console.log('Driver status response:', res);
-      if (res.isOnline !== undefined) {
+      if (res.isOnline !== undefined && res.isOnline !== driverOnline) {
         const wasOnline = driverOnline;
         setDriverOnline(res.isOnline);
-        console.log('Driver online status set to:', res.isOnline);
         // Auto start tracking if became online
         if (res.isOnline && !wasOnline) {
-          console.log('Auto starting location tracking');
           startLocationTracking();
         }
       }
-      if (res.isBusy !== undefined) {
+      if (res.isBusy !== undefined && res.isBusy !== driverBusy) {
         setDriverBusy(res.isBusy);
-        console.log('Driver busy status set to:', res.isBusy);
       }
 
       // Check for current active ride
       if (res.currentRideId) {
-        console.log('Found current ride, fetching details for rideId:', res.currentRideId);
-        const rideRes = await getRide(res.currentRideId, authState.token);
+        const rideRes = await getRide(res.currentRideId.toString(), authState.token);
         if (rideRes.ok && rideRes.data) {
           const ride = rideRes.data;
-          console.log('Ride status:', ride.status);
+
+          // Clear any existing modals first, but preserve activeRide if it's the same ride
+          const shouldClear = !(activeRide && activeRide.id === res.currentRideId);
+          if (shouldClear) {
+            setCurrentRideOffer(null);
+            setActiveRide(null);
+            setShowPickupModal(false);
+            setShowDropoffModal(false);
+          } else if (!activeRide && res.currentRideId) {
+            // Set activeRide if not set
+            setActiveRide(ride);
+            if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
+              setShowPickupModal(true);
+              sliderPositionRef.current = sliderWidth * 0.05;
+              setSliderPosition(sliderWidth * 0.05);
+              // Fetch directions
+              setTimeout(() => {
+                if (currentLocation) {
+                  fetchDirections(
+                    { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
+                  );
+                }
+              }, 1000);
+            } else if (ride.status === 'PICKED_UP') {
+              setShowDropoffModal(true);
+              fetchDirections(
+                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
+              );
+            }
+          }
+
           if (ride.status === 'CONFIRMED') {
             // Assigned but not accepted, show offer
             setCurrentRideOffer({
@@ -170,12 +231,17 @@ export default function DashboardScreen() {
             // Accepted, show pickup modal
             setActiveRide(ride);
             setShowPickupModal(true);
-            if (currentLocation) {
-              fetchDirections(
-                { lat: currentLocation.latitude, lng: currentLocation.longitude },
-                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
-              );
-            }
+            sliderPositionRef.current = sliderWidth * 0.05;
+            setSliderPosition(sliderWidth * 0.05); // Reset slider
+            // Fetch directions after a short delay to ensure location is available
+            setTimeout(() => {
+              if (currentLocation) {
+                fetchDirections(
+                  { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                  { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
+                );
+              }
+            }, 1000);
           } else if (ride.status === 'PICKED_UP') {
             // Picked up, show dropoff modal
             setActiveRide(ride);
@@ -185,10 +251,17 @@ export default function DashboardScreen() {
               { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
             );
           }
-        } else {
-          console.log('Failed to fetch ride details');
         }
+      } else {
+        // Clear any existing ride displays
+        setCurrentRideOffer(null);
+        setActiveRide(null);
+        setShowPickupModal(false);
+        setShowDropoffModal(false);
       }
+
+      // Check for ride offers
+      checkForRideOffers(res);
     } catch (e) {
       console.error('Error loading driver status:', e);
     }
@@ -196,6 +269,11 @@ export default function DashboardScreen() {
 
   const playRideSound = async () => {
     try {
+      // Prevent multiple sound instances
+      if (rideSound) {
+        return;
+      }
+
       // Set audio mode to play at maximum volume
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -206,9 +284,16 @@ export default function DashboardScreen() {
 
       const { sound } = await Audio.Sound.createAsync(
         require('../assets/music/rideGetting.mp3'),
-        { shouldPlay: true, isLooping: true, volume: 1.0 }
+        { shouldPlay: true, isLooping: true, volume: 0.8 } // Loop until accepted or rejected
       );
       setRideSound(sound);
+
+      // Listen for sound finish to clean up
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          stopRideSound();
+        }
+      });
     } catch (error) {
       console.error('Error playing ride sound:', error);
     }
@@ -216,75 +301,70 @@ export default function DashboardScreen() {
 
   const stopRideSound = async () => {
     if (rideSound) {
-      await rideSound.unloadAsync();
-      setRideSound(null);
+      try {
+        const status = await rideSound.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) {
+          await rideSound.stopAsync();
+        }
+        if (status.isLoaded) {
+          await rideSound.unloadAsync();
+        }
+        setRideSound(null);
+      } catch (error) {
+        console.error('Error stopping sound:', error);
+        // Force unload and cleanup
+        try {
+          await rideSound.unloadAsync();
+        } catch (unloadError) {
+          console.error('Error unloading sound:', unloadError);
+        }
+        setRideSound(null);
+      }
     }
   };
 
-  const checkForRideOffers = async () => {
-    console.log('checkForRideOffers called, token exists:', !!authState.token, 'auth user ID:', authState.user?.id);
+  const checkForRideOffers = async (status?: any) => {
+    if (isAcceptingRide || activeRide) return;
     if (!authState.token || !driverOnline || driverBusy) return;
 
-    try {
-      const res = await getDriverStatus(authState.token);
-      console.log('Driver status for ride check:', {
-        currentRideId: res.currentRideId,
-        rideAccepted: res.rideAccepted,
-        isOnline: res.isOnline,
-        isBusy: res.isBusy,
-        hasActiveShift: res.hasActiveShift,
-        currentRideOffer: !!currentRideOffer
-      });
+    // Since we rely on WebSocket for real-time updates, we don't need polling
+    // This function is now mainly called when WebSocket events trigger it
+    // For ride offers, they come via 'rideOffer' event, not through status polling
 
-      if (res.currentRideId && res.rideAccepted === 0) {
-        console.log('Driver has pending ride offer, checking availability for rideId:', res.currentRideId);
-        // Fetch ride details to check availability
-        const rideRes = await getRide(res.currentRideId, authState.token);
-        console.log('Ride fetch result:', rideRes);
-        if (rideRes.ok && rideRes.data) {
-          const ride = rideRes.data;
-          console.log('Fetched ride details:', { id: ride.id, status: ride.status, driverId: ride.driverId });
-          // Check if ride is still available
-          if (ride.driverId || ride.status !== 'CONFIRMED') {
-            console.log('Ride is not available for acceptance:', { driverId: ride.driverId, status: ride.status });
-            // Clear the offer if not available
-            if (currentRideOffer) {
-              setCurrentRideOffer(null);
-              await stopRideSound();
-            }
-          } else if (!currentRideOffer) {
-            console.log('Setting ride offer:', ride);
-            setCurrentRideOffer({
-              id: ride.id,
-              price: ride.price,
-              distanceKm: ride.distanceKm,
-              riderName: ride.riderName,
-            });
-            // Play sound when ride offer is received
-            await playRideSound();
-          }
-        } else {
-          console.log('getRide failed:', rideRes);
-          // If fetch fails, clear offer to be safe
+    // If status is provided (from WebSocket or initial load), use it
+    if (status && status.currentRideId && status.rideAccepted === 0 && !activeRide) {
+      // Fetch ride details to check availability
+      const rideRes = await getRide(status.currentRideId.toString(), authState.token);
+      if (rideRes.ok && rideRes.data) {
+        const ride = rideRes.data;
+        // Check if ride is still available
+        if (ride.driverId || ride.status !== 'CONFIRMED') {
+          // Clear the offer if not available
           if (currentRideOffer) {
             setCurrentRideOffer(null);
             await stopRideSound();
           }
+        } else if (!currentRideOffer) {
+          setCurrentRideOffer({
+            id: ride.id,
+            price: ride.price,
+            distanceKm: ride.distanceKm,
+            riderName: ride.riderName,
+          });
+          // Play sound when ride offer is received (only once)
+          await playRideSound();
         }
-      } else if ((!res.currentRideId || res.rideAccepted !== 0) && currentRideOffer) {
-        console.log('Clearing ride offer');
-        setCurrentRideOffer(null);
-        // Stop sound when ride offer is cleared
-        await stopRideSound();
       } else {
-        console.log('Ride offer conditions not met:', {
-          hasCurrentRideId: !!res.currentRideId,
-          rideAcceptedIs0: res.rideAccepted === 0,
-          noCurrentOffer: !currentRideOffer
-        });
+        // If fetch fails, clear offer to be safe
+        if (currentRideOffer) {
+          setCurrentRideOffer(null);
+          await stopRideSound();
+        }
       }
-    } catch (e) {
-      console.error('Error checking for ride offers:', e);
+    } else if ((!status?.currentRideId || status?.rideAccepted !== 0) && currentRideOffer) {
+      setCurrentRideOffer(null);
+      // Stop sound when ride offer is cleared
+      await stopRideSound();
     }
   };
 
@@ -326,9 +406,9 @@ export default function DashboardScreen() {
 
             setCurrentLocation(newLocation);
 
-            // Send location update to server
-            if (authState.token) {
-              console.log('Sending location update:', newLocation.latitude, newLocation.longitude);
+            // Send location update to database only every 30 seconds
+            const now = Date.now();
+            if (authState.token && now - lastLocationUpdate >= 30000) {
               try {
                 await updateDriverLocation(
                   newLocation.latitude,
@@ -336,12 +416,10 @@ export default function DashboardScreen() {
                   authState.token,
                   new Date().toISOString()
                 );
-                console.log('Location updated successfully');
+                setLastLocationUpdate(now);
               } catch (error) {
                 console.error('Failed to update location on server:', error);
               }
-            } else {
-              console.log('No auth token available for location update');
             }
           }
         );
@@ -436,46 +514,61 @@ export default function DashboardScreen() {
     Linking.openURL(url);
   };
 
-  const pickupAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const handlePickupPressIn = () => {
-    // Start filling animation
-    pickupAnimationRef.current = Animated.timing(pickupProgress, {
-      toValue: 1,
-      duration: 3000,
-      useNativeDriver: false,
-    });
-    pickupAnimationRef.current.start(async ({ finished }) => {
-      if (finished) {
-        try {
-          // Update ride status to picked_up
-          const res = await api.put(`/api/driver/rides/${activeRide.id}/status`, { status: 'picked_up' }, authState.token!);
-          if (res.ok) {
-            setShowPickupModal(false);
-            setShowDropoffModal(true);
-            setPickupProgress(new Animated.Value(0)); // Reset for next use
-          } else {
-            alert('Failed to update ride status');
-          }
-        } catch (e) {
-          console.error('Error picking up ride:', e);
-          alert('Error picking up ride');
-        }
+  const handlePickupConfirm = async () => {
+    const rideId = activeRide?.id || currentRideId;
+    if (!rideId) {
+      return;
+    }
+    setIsPickupLoading(true);
+    try {
+      // Update ride status to PICKED_UP and set pickedAt timestamp
+      const res = await api.put(`/api/driver/rides/${rideId}/status`, {
+        status: 'PICKED_UP',
+        pickedAt: new Date().toISOString()
+      }, authState.token!);
+      if (res.ok) {
+        setIsPickupLoading(false);
+        setShowPickupModal(false);
+        setShowDropoffModal(true);
+      } else {
+        setIsPickupLoading(false);
+        alert('Failed to update ride status');
       }
-    });
+    } catch (e) {
+      console.error('Error picking up ride:', e);
+      setIsPickupLoading(false);
+      alert('Error picking up ride');
+    }
   };
 
-  const handlePickupPressOut = () => {
-    // Stop animation and reset
-    if (pickupAnimationRef.current) {
-      pickupAnimationRef.current.stop();
-      pickupAnimationRef.current = null;
+  const handleDropoffConfirm = async () => {
+    const rideId = activeRide?.id;
+    if (!rideId) return;
+    setIsDropoffLoading(true);
+    try {
+      const res = await api.put(`/api/driver/rides/${rideId}/status`, {
+        status: 'COMPLETED',
+        droppedAt: new Date().toISOString()
+      }, authState.token!);
+      if (res.ok) {
+        setShowDropoffModal(false);
+        setActiveRide(null);
+        setCurrentRideId(null);
+        if (res.paymentResult && !res.paymentResult.success) {
+          alert(`Ride completed but payment failed: ${res.paymentResult.error}`);
+        } else {
+          alert('Ride completed successfully');
+        }
+      } else {
+        alert('Failed to complete ride');
+      }
+    } catch (e) {
+      console.error('Error completing ride:', e);
+      alert('Error completing ride');
+    } finally {
+      setIsDropoffLoading(false);
     }
-    Animated.timing(pickupProgress, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
   };
 
   const fetchDirections = async (origin: { lat: number; lng: number }, destination: { lat: number; lng: number }) => {
@@ -536,12 +629,13 @@ export default function DashboardScreen() {
   const handleAcceptRide = async () => {
     if (!authState.token || !authState.user || !currentRideOffer) return;
 
-    console.log('Attempting to accept ride:', { rideId: currentRideOffer.id, driverId: authState.user.id });
+    setIsAcceptingRide(true);
+
+    await stopRideSound();
 
     // Double-check ride availability before accepting
     const rideRes = await getRide(currentRideOffer.id, authState.token);
     if (!rideRes.ok || !rideRes.data || rideRes.data.driverId || rideRes.data.status !== 'CONFIRMED') {
-      console.log('Ride no longer available, clearing offer');
       setCurrentRideOffer(null);
       await stopRideSound();
       alert('Ride is no longer available');
@@ -549,8 +643,8 @@ export default function DashboardScreen() {
     }
 
     try {
-      const res = await api.post(`/api/bookings/${currentRideOffer.id}/accept`, {
-        driverId: authState.user.id
+      const res = await api.post(`/api/drivers/${authState.user.id}/accept-ride`, {
+        rideId: currentRideOffer.id
       }, authState.token);
 
       if (res.ok) {
@@ -558,11 +652,19 @@ export default function DashboardScreen() {
         const rideRes = await getRide(currentRideOffer.id, authState.token);
         if (rideRes.ok && rideRes.data) {
           setActiveRide(rideRes.data);
+          setCurrentRideId(currentRideOffer.id);
           setCurrentRideOffer(null);
           setShowPickupModal(true);
+          sliderPositionRef.current = sliderWidth * 0.05;
+          setSliderPosition(sliderWidth * 0.05); // Reset slider
           await stopRideSound();
         } else {
-          alert('Failed to fetch ride details');
+          setCurrentRideId(currentRideOffer.id);
+          setCurrentRideOffer(null);
+          setShowPickupModal(true);
+          sliderPositionRef.current = sliderWidth * 0.05;
+          setSliderPosition(sliderWidth * 0.05); // Reset slider
+          await stopRideSound();
         }
       } else {
         alert('Failed to accept ride');
@@ -570,6 +672,27 @@ export default function DashboardScreen() {
     } catch (e) {
       console.error('Error accepting ride:', e);
       alert('Error accepting ride');
+    } finally {
+      setIsAcceptingRide(false);
+    }
+  };
+
+  const handleRejectRide = async () => {
+    if (!authState.token || !authState.user || !currentRideOffer) return;
+
+    await stopRideSound();
+
+    try {
+      // Clear the ride offer from driver status
+      await api.post(`/api/drivers/${authState.user.id}/reject-ride`, {
+        rideId: currentRideOffer.id
+      }, authState.token);
+
+      setCurrentRideOffer(null);
+    } catch (e) {
+      console.error('Error rejecting ride:', e);
+      // Still clear the offer locally
+      setCurrentRideOffer(null);
     }
   };
 
@@ -763,12 +886,20 @@ export default function DashboardScreen() {
       {currentRideOffer && (
         <View style={styles.rideOfferContainer}>
           <View style={styles.rideOfferCard}>
+            <Text style={styles.rideOfferId}>#{currentRideOffer.id}</Text>
             <Text style={styles.rideOfferPrice}>{currentRideOffer.price} DKK</Text>
             <Text style={styles.rideOfferDistance}>{currentRideOffer.distanceKm} km</Text>
             <Text style={styles.rideOfferRider}>{currentRideOffer.riderName}</Text>
-            <TouchableOpacity style={styles.acceptRideButton} onPress={handleAcceptRide}>
-              <Text style={styles.acceptRideButtonText}>Accept Ride</Text>
-            </TouchableOpacity>
+            <View style={styles.rideOfferButtons}>
+              <TouchableOpacity style={styles.rejectRideButton} onPress={handleRejectRide}>
+                <Text style={styles.rejectRideButtonText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.acceptRideButton} onPress={handleAcceptRide} disabled={isAcceptingRide}>
+                <Text style={styles.acceptRideButtonText}>
+                  {isAcceptingRide ? 'Accepting...' : 'Accept Ride'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -777,6 +908,7 @@ export default function DashboardScreen() {
       {showPickupModal && activeRide && (
         <View style={styles.rideModalContainer}>
           <View style={styles.rideModalCard}>
+            <Text style={styles.rideModalId}>#{activeRide.id}</Text>
             <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
             <Text style={styles.rideModalDistance}>{activeRide.distanceKm} km</Text>
             <Text style={styles.rideModalAddress}>{activeRide.pickupAddress}</Text>
@@ -788,19 +920,15 @@ export default function DashboardScreen() {
               >
                 <Text style={styles.rideNavButtonText}>NAV</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.pickupButton} onPressIn={handlePickupPressIn} onPressOut={handlePickupPressOut} activeOpacity={1}>
-                <Animated.View
-                  style={[
-                    styles.pickupFill,
-                    {
-                      width: pickupProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0%', '100%'],
-                      }),
-                    },
-                  ]}
-                />
-                <Text style={styles.pickupButtonText}>Pick Up</Text>
+              <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={3000} disabled={isPickupLoading}>
+                {isPickupLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>Picking up passenger...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pickupButtonText}>Hold to Pick Up</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -811,6 +939,7 @@ export default function DashboardScreen() {
       {showDropoffModal && activeRide && (
         <View style={styles.rideModalContainer}>
           <View style={styles.rideModalCard}>
+            <Text style={styles.rideModalId}>#{activeRide.id}</Text>
             <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
             <Text style={styles.rideModalDistance}>{activeRide.distanceKm} km</Text>
             <Text style={styles.rideModalAddress}>{activeRide.dropoffAddress}</Text>
@@ -821,8 +950,15 @@ export default function DashboardScreen() {
               >
                 <Text style={styles.rideNavButtonText}>NAV</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dropoffButton}>
-                <Text style={styles.dropoffButtonText}>Drop Off</Text>
+              <TouchableOpacity style={styles.dropoffButton} onLongPress={handleDropoffConfirm} delayLongPress={3000} disabled={isDropoffLoading}>
+                {isDropoffLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>Dropping off...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.dropoffButtonText}>Hold to Drop Off</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1159,6 +1295,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
     alignItems: 'center',
+    position: 'relative',
   },
   rideOfferPrice: {
     fontSize: 24,
@@ -1174,14 +1311,40 @@ const styles = StyleSheet.create({
   rideOfferRider: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  rideOfferId: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    fontSize: 14,
+    color: '#999',
+    fontWeight: 'bold',
+  },
+  rideOfferButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  rejectRideButton: {
+    backgroundColor: '#dc3545',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
+  },
+  rejectRideButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   acceptRideButton: {
     backgroundColor: '#28a745',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    width: '100%',
+    flex: 1,
     alignItems: 'center',
   },
   acceptRideButtonText: {
@@ -1207,6 +1370,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
     alignItems: 'center',
+    position: 'relative',
   },
   rideModalPrice: {
     fontSize: 24,
@@ -1227,20 +1391,27 @@ const styles = StyleSheet.create({
   rideModalType: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  rideModalId: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    fontSize: 14,
+    color: '#999',
+    fontWeight: 'bold',
   },
   rideModalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     width: '100%',
+    gap: 10,
   },
   rideNavButton: {
     backgroundColor: '#007bff',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    flex: 1,
-    marginRight: 10,
+    width: '100%',
     alignItems: 'center',
   },
   rideNavButtonText: {
@@ -1253,18 +1424,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    flex: 1,
-    marginLeft: 10,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  pickupFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   pickupButtonText: {
     color: 'white',
@@ -1276,13 +1438,71 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    flex: 1,
-    marginLeft: 10,
+    width: '100%',
     alignItems: 'center',
   },
   dropoffButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  sliderContainer: {
+    width: '100%',
+    justifyContent: 'center',
+  },
+  sliderTrack: {
+    height: 50,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 25,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  sliderFill: {
+    height: '100%',
+    backgroundColor: '#28a745',
+    borderRadius: 25,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    top: 0,
+    width: 50,
+    height: 50,
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  sliderThumbText: {
+    color: '#28a745',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  sliderText: {
+    textAlign: 'center',
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
+  },
+  sliderSpinner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spinner: {
+    width: 30,
+    height: 30,
+    borderWidth: 3,
+    borderColor: '#28a745',
+    borderTopColor: 'transparent',
+    borderRadius: 15,
   },
 });

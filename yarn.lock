@@ -2793,7 +2793,7 @@ expo-notifications@~0.32.15:
     expo-application "~7.0.8"
     expo-constants "~18.0.12"
 
-expo-router@~6.0.19:
+expo-router@6.0.21:
   version "6.0.21"
   resolved "https://registry.yarnpkg.com/expo-router/-/expo-router-6.0.21.tgz#5920269224c7817f23a55df43ea01d1f7cba9172"
   integrity sha512-wjTUjrnWj6gRYjaYl1kYfcRnNE4ZAQ0kz0+sQf6/mzBd/OU6pnOdD7WrdAW3pTTpm52Q8sMoeX98tNQEddg2uA==
@@ -2834,7 +2834,7 @@ expo-status-bar@~3.0.9:
   dependencies:
     react-native-is-edge-to-edge "^1.2.1"
 
-expo@~54.0.29:
+expo@54.0.30:
   version "54.0.30"
   resolved "https://registry.yarnpkg.com/expo/-/expo-54.0.30.tgz#4e27843b749e6ac5caf02393aae0ef7baddc592e"
   integrity sha512-6q+aFfKL0SpT8prfdpR3V8HcN51ov0mCGuwQTzyuk6eeO9rg7a7LWbgPv9rEVXGZEuyULstL8LGNwHqusand7Q==
