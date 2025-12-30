@@ -278,8 +278,8 @@ export default function DashboardScreen() {
 
   const playRideSound = async () => {
     try {
-      // Prevent multiple sound instances
-      if (rideSound) {
+      // Prevent multiple sound instances or if there's an active ride
+      if (rideSound || activeRide || currentRideId) {
         return;
       }
 

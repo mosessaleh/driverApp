@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
-import { getRide, startRide, endRide, updateDriverLocation } from '../src/services/api';
+import { getRide, startRide, endRide } from '../src/services/api';
 import { Ride } from '../src/types';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { getSocket, onDriverStatusUpdate, offDriverStatusUpdate } from '../src/services/socket';
+import { getSocket, onDriverStatusUpdate, offDriverStatusUpdate, updateLocation } from '../src/services/socket';
 import { watchLocation } from '../src/services/location';
 
 export default function ActiveRideScreen() {
@@ -25,15 +25,14 @@ export default function ActiveRideScreen() {
   }, [authState.token, id]);
 
   useEffect(() => {
-    if (rideStatus === 'IN_PROGRESS' && authState.token) {
+    if (rideStatus === 'IN_PROGRESS' && authState.token && authState.user) {
       const stopWatching = watchLocation(
         async (location) => {
           try {
-            await updateDriverLocation(
-              location.coords.latitude,
-              location.coords.longitude,
-              authState.token!
-            );
+            updateLocation(parseInt(authState.user!.id), {
+              lat: location.coords.latitude,
+              lng: location.coords.longitude
+            });
           } catch (error) {
             console.error('Error updating location:', error);
           }
@@ -44,7 +43,7 @@ export default function ActiveRideScreen() {
       );
       return stopWatching;
     }
-  }, [rideStatus, authState.token]);
+  }, [rideStatus, authState.token, authState.user]);
 
   useEffect(() => {
     const socket = getSocket();
