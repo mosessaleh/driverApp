@@ -28,8 +28,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const user = JSON.parse(userStr);
           // Validate token by checking driver status
           try {
-            await getDriverStatus(token);
-            setAuthState({ user, token, isLoading: false });
+            const status = await getDriverStatus(token);
+            if (status.hasActiveShift) {
+              setAuthState({ user, token, isLoading: false });
+            } else {
+              // No active shift, clear stored data
+              await AsyncStorage.removeItem('token');
+              await AsyncStorage.removeItem('user');
+              setAuthState({ user: null, token: null, isLoading: false });
+            }
           } catch (error) {
             console.error('Token validation failed:', error);
             // Clear invalid stored data
