@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { Audio } from 'expo-av';
 import * as Linking from 'expo-linking';
+import { Audio } from 'expo-av';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, sendRideTimeout, acceptRide, rejectRide } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,18 +28,17 @@ export default function DashboardScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [showEndKMModal, setShowEndKMModal] = useState(false);
   const [endKM, setEndKM] = useState('');
-  const [currentRideOffer, setCurrentRideOffer] = useState<any>(null);
-  const [offerRide, setOfferRide] = useState<any>(null);
-  const [isAcceptingRide, setIsAcceptingRide] = useState(false);
-  const [rideSound, setRideSound] = useState<Audio.Sound | null>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
   const [currentRideId, setCurrentRideId] = useState<number | null>(null);
   const [showPickupModal, setShowPickupModal] = useState(false);
   const [showDropoffModal, setShowDropoffModal] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
-  const [offerRouteCoordinates, setOfferRouteCoordinates] = useState<any[]>([]);
   const [isPickupLoading, setIsPickupLoading] = useState(false);
   const [isDropoffLoading, setIsDropoffLoading] = useState(false);
+  const [rideOffer, setRideOffer] = useState<any>(null);
+  const [offerCountdown, setOfferCountdown] = useState(0);
+  const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [rideOfferSound, setRideOfferSound] = useState<any>(null);
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -75,6 +74,16 @@ export default function DashboardScreen() {
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
+    // Set audio mode for notifications
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+  }, []);
+
+  useEffect(() => {
     if (!driverOnline) {
       // Text opacity animation
       const textFade = Animated.loop(
@@ -100,20 +109,13 @@ export default function DashboardScreen() {
     if (authState.token) {
       getCurrentLocation();
 
-      // Load driver status immediately on mount
+      // Load driver status after a short delay to ensure socket connection
       const loadInitialStatus = async () => {
+        // Wait for socket connection
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await loadDriverStatus();
       };
       loadInitialStatus();
-
-      let pollingInterval: NodeJS.Timeout | null = null;
-
-      // Polling every 15 seconds only if no active ride
-      if (!activeRide) {
-        pollingInterval = setInterval(() => {
-          loadDriverStatus();
-        }, 15000);
-      }
 
       // Listen for real-time driver status updates
       const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean }) => {
@@ -124,82 +126,126 @@ export default function DashboardScreen() {
         if (data.isBusy !== driverBusy) {
           setDriverBusy(data.isBusy);
         }
-        // Check for ride offers immediately with the status data only if no active ride
-        if (!activeRide) {
-          checkForRideOffers(data);
-        }
       };
+
+      // Add listeners
+      onDriverStatusUpdate(handleDriverStatusUpdate);
 
       // Listen for ride offers
-      const handleRideOffer = async (data: { rideId: number; timestamp: number }) => {
-        if (!authState.token) return;
-        // Fetch ride details to show offer
-        const rideRes = await getRide(data.rideId.toString(), authState.token);
-        if (rideRes.ok && rideRes.data) {
-          const ride = rideRes.data;
-          // Check if ride is still available
-          if (ride.driverId || ride.status !== 'CONFIRMED') {
-            // Ride not available, ignore
-            return;
-          }
-          // Show ride offer
-          setCurrentRideOffer({
-            id: ride.id,
-            price: ride.price,
-            distanceKm: ride.distanceKm,
-            riderName: ride.riderName,
+      const handleRideOffer = (data: any) => {
+        console.log('=== RECEIVED RIDE OFFER ===');
+        console.log('Ride offer data:', data);
+        console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
+        console.log('Current ride offer in state:', rideOffer);
+
+        // Stop any existing sound first
+        stopRideOfferSound();
+
+        // Play ride offer sound
+        playRideOfferSound();
+
+        setRideOffer(data);
+        setOfferCountdown(30); // 30 seconds countdown
+
+        // Start countdown
+        const timeout = setInterval(() => {
+          setOfferCountdown(prev => {
+            if (prev <= 1) {
+              // Timeout - reject the ride
+              console.log('Ride offer timed out, stopping sound and clearing offer');
+              clearInterval(timeout);
+              setRideOffer(null);
+              setOfferCountdown(0);
+              // Stop sound immediately and also send timeout to server
+              stopRideOfferSound().then(() => {
+                console.log('Sound stopped after timeout');
+              });
+              if (authState.token) {
+                // Send timeout notification to server
+                sendRideTimeout(data.rideId, parseInt(authState.user?.id || '0'));
+              }
+              return 0;
+            }
+            return prev - 1;
           });
-          setOfferRide(ride);
-          // Fetch directions from driver to pickup point
-          if (currentLocation) {
-            fetchOfferDirections(
-              { lat: currentLocation.latitude, lng: currentLocation.longitude },
-              { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
-            );
+        }, 1000);
+
+        setOfferTimeout(timeout);
+      };
+
+      onRideOffer(handleRideOffer);
+
+      // Listen for ride offer timeout
+      const handleRideOfferTimeout = async (data: { rideId: number }) => {
+        console.log('=== RECEIVED RIDE OFFER TIMEOUT ===');
+        console.log('Timeout data:', data);
+        console.log('Current ride offer:', rideOffer);
+        // Only clear if this timeout matches the current offer
+        if (rideOffer && rideOffer.rideId === data.rideId) {
+          console.log('Clearing offer due to timeout for matching rideId');
+          await stopRideOfferSound();
+          setRideOffer(null);
+          setOfferCountdown(0);
+          if (offerTimeout) {
+            clearInterval(offerTimeout);
+            setOfferTimeout(null);
           }
-          // Play sound when ride offer is received
-          await playRideSound();
+        } else {
+          console.log('Ignoring timeout for non-matching rideId');
         }
       };
 
-      // Add listeners only if no active ride
-      if (!activeRide) {
-        onRideOffer(handleRideOffer);
-        onDriverStatusUpdate(handleDriverStatusUpdate);
-      }
+      onRideOfferTimeout(handleRideOfferTimeout);
 
-      // Listen for socket connect to check for existing rides
-      const handleSocketConnect = () => {
-        loadDriverStatus();
+      // Listen for ride offer rejection
+      const handleRideOfferRejected = async (data: { rideId: number }) => {
+        console.log('=== RECEIVED RIDE OFFER REJECTED ===');
+        console.log('Rejection data:', data);
+        console.log('Current ride offer:', rideOffer);
+        // Only clear if this rejection matches the current offer
+        if (rideOffer && rideOffer.rideId === data.rideId) {
+          console.log('Clearing offer due to rejection for matching rideId');
+          await stopRideOfferSound();
+          setRideOffer(null);
+          setOfferCountdown(0);
+          if (offerTimeout) {
+            clearInterval(offerTimeout);
+            setOfferTimeout(null);
+          }
+        } else {
+          console.log('Ignoring rejection for non-matching rideId');
+        }
       };
-      // Assuming socket has connect event, but since it's not exposed, we can call loadDriverStatus on mount
-      // For now, call it once on mount if no active ride
-      if (!activeRide) {
-        loadDriverStatus();
-      }
+
+      onRideOfferRejected(handleRideOfferRejected);
+
+      // Periodic status check to ensure driver stays connected
+      const statusCheckInterval = setInterval(() => {
+        if (authState.token && driverOnline) {
+          loadDriverStatus();
+        }
+      }, 30000); // Check every 30 seconds
 
       return () => {
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-        }
         stopLocationTracking();
         offDriverStatusUpdate();
         offRideOffer();
-        // Cleanup sound
-        if (rideSound) {
-          try {
-            rideSound.unloadAsync();
-          } catch (error) {
-            console.error('Error unloading sound on cleanup:', error);
-          }
+        offRideOfferTimeout();
+        offRideOfferRejected();
+        if (offerTimeout) {
+          clearInterval(offerTimeout);
         }
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+        }
+        // Stop any playing sound when component unmounts
+        stopRideOfferSound();
       };
     }
     return () => {
       stopLocationTracking();
     };
-  }, [authState.token, activeRide]);
-
+  }, [authState.token]);
 
   // Animate map to current location when it changes
   useEffect(() => {
@@ -212,20 +258,6 @@ export default function DashboardScreen() {
       }, 1000);
     }
   }, [currentLocation]);
-
-  // Fit map to show both driver location and pickup point when ride offer is shown
-  useEffect(() => {
-    if (offerRide && currentLocation && mapRef.current) {
-      const coordinates = [
-        { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-        { latitude: offerRide.startLatLon.lat, longitude: offerRide.startLatLon.lon }
-      ];
-      mapRef.current.fitToCoordinates(coordinates, {
-        edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
-        animated: true,
-      });
-    }
-  }, [offerRide, currentLocation]);
 
   // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
   useEffect(() => {
@@ -244,14 +276,25 @@ export default function DashboardScreen() {
     }
   }, [showPickupModal, showDropoffModal, activeRide, currentLocation]);
 
-  const loadDriverStatus = async () => {
+  const loadDriverStatus = async (retryCount = 0) => {
     if (!authState.token) {
       return;
     }
     try {
       const res = await getDriverStatus(authState.token);
+      console.log('Loaded driver status:', res);
+      console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
+
+      // Ensure driver is marked as online if they have an active shift
+      if (res.hasActiveShift && !res.isOnline) {
+        console.log('Driver has active shift but not online, setting online');
+        await toggleDriverOnline(true, authState.token);
+        res.isOnline = true;
+      }
+
       if (res.isOnline !== undefined && res.isOnline !== driverOnline) {
         const wasOnline = driverOnline;
+        console.log(`Updating driver online status: ${wasOnline} -> ${res.isOnline}`);
         setDriverOnline(res.isOnline);
         // Auto start tracking if became online
         if (res.isOnline && !wasOnline) {
@@ -259,33 +302,17 @@ export default function DashboardScreen() {
         }
       }
       if (res.isBusy !== undefined && res.isBusy !== driverBusy) {
+        console.log(`Updating driver busy status: ${driverBusy} -> ${res.isBusy}`);
         setDriverBusy(res.isBusy);
       }
 
-      // Check for current active ride - re-enabled for initial detection
+      // Check for current active ride
       if (res.currentRideId && !activeRide) {
         const rideRes = await getRide(res.currentRideId.toString(), authState.token);
         if (rideRes.ok && rideRes.data) {
           const ride = rideRes.data;
 
-          if (ride.status === 'CONFIRMED') {
-            // Assigned but not accepted, show offer
-            setCurrentRideOffer({
-              id: ride.id,
-              price: ride.price,
-              distanceKm: ride.distanceKm,
-              riderName: ride.riderName,
-            });
-            setOfferRide(ride);
-            // Fetch directions from driver to pickup point
-            if (currentLocation) {
-              fetchOfferDirections(
-                { lat: currentLocation.latitude, lng: currentLocation.longitude },
-                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
-              );
-            }
-            await playRideSound();
-          } else if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
+          if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
             // Accepted, show pickup modal
             setActiveRide(ride);
             setShowPickupModal(true);
@@ -315,135 +342,20 @@ export default function DashboardScreen() {
         }
       } else if (!res.currentRideId) {
         // Clear any existing ride displays
-        setCurrentRideOffer(null);
-        setOfferRide(null);
-        setOfferRouteCoordinates([]);
         setActiveRide(null);
         setShowPickupModal(false);
         setShowDropoffModal(false);
       }
-
-      // Check for ride offers
-      checkForRideOffers(res);
     } catch (e) {
       console.error('Error loading driver status:', e);
-    }
-  };
-
-  const playRideSound = async () => {
-    try {
-      // Prevent multiple sound instances or if there's an active ride
-      if (rideSound || activeRide || currentRideId) {
-        return;
-      }
-
-      // Set audio mode to play at maximum volume
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: false,
-        playThroughEarpieceAndroid: false,
-      });
-
-      const { sound } = await Audio.Sound.createAsync(
-        require('../assets/music/rideGetting.mp3'),
-        { shouldPlay: true, isLooping: true, volume: 0.8 } // Loop until accepted or rejected
-      );
-      setRideSound(sound);
-
-      // Listen for sound finish to clean up
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          stopRideSound();
-        }
-      });
-    } catch (error) {
-      console.error('Error playing ride sound:', error);
-    }
-  };
-
-  const stopRideSound = async () => {
-    if (rideSound) {
-      try {
-        const status = await rideSound.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
-          await rideSound.stopAsync();
-        }
-        await rideSound.unloadAsync();
-        setRideSound(null);
-      } catch (error) {
-        console.error('Error stopping sound:', error);
-        // Force unload even if error
-        try {
-          await rideSound.unloadAsync();
-        } catch (unloadError) {
-          console.error('Error unloading sound:', unloadError);
-        }
-        setRideSound(null);
+      // Retry up to 3 times with exponential backoff
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
+        setTimeout(() => loadDriverStatus(retryCount + 1), delay);
       }
     }
   };
-
-  const playBeepSound = async (soundFile: any) => {
-    try {
-      const { sound } = await Audio.Sound.createAsync(soundFile, { shouldPlay: true });
-      // No need to set state since it's a short beep
-    } catch (error) {
-      console.error('Error playing beep sound:', error);
-    }
-  };
-
-  const playAcceptBeep = () => playBeepSound(require('../assets/music/AcceptRide.mp3'));
-  const playPickupBeep = () => playBeepSound(require('../assets/music/PickUp.mp3'));
-  const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
-
-  const checkForRideOffers = async (status?: any) => {
-    if (isAcceptingRide || activeRide) return;
-    if (!authState.token || !driverOnline || driverBusy) return;
-
-    // Since we rely on WebSocket for real-time updates, we don't need polling
-    // This function is now mainly called when WebSocket events trigger it
-    // For ride offers, they come via 'rideOffer' event, not through status polling
-
-    // If status is provided (from WebSocket or initial load), use it
-    if (status && status.currentRideId && status.rideAccepted === 0 && !activeRide) {
-      // Fetch ride details to check availability
-      const rideRes = await getRide(status.currentRideId.toString(), authState.token);
-      if (rideRes.ok && rideRes.data) {
-        const ride = rideRes.data;
-        // Check if ride is still available
-        if (ride.driverId || ride.status !== 'CONFIRMED') {
-          // Clear the offer if not available
-          if (currentRideOffer) {
-            setCurrentRideOffer(null);
-            await stopRideSound();
-          }
-        } else if (!currentRideOffer) {
-          setCurrentRideOffer({
-            id: ride.id,
-            price: ride.price,
-            distanceKm: ride.distanceKm,
-            riderName: ride.riderName,
-          });
-          // Play sound when ride offer is received (only once)
-          await playRideSound();
-        }
-      } else {
-        // If fetch fails, clear offer to be safe
-        if (currentRideOffer) {
-          setCurrentRideOffer(null);
-          await stopRideSound();
-        }
-      }
-    } else if ((!status?.currentRideId || status?.rideAccepted !== 0) && currentRideOffer) {
-      setCurrentRideOffer(null);
-      setOfferRide(null);
-      setOfferRouteCoordinates([]);
-      // Stop sound when ride offer is cleared
-      await stopRideSound();
-    }
-  };
-
 
   const getCurrentLocation = async () => {
     try {
@@ -642,8 +554,6 @@ export default function DashboardScreen() {
         setActiveRide(null);
         setCurrentRideId(null);
         setRouteCoordinates([]);
-        setOfferRouteCoordinates([]);
-        setOfferRide(null);
         if (res.paymentResult && !res.paymentResult.success) {
           alert(`Ride completed but payment failed: ${res.paymentResult.error}`);
         } else {
@@ -676,28 +586,6 @@ export default function DashboardScreen() {
       console.error('Error fetching directions:', error);
       // Fallback to straight line
       setRouteCoordinates([
-        { latitude: origin.lat, longitude: origin.lng },
-        { latitude: destination.lat, longitude: destination.lng },
-      ]);
-    }
-  };
-
-  const fetchOfferDirections = async (origin: { lat: number; lng: number }, destination: { lat: number; lng: number }) => {
-    try {
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.routes && data.routes.length > 0) {
-        const points = data.routes[0].overview_polyline.points;
-        // Decode polyline
-        const coordinates = decodePolyline(points);
-        setOfferRouteCoordinates(coordinates);
-      }
-    } catch (error) {
-      console.error('Error fetching offer directions:', error);
-      // Fallback to straight line
-      setOfferRouteCoordinates([
         { latitude: origin.lat, longitude: origin.lng },
         { latitude: destination.lat, longitude: destination.lng },
       ]);
@@ -737,85 +625,52 @@ export default function DashboardScreen() {
     return poly;
   };
 
-  const handleAcceptRide = async () => {
-    if (!authState.token || !authState.user || !currentRideOffer) return;
-
-    setIsAcceptingRide(true);
-
-    await stopRideSound();
-
-    // Play accept beep sound
-    playAcceptBeep();
-
-    // Double-check ride availability before accepting
-    const rideRes = await getRide(currentRideOffer.id, authState.token);
-    if (!rideRes.ok || !rideRes.data || rideRes.data.driverId || rideRes.data.status !== 'CONFIRMED') {
-      setCurrentRideOffer(null);
-      await stopRideSound();
-      alert('Ride is no longer available');
-      return;
-    }
-
+  const playBeepSound = async (soundFile: any, loop: boolean = false) => {
     try {
-      const res = await api.post(`/api/drivers/${authState.user.id}/accept-ride`, {
-        rideId: currentRideOffer.id
-      }, authState.token);
+      const { sound } = await Audio.Sound.createAsync(soundFile, { isLooping: loop });
+      await sound.playAsync();
 
-      if (res.ok) {
-        // Fetch full ride details
-        const rideRes = await getRide(currentRideOffer.id, authState.token);
-        if (rideRes.ok && rideRes.data) {
-          setActiveRide(rideRes.data);
-          setCurrentRideId(currentRideOffer.id);
-          setCurrentRideOffer(null);
-          setOfferRide(null);
-          setOfferRouteCoordinates([]);
-          setShowPickupModal(true);
-          sliderPositionRef.current = sliderWidth * 0.05;
-          setSliderPosition(sliderWidth * 0.05); // Reset slider
-          await stopRideSound();
-        } else {
-          setCurrentRideId(currentRideOffer.id);
-          setCurrentRideOffer(null);
-          setShowPickupModal(true);
-          sliderPositionRef.current = sliderWidth * 0.05;
-          setSliderPosition(sliderWidth * 0.05); // Reset slider
-          await stopRideSound();
-        }
-      } else {
-        alert('Failed to accept ride');
+      if (!loop) {
+        // Unload the sound after playback to free resources
+        sound.setOnPlaybackStatusUpdate((status: any) => {
+          if (status.didJustFinish) {
+            sound.unloadAsync();
+          }
+        });
       }
-    } catch (e) {
-      console.error('Error accepting ride:', e);
-      alert('Error accepting ride');
-    } finally {
-      setIsAcceptingRide(false);
+
+      return sound; // Return sound object for looping sounds
+    } catch (error) {
+      console.error('Error playing beep sound:', error);
+      return null;
     }
   };
 
-  const handleRejectRide = async () => {
-    if (!authState.token || !authState.user || !currentRideOffer) return;
+  const playPickupBeep = () => playBeepSound(require('../assets/music/PickUp.mp3'));
+  const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
 
-    await stopRideSound();
-
-    try {
-      // Clear the ride offer from driver status
-      await api.post(`/api/drivers/${authState.user.id}/reject-ride`, {
-        rideId: currentRideOffer.id
-      }, authState.token);
-
-      setCurrentRideOffer(null);
-      setOfferRide(null);
-      setOfferRouteCoordinates([]);
-    } catch (e) {
-      console.error('Error rejecting ride:', e);
-      // Still clear the offer locally
-      setCurrentRideOffer(null);
-      setOfferRide(null);
-      setOfferRouteCoordinates([]);
-    }
+  const playRideOfferSound = async () => {
+    const sound = await playBeepSound(require('../assets/music/rideGetting.mp3'), true);
+    setRideOfferSound(sound);
   };
 
+  const stopRideOfferSound = async () => {
+    console.log('Stopping ride offer sound, current sound object:', rideOfferSound);
+    if (rideOfferSound) {
+      try {
+        // For looped sounds, the most reliable way is to unload immediately
+        await rideOfferSound.unloadAsync();
+        console.log('Sound unloaded successfully');
+        setRideOfferSound(null);
+      } catch (error: any) {
+        console.error('Error unloading sound:', error);
+        // Force set to null even if unload failed
+        setRideOfferSound(null);
+      }
+    } else {
+      console.log('No sound object to stop');
+    }
+  };
 
   const goToSettings = () => {
     router.push('/settings');
@@ -927,25 +782,6 @@ export default function DashboardScreen() {
             showsUserLocation={true}
             followsUserLocation={isTracking}
           >
-            {offerRide && (
-              <>
-                <Marker
-                  coordinate={{
-                    latitude: offerRide.startLatLon.lat,
-                    longitude: offerRide.startLatLon.lon,
-                  }}
-                  title="Pickup"
-                  pinColor="green"
-                />
-                {offerRouteCoordinates.length > 0 && (
-                  <Polyline
-                    coordinates={offerRouteCoordinates}
-                    strokeColor="#007bff"
-                    strokeWidth={3}
-                  />
-                )}
-              </>
-            )}
             {activeRide && showPickupModal && (
               <>
                 <Marker
@@ -1046,28 +882,6 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Ride Offer Modal */}
-      {currentRideOffer && (
-        <View style={styles.rideOfferContainer}>
-          <View style={styles.rideOfferCard}>
-            <Text style={styles.rideOfferId}>#{currentRideOffer.id}</Text>
-            <Text style={styles.rideOfferPrice}>{currentRideOffer.price} DKK</Text>
-            <Text style={styles.rideOfferDistance}>{currentRideOffer.distanceKm} km</Text>
-            <Text style={styles.rideOfferRider}>{currentRideOffer.riderName}</Text>
-            <View style={styles.rideOfferButtons}>
-              <TouchableOpacity style={styles.rejectRideButton} onPress={handleRejectRide}>
-                <Text style={styles.rejectRideButtonText}>Reject</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.acceptRideButton} onPress={handleAcceptRide} disabled={isAcceptingRide}>
-                <Text style={styles.acceptRideButtonText}>
-                  {isAcceptingRide ? 'Accepting...' : 'Accept Ride'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
       {/* Pickup Modal */}
       {showPickupModal && activeRide && (
         <View style={styles.rideModalContainer}>
@@ -1123,6 +937,55 @@ export default function DashboardScreen() {
                 ) : (
                   <Text style={styles.dropoffButtonText}>Hold to Drop Off</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Ride Offer Modal */}
+      {rideOffer && (
+        <View style={styles.rideOfferModal}>
+          <View style={styles.rideOfferCard}>
+            <Text style={styles.rideOfferTitle}>New Ride Available!</Text>
+            <Text style={styles.rideOfferId}>#{rideOffer.rideId}</Text>
+            <Text style={styles.rideOfferPrice}>{rideOffer.rideData.price} DKK</Text>
+            <Text style={styles.rideOfferDistance}>{rideOffer.rideData.distanceKm} km</Text>
+            <Text style={styles.rideOfferAddress}>From: {rideOffer.rideData.pickupAddress}</Text>
+            <Text style={styles.rideOfferAddress}>To: {rideOffer.rideData.dropoffAddress}</Text>
+            <Text style={styles.rideOfferCountdown}>{offerCountdown}s</Text>
+            <View style={styles.rideOfferButtons}>
+              <TouchableOpacity
+                style={[styles.rideOfferButton, styles.acceptButton]}
+                onPress={async () => {
+                  // Accept the ride
+                  acceptRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
+                  setRideOffer(null);
+                  setOfferCountdown(0);
+                  await stopRideOfferSound(); // Stop the sound
+                  if (offerTimeout) {
+                    clearInterval(offerTimeout);
+                    setOfferTimeout(null);
+                  }
+                }}
+              >
+                <Text style={styles.acceptButtonText}>Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.rideOfferButton, styles.rejectButton]}
+                onPress={async () => {
+                  // Reject the ride
+                  rejectRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
+                  setRideOffer(null);
+                  setOfferCountdown(0);
+                  await stopRideOfferSound(); // Stop the sound
+                  if (offerTimeout) {
+                    clearInterval(offerTimeout);
+                    setOfferTimeout(null);
+                  }
+                }}
+              >
+                <Text style={styles.rejectButtonText}>Reject</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1225,176 +1088,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  mapPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-  },
   mapPlaceholderText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-  },
-  locationInfo: {
-    backgroundColor: '#f8f9fa',
-    padding: 20,
-    borderRadius: 10,
-    margin: 10,
-    alignItems: 'center',
-  },
-  locationTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  locationCoords: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  mapAttribution: {
-    alignItems: 'center',
-    padding: 10,
-  },
-  attributionText: {
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'center',
-  },
-  trackingButton: {
-    backgroundColor: '#007bff',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  trackingButtonActive: {
-    backgroundColor: '#dc3545',
-  },
-  trackingButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  trackingStatus: {
-    fontSize: 12,
-    color: '#dc3545',
-    marginTop: 5,
-    textAlign: 'center',
-  },
-  navbar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    paddingBottom: 30, // Extra padding for safe area
-  },
-  navButton: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  navText: {
-    fontSize: 16,
-    color: '#007bff',
-  },
-  goButton: {
-    backgroundColor: '#28a745',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-    marginHorizontal: 10,
-  },
-  goButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  endShiftMenu: {
-    backgroundColor: '#fff',
-    margin: 20,
-    borderRadius: 10,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  endShiftTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  endShiftMessage: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  endShiftButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  endShiftButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#6c757d',
-  },
-  confirmButton: {
-    backgroundColor: '#dc3545',
-  },
-  cancelButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  confirmButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  floatingGoButton: {
-    position: 'absolute',
-    bottom: 30,
-    left: '50%',
-    marginLeft: -40, // Half of width to center
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#28a745',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 15,
-    // Add gradient-like effect with border
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  floatingGoButtonText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
   },
   modalOverlay: {
     position: 'absolute',
@@ -1440,81 +1137,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     position: 'absolute',
     bottom: 4,
-  },
-  rideOfferContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  },
-  rideOfferCard: {
-    backgroundColor: 'white',
-    margin: 20,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  rideOfferPrice: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  rideOfferDistance: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 4,
-  },
-  rideOfferRider: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 8,
-  },
-  rideOfferId: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    fontSize: 14,
-    color: '#999',
-    fontWeight: 'bold',
-  },
-  rideOfferButtons: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 10,
-  },
-  rejectRideButton: {
-    backgroundColor: '#dc3545',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: 'center',
-  },
-  rejectRideButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  acceptRideButton: {
-    backgroundColor: '#28a745',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: 'center',
-  },
-  acceptRideButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   rideModalContainer: {
     position: 'absolute',
@@ -1668,5 +1290,171 @@ const styles = StyleSheet.create({
     borderColor: '#28a745',
     borderTopColor: 'transparent',
     borderRadius: 15,
+  },
+  endShiftMenu: {
+    backgroundColor: '#fff',
+    margin: 20,
+    borderRadius: 10,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  endShiftTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  endShiftMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  endShiftButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  endShiftButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#6c757d',
+  },
+  confirmButton: {
+    backgroundColor: '#dc3545',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  floatingGoButton: {
+    position: 'absolute',
+    bottom: 30,
+    left: '50%',
+    marginLeft: -40, // Half of width to center
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#28a745',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 15,
+    // Add gradient-like effect with border
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  floatingGoButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  rideOfferModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3000,
+  },
+  rideOfferCard: {
+    backgroundColor: 'white',
+    margin: 20,
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    alignItems: 'center',
+    minWidth: 300,
+  },
+  rideOfferTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  rideOfferId: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  rideOfferPrice: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#28a745',
+    marginBottom: 8,
+  },
+  rideOfferDistance: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 4,
+  },
+  rideOfferAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  rideOfferCountdown: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#dc3545',
+    marginBottom: 15,
+  },
+  rideOfferButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+  },
+  rideOfferButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  acceptButton: {
+    backgroundColor: '#28a745',
+  },
+  rejectButton: {
+    backgroundColor: '#dc3545',
+  },
+  acceptButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  rejectButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

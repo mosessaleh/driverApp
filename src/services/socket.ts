@@ -7,6 +7,9 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 let socket: Socket | null = null;
 
 let locationInterval: NodeJS.Timeout | null = null;
+let heartbeatInterval: NodeJS.Timeout | null = null;
+let reconnectTimeout: NodeJS.Timeout | null = null;
+let isReconnecting = false;
 
 export const connectSocket = (token: string, vehicleTypeId: number = 1, location?: { lat: number; lng: number }): Socket => {
   if (socket) {
@@ -67,7 +70,7 @@ const stopLocationUpdates = () => {
   }
 };
 
-export const onDriverStatusUpdate = (callback: (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void) => {
+export const onDriverStatusUpdate = (callback: (data: { isOnline?: boolean; currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void) => {
   if (socket) {
     socket.on('driverStatusUpdate', callback);
   }
@@ -129,7 +132,19 @@ export const onRideAcceptFailed = (callback: (data: { rideId: number; reason: st
   }
 };
 
-export const onRideOffer = (callback: (data: { action: string; rideId: number; timestamp: number }) => void) => {
+export const onRideAssigned = (callback: (data: { rideId: number; rideData: any; timestamp: number }) => void) => {
+  if (socket) {
+    socket.on('rideAssigned', callback);
+  }
+};
+
+export const offRideAssigned = () => {
+  if (socket) {
+    socket.off('rideAssigned');
+  }
+};
+
+export const onRideOffer = (callback: (data: { type: string; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void) => {
   if (socket) {
     socket.on('rideOffer', callback);
   }
@@ -140,5 +155,36 @@ export const offRideOffer = () => {
     socket.off('rideOffer');
   }
 };
+
+export const onRideOfferTimeout = (callback: (data: { rideId: number }) => void) => {
+  if (socket) {
+    socket.on('rideOfferTimeout', callback);
+  }
+};
+
+export const offRideOfferTimeout = () => {
+  if (socket) {
+    socket.off('rideOfferTimeout');
+  }
+};
+
+export const onRideOfferRejected = (callback: (data: { rideId: number }) => void) => {
+  if (socket) {
+    socket.on('rideOfferRejected', callback);
+  }
+};
+
+export const offRideOfferRejected = () => {
+  if (socket) {
+    socket.off('rideOfferRejected');
+  }
+};
+
+export const sendRideTimeout = (rideId: number, driverId: number) => {
+  if (socket) {
+    socket.emit('rideTimeout', { rideId, driverId });
+  }
+};
+
 
 export const getSocket = (): Socket | null => socket;
