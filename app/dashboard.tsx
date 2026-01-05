@@ -151,19 +151,22 @@ export default function DashboardScreen() {
         const timeout = setInterval(() => {
           setOfferCountdown(prev => {
             if (prev <= 1) {
-              // Timeout - reject the ride
-              console.log('Ride offer timed out, stopping sound and clearing offer');
-              clearInterval(timeout);
+              // Timeout - automatically reject the ride like clicking reject button
+              console.log('Ride offer timed out, automatically rejecting ride');
+              if (authState.token) {
+                // Automatically reject the ride
+                rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
+              }
               setRideOffer(null);
               setOfferCountdown(0);
-              // Stop sound immediately and also send timeout to server
               stopRideOfferSound().then(() => {
                 console.log('Sound stopped after timeout');
               });
-              if (authState.token) {
-                // Send timeout notification to server
-                sendRideTimeout(data.rideId, parseInt(authState.user?.id || '0'));
+              if (offerTimeout) {
+                clearInterval(offerTimeout);
+                setOfferTimeout(null);
               }
+              clearInterval(timeout);
               return 0;
             }
             return prev - 1;
@@ -650,8 +653,24 @@ export default function DashboardScreen() {
   const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
 
   const playRideOfferSound = async () => {
-    const sound = await playBeepSound(require('../assets/music/rideGetting.mp3'), true);
-    setRideOfferSound(sound);
+    let loopCount = 0;
+    const playNext = async () => {
+      if (loopCount >= 12) return;
+      const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'));
+      setRideOfferSound(sound);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          loopCount++;
+          sound.unloadAsync();
+          setRideOfferSound(null);
+          if (loopCount < 12) {
+            playNext();
+          }
+        }
+      });
+      await sound.playAsync();
+    };
+    playNext();
   };
 
   const stopRideOfferSound = async () => {
@@ -962,7 +981,9 @@ export default function DashboardScreen() {
                   acceptRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
                   setRideOffer(null);
                   setOfferCountdown(0);
-                  await stopRideOfferSound(); // Stop the sound
+                  stopRideOfferSound().then(() => {
+                    console.log('Sound stopped after timeout');
+                  });
                   if (offerTimeout) {
                     clearInterval(offerTimeout);
                     setOfferTimeout(null);
