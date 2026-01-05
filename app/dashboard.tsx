@@ -17,6 +17,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [driverOnline, setDriverOnline] = useState(false);
   const [driverBusy, setDriverBusy] = useState(false);
+  const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
+  const [banCountdown, setBanCountdown] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState(false);
   const [locationSubscription, setLocationSubscription] = useState<any>(null);
@@ -118,13 +120,22 @@ export default function DashboardScreen() {
       loadInitialStatus();
 
       // Listen for real-time driver status updates
-      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean }) => {
+      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean; bannedUntil?: string }) => {
         // Update driver status based on WebSocket data
         if (data.isOnline !== undefined && data.isOnline !== driverOnline) {
           setDriverOnline(data.isOnline);
         }
         if (data.isBusy !== driverBusy) {
           setDriverBusy(data.isBusy);
+        }
+        if (data.bannedUntil) {
+          const bannedDate = new Date(data.bannedUntil);
+          setBannedUntil(bannedDate);
+          const remaining = Math.max(0, Math.ceil((bannedDate.getTime() - Date.now()) / 1000));
+          setBanCountdown(remaining);
+        } else if (data.bannedUntil === null) {
+          setBannedUntil(null);
+          setBanCountdown(0);
         }
       };
 
@@ -262,6 +273,21 @@ export default function DashboardScreen() {
     }
   }, [currentLocation]);
 
+  // Countdown for ban
+  useEffect(() => {
+    if (bannedUntil) {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((bannedUntil.getTime() - Date.now()) / 1000));
+        setBanCountdown(remaining);
+        if (remaining <= 0) {
+          setBannedUntil(null);
+          setBanCountdown(0);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [bannedUntil]);
+
   // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
   useEffect(() => {
     if ((showPickupModal || showDropoffModal) && activeRide && mapRef.current) {
@@ -307,6 +333,16 @@ export default function DashboardScreen() {
       if (res.isBusy !== undefined && res.isBusy !== driverBusy) {
         console.log(`Updating driver busy status: ${driverBusy} -> ${res.isBusy}`);
         setDriverBusy(res.isBusy);
+      }
+
+      if (res.bannedUntil) {
+        const bannedDate = new Date(res.bannedUntil);
+        setBannedUntil(bannedDate);
+        const remaining = Math.max(0, Math.ceil((bannedDate.getTime() - Date.now()) / 1000));
+        setBanCountdown(remaining);
+      } else {
+        setBannedUntil(null);
+        setBanCountdown(0);
       }
 
       // Check for current active ride
@@ -700,12 +736,14 @@ export default function DashboardScreen() {
   };
 
   const getStatusText = () => {
+    if (bannedUntil && banCountdown > 0) return `Banned - ${banCountdown}s`;
     if (!driverOnline) return 'Offline';
     if (driverBusy) return 'Online - Busy';
     return 'Online - Available';
   };
 
   const getStatusColor = () => {
+    if (bannedUntil && banCountdown > 0) return '#dc3545'; // red
     if (!driverOnline) return '#dc3545'; // red
     if (driverBusy) return '#ffc107'; // yellow
     return '#28a745'; // green
@@ -751,7 +789,7 @@ export default function DashboardScreen() {
            >
              <Text style={styles.menuItemText}>Settings</Text>
            </TouchableOpacity>
-           {!driverBusy && driverOnline && (
+           {!driverBusy && driverOnline && !bannedUntil && (
              <TouchableOpacity
                style={styles.menuItem}
                onPress={() => {
@@ -762,7 +800,7 @@ export default function DashboardScreen() {
                <Text style={styles.menuItemText}>Pause</Text>
              </TouchableOpacity>
            )}
-           {driverBusy && driverOnline && (
+           {driverBusy && driverOnline && !bannedUntil && (
              <TouchableOpacity
                style={styles.menuItem}
                onPress={() => {

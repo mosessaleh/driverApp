@@ -107,7 +107,7 @@ export const toggleDriverOnline = async (online: boolean, token: string) => {
 };
 
 export const toggleDriverBusy = async (busy: boolean, token: string) => {
-  return api.post('/api/driver/status', { busy }, token);
+  return api.post('/api/driver/status', { busy, busyMode: busy ? 'manual' : null }, token);
 };
 
 export const getDriverStatus = async (token: string) => {
