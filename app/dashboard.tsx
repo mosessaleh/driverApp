@@ -19,6 +19,8 @@ export default function DashboardScreen() {
   const [driverBusy, setDriverBusy] = useState(false);
   const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
   const [banCountdown, setBanCountdown] = useState(0);
+  const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
+  const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState(false);
   const [locationSubscription, setLocationSubscription] = useState<any>(null);
@@ -110,6 +112,11 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (authState.token) {
       getCurrentLocation();
+
+      // Set shift start time from user data if available
+      if (authState.user?.shiftStartTime) {
+        setShiftStartTime(authState.user.shiftStartTime);
+      }
 
       // Load driver status after a short delay to ensure socket connection
       const loadInitialStatus = async () => {
@@ -288,6 +295,30 @@ export default function DashboardScreen() {
     }
   }, [bannedUntil]);
 
+  // Shift elapsed time counter
+  useEffect(() => {
+    if (shiftStartTime) {
+      const updateElapsedTime = () => {
+        const start = new Date(shiftStartTime).getTime();
+        const now = Date.now();
+        const elapsed = Math.floor((now - start) / 1000);
+
+        const hours = Math.floor(elapsed / 3600);
+        const minutes = Math.floor((elapsed % 3600) / 60);
+        const seconds = elapsed % 60;
+
+        const formatted = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        setShiftElapsedTime(formatted);
+      };
+
+      updateElapsedTime(); // Initial update
+      const interval = setInterval(updateElapsedTime, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setShiftElapsedTime('00:00:00');
+    }
+  }, [shiftStartTime]);
+
   // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
   useEffect(() => {
     if ((showPickupModal || showDropoffModal) && activeRide && mapRef.current) {
@@ -343,6 +374,13 @@ export default function DashboardScreen() {
       } else {
         setBannedUntil(null);
         setBanCountdown(0);
+      }
+
+      // Set shift start time
+      if (res.shiftStartTime) {
+        setShiftStartTime(res.shiftStartTime);
+      } else {
+        setShiftStartTime(null);
       }
 
       // Check for current active ride
@@ -753,6 +791,7 @@ export default function DashboardScreen() {
     <View style={styles.container}>
       {/* Status Bar */}
       <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]}>
+        <Text style={styles.shiftTimeText}>{shiftElapsedTime}</Text>
         <Text style={styles.statusText}>{getStatusText()}</Text>
       </View>
 
@@ -1081,13 +1120,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 40,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 10,
     zIndex: 1000,
   },
   statusText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  shiftTimeText: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: 'bold',
   },
   header: {

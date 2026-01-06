@@ -3,6 +3,7 @@ export interface User {
   name: string;
   car: string;
   shiftId?: number;
+  shiftStartTime?: string;
   // Add other user properties as needed
 }
 
