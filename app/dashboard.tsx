@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift } from '../src/services/api';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
@@ -514,7 +514,7 @@ export default function DashboardScreen() {
     }, 500);
   };
 
-  const endShift = async () => {
+  const handleEndShift = async () => {
     if (!endKM || isNaN(Number(endKM))) {
       alert('Please enter a valid end KM');
       return;
@@ -526,7 +526,7 @@ export default function DashboardScreen() {
         stopLocationTracking();
 
         // Call end shift API
-        const data = await api.post('/api/driver/end-shift', { endKM: Number(endKM) }, authState.token);
+        const data = await endShift(Number(endKM), authState.token);
 
         setDriverOnline(false);
         setShowEndKMModal(false);
@@ -810,15 +810,28 @@ export default function DashboardScreen() {
       {/* Hamburger Menu Overlay */}
       {showMenu && (
         <View style={styles.menuOverlay}>
-          <TouchableOpacity
-             style={styles.menuItem}
-             onPress={() => {
-               setShowMenu(false);
-               goToProfile();
-             }}
-           >
-             <Text style={styles.menuItemText}>Profile</Text>
-           </TouchableOpacity>
+          {!activeRide && (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                goToProfile();
+              }}
+            >
+              <Text style={styles.menuItemText}>Profile</Text>
+            </TouchableOpacity>
+          )}
+          {!activeRide && (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                router.push('/history');
+              }}
+            >
+              <Text style={styles.menuItemText}>History</Text>
+            </TouchableOpacity>
+          )}
            <TouchableOpacity
              style={styles.menuItem}
              onPress={() => {
@@ -850,15 +863,17 @@ export default function DashboardScreen() {
                <Text style={styles.menuItemText}>End Pause</Text>
              </TouchableOpacity>
            )}
-           <TouchableOpacity
-             style={styles.menuItem}
-             onPress={() => {
-               setShowMenu(false);
-               setShowEndKMModal(true);
-             }}
-           >
-             <Text style={styles.menuItemText}>End Shift</Text>
-           </TouchableOpacity>
+           {!activeRide && (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                setShowEndKMModal(true);
+              }}
+            >
+              <Text style={styles.menuItemText}>End Shift</Text>
+            </TouchableOpacity>
+           )}
         </View>
       )}
 
@@ -969,7 +984,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.endShiftButton, styles.confirmButton]}
-                onPress={endShift}
+                onPress={handleEndShift}
               >
                 <Text style={styles.confirmButtonText}>End Shift</Text>
               </TouchableOpacity>

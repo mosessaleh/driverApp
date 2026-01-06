@@ -121,3 +121,19 @@ export const updateDriverLocation = async (latitude: number, longitude: number, 
 export const logoutDriver = async (token: string) => {
   return api.post('/api/auth/logout', {}, token);
 };
+
+export const getDriverProfile = async (driverId: string, token: string) => {
+  return api.get(`/api/drivers/${driverId}`, token);
+};
+
+export const getDriverHistory = async (token: string, startDate?: string, endDate?: string) => {
+  const params = new URLSearchParams();
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return api.get(`/api/driver/history${query}`, token);
+};
+
+export const endShift = async (endKM: number, token: string) => {
+  return api.post('/api/driver/end-shift', { endKM }, token);
+};
