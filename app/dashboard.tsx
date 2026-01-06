@@ -955,7 +955,7 @@ export default function DashboardScreen() {
               >
                 <Text style={styles.rideNavButtonText}>NAV</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={3000} disabled={isPickupLoading}>
+              <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={1500} disabled={isPickupLoading}>
                 {isPickupLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <ActivityIndicator size="small" color="#fff" />
@@ -985,7 +985,7 @@ export default function DashboardScreen() {
               >
                 <Text style={styles.rideNavButtonText}>NAV</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dropoffButton} onLongPress={handleDropoffConfirm} delayLongPress={3000} disabled={isDropoffLoading}>
+              <TouchableOpacity style={styles.dropoffButton} onLongPress={handleDropoffConfirm} delayLongPress={1500} disabled={isDropoffLoading}>
                 {isDropoffLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <ActivityIndicator size="small" color="#fff" />
@@ -1026,6 +1026,8 @@ export default function DashboardScreen() {
                     clearInterval(offerTimeout);
                     setOfferTimeout(null);
                   }
+                  // Reload driver status to show pickup modal immediately
+                  await loadDriverStatus();
                 }}
               >
                 <Text style={styles.acceptButtonText}>Accept</Text>
