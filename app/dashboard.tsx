@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, sendRideTimeout, acceptRide, rejectRide } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,6 +43,12 @@ export default function DashboardScreen() {
   const [offerCountdown, setOfferCountdown] = useState(0);
   const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
   const [rideOfferSound, setRideOfferSound] = useState<any>(null);
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
+  const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -240,6 +246,20 @@ export default function DashboardScreen() {
 
       onRideOfferRejected(handleRideOfferRejected);
 
+      // Listen for chat messages
+      const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
+        console.log('Received chat message:', data);
+        setChatMessages(prev => [...prev, data]);
+
+        // If message is from client (passenger), increment unread count and play sound
+        if (data.sender !== 'driver') {
+          setUnreadMessagesCount(prev => prev + 1);
+          playMessageSound();
+        }
+      };
+
+      onNewMessage(handleNewMessage);
+
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
         if (authState.token && driverOnline) {
@@ -253,6 +273,7 @@ export default function DashboardScreen() {
         offRideOffer();
         offRideOfferTimeout();
         offRideOfferRejected();
+        offNewMessage();
         if (offerTimeout) {
           clearInterval(offerTimeout);
         }
@@ -335,6 +356,17 @@ export default function DashboardScreen() {
       });
     }
   }, [showPickupModal, showDropoffModal, activeRide, currentLocation]);
+
+  // Join chat room when active ride is available
+  useEffect(() => {
+    if (activeRide && activeRide.id) {
+      console.log('Joining chat room for ride:', activeRide.id);
+      joinChat(activeRide.id);
+      // Clear previous chat messages when starting new ride
+      setChatMessages([]);
+      setUnreadMessagesCount(0);
+    }
+  }, [activeRide]);
 
   const loadDriverStatus = async (retryCount = 0) => {
     if (!authState.token) {
@@ -725,6 +757,7 @@ export default function DashboardScreen() {
 
   const playPickupBeep = () => playBeepSound(require('../assets/music/PickUp.mp3'));
   const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
+  const playMessageSound = () => playBeepSound(require('../assets/music/icq_message.mp3'));
 
   const playRideOfferSound = async () => {
     let loopCount = 0;
@@ -773,6 +806,33 @@ export default function DashboardScreen() {
     router.push('/profile');
   };
 
+  const handleSendMessage = () => {
+    if (!chatInput.trim() || !activeRide) return;
+
+    const message = {
+      message: chatInput.trim(),
+      sender: 'driver',
+      timestamp: new Date().toISOString()
+    };
+
+    sendMessage(activeRide.id, message.message, message.sender);
+    setChatMessages(prev => [...prev, message]);
+    setChatInput('');
+  };
+
+  const handleQuickReply = (reply: string) => {
+    if (!activeRide) return;
+
+    const message = {
+      message: reply,
+      sender: 'driver',
+      timestamp: new Date().toISOString()
+    };
+
+    sendMessage(activeRide.id, message.message, message.sender);
+    setChatMessages(prev => [...prev, message]);
+  };
+
   const getStatusText = () => {
     if (bannedUntil && banCountdown > 0) return `Banned - ${banCountdown}s`;
     if (!driverOnline) return 'Offline';
@@ -806,6 +866,8 @@ export default function DashboardScreen() {
           <View style={styles.hamburgerLine} />
         </TouchableOpacity>
       </View>
+
+
 
       {/* Hamburger Menu Overlay */}
       {showMenu && (
@@ -998,6 +1060,14 @@ export default function DashboardScreen() {
         <View style={styles.rideModalContainer}>
           <View style={styles.rideModalCard}>
             <Text style={styles.rideModalId}>#{activeRide.id}</Text>
+            {activeRide.riderPhone && (
+              <TouchableOpacity
+                style={styles.callIconInModal}
+                onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+              >
+                <Text style={styles.callIconText}>📞</Text>
+              </TouchableOpacity>
+            )}
             <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
             <Text style={styles.rideModalDistance}>{activeRide.distanceKm} km</Text>
             <Text style={styles.rideModalAddress}>{activeRide.pickupAddress}</Text>
@@ -1008,6 +1078,22 @@ export default function DashboardScreen() {
                 onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
               >
                 <Text style={styles.rideNavButtonText}>NAV</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.chatButton}
+                onPress={() => {
+                  setShowChat(true);
+                  setUnreadMessagesCount(0);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.chatButtonText}>💬 Chat</Text>
+                  {unreadMessagesCount > 0 && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
               <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={1500} disabled={isPickupLoading}>
                 {isPickupLoading ? (
@@ -1101,6 +1187,47 @@ export default function DashboardScreen() {
                 }}
               >
                 <Text style={styles.rejectButtonText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Chat Modal */}
+      {showChat && (
+        <View style={styles.chatModal}>
+          <View style={styles.chatModalCard}>
+            <View style={styles.chatModalHeader}>
+              <Text style={styles.chatModalTitle}>Chat with Passenger</Text>
+              <TouchableOpacity onPress={() => setShowChat(false)}>
+                <Text style={styles.chatModalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.chatMessages}>
+              {chatMessages.map((msg, idx) => (
+                <View key={idx} style={[styles.chatMessage, msg.sender === 'driver' ? styles.driverMessage : styles.passengerMessage]}>
+                  <Text style={styles.messageText}>{msg.message}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickRepliesContainer}>
+              {quickReplies.map((reply, idx) => (
+                <TouchableOpacity key={idx} style={styles.quickReplyButton} onPress={() => handleQuickReply(reply)}>
+                  <Text style={styles.quickReplyText}>{reply}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.chatInputContainer}>
+              <TextInput
+                style={styles.chatInput}
+                value={chatInput}
+                onChangeText={setChatInput}
+                placeholder="Type message..."
+                onSubmitEditing={handleSendMessage}
+                returnKeyType="send"
+              />
+              <TouchableOpacity style={styles.chatSendButton} onPress={handleSendMessage}>
+                <Text style={styles.chatSendButtonText}>Send</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1577,6 +1704,157 @@ const styles = StyleSheet.create({
   rejectButtonText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  callIconInModal: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1000,
+  },
+  callIconText: {
+    color: '#28a745',
+    fontSize: 24,
+  },
+  chatButton: {
+    backgroundColor: '#17a2b8',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  chatButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  chatModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3000,
+  },
+  chatModalCard: {
+    backgroundColor: 'white',
+    width: '90%',
+    maxWidth: 400,
+    height: '70%',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    flexDirection: 'column',
+  },
+  chatModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  chatModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  chatModalClose: {
+    fontSize: 24,
+    color: '#666',
+    padding: 5,
+  },
+  chatMessages: {
+    flex: 1,
+    paddingVertical: 10,
+  },
+  chatMessage: {
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 8,
+    maxWidth: '80%',
+  },
+  driverMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#007bff',
+  },
+  passengerMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e9ecef',
+  },
+  messageText: {
+    color: '#000',
+    fontSize: 14,
+  },
+  chatInputContainer: {
+    flexDirection: 'row',
+    paddingTop: 10,
+  },
+  chatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+    fontSize: 14,
+    backgroundColor: '#f9f9f9',
+  },
+  chatSendButton: {
+    backgroundColor: '#007bff',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatSendButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  unreadBadge: {
+    backgroundColor: '#dc3545',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  quickRepliesContainer: {
+    maxHeight: 50,
+    paddingVertical: 5,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  quickReplyButton: {
+    backgroundColor: '#6c757d',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginHorizontal: 5,
+    marginVertical: 5,
+  },
+  quickReplyText: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: 'bold',
   },
 });

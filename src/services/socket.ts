@@ -186,5 +186,33 @@ export const sendRideTimeout = (rideId: number, driverId: number) => {
   }
 };
 
+// Chat functionality
+export const joinChat = (bookingId: number) => {
+  if (socket) {
+    socket.emit('joinChat', { bookingId });
+  }
+};
+
+export const sendMessage = (bookingId: number, message: string, sender: string) => {
+  if (socket) {
+    socket.emit('sendMessage', {
+      bookingId,
+      message,
+      sender
+    });
+  }
+};
+
+export const onNewMessage = (callback: (data: { message: string; sender: string; timestamp: string }) => void) => {
+  if (socket) {
+    socket.on('newMessage', callback);
+  }
+};
+
+export const offNewMessage = () => {
+  if (socket) {
+    socket.off('newMessage');
+  }
+};
 
 export const getSocket = (): Socket | null => socket;

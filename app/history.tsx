@@ -34,7 +34,7 @@ export default function HistoryScreen() {
     
     setLoading(true);
     try {
-      const response = await getDriverHistory(authState.token, startDate || undefined, endDate || undefined);
+      const response = await getDriverHistory(authState.token, parseDate(startDate) || undefined, parseDate(endDate) || undefined);
       if (response.ok && response.rides) {
         setRides(response.rides);
         setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
@@ -76,6 +76,12 @@ export default function HistoryScreen() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   };
 
   const handleFilter = () => {

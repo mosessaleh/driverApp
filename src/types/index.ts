@@ -47,6 +47,7 @@ export interface Ride extends Booking {
   scheduled: boolean;
   explanation?: string;
   startLatLon?: { lat: number; lon: number };
+  riderPhone?: string;
 }
 
 export interface Driver {

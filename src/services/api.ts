@@ -31,7 +31,18 @@ export const api = {
       });
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        throw new Error(`API Error ${response.status}: ${response.statusText || errorText}`);
+        let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If not JSON, use the text as is
+        }
+        throw new Error(errorMessage);
       }
       return response.json();
     });
@@ -70,7 +81,18 @@ export const api = {
       });
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        throw new Error(`API Error ${response.status}: ${response.statusText || errorText}`);
+        let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If not JSON, use the text as is
+        }
+        throw new Error(errorMessage);
       }
       return response.json();
     });
