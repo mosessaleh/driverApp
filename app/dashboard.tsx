@@ -1,52 +1,55 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
+import { useSettings } from '../src/context/SettingsContext';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift } from '../src/services/api';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
 export default function DashboardScreen() {
-  const { authState, logout } = useAuth();
-  const router = useRouter();
-  const [driverOnline, setDriverOnline] = useState(false);
-  const [driverBusy, setDriverBusy] = useState(false);
-  const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
-  const [banCountdown, setBanCountdown] = useState(0);
-  const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
-  const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationPermission, setLocationPermission] = useState(false);
-  const [locationSubscription, setLocationSubscription] = useState<any>(null);
-  const [isTracking, setIsTracking] = useState(false);
-  const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
-  const [lastStatusCheck, setLastStatusCheck] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showEndKMModal, setShowEndKMModal] = useState(false);
-  const [endKM, setEndKM] = useState('');
-  const [activeRide, setActiveRide] = useState<any>(null);
-  const [currentRideId, setCurrentRideId] = useState<number | null>(null);
-  const [showPickupModal, setShowPickupModal] = useState(false);
-  const [showDropoffModal, setShowDropoffModal] = useState(false);
-  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
-  const [isPickupLoading, setIsPickupLoading] = useState(false);
-  const [isDropoffLoading, setIsDropoffLoading] = useState(false);
-  const [rideOffer, setRideOffer] = useState<any>(null);
-  const [offerCountdown, setOfferCountdown] = useState(0);
-  const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [rideOfferSound, setRideOfferSound] = useState<any>(null);
-  const [showChat, setShowChat] = useState(false);
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+   const { authState, logout } = useAuth();
+   const { settings, isDarkMode } = useSettings();
+   const router = useRouter();
+   const [driverOnline, setDriverOnline] = useState(false);
+   const [driverBusy, setDriverBusy] = useState(false);
+   const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
+   const [banCountdown, setBanCountdown] = useState(0);
+   const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
+   const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
+   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+   const [locationPermission, setLocationPermission] = useState(false);
+   const [locationSubscription, setLocationSubscription] = useState<any>(null);
+   const [isTracking, setIsTracking] = useState(false);
+   const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
+   const [lastStatusCheck, setLastStatusCheck] = useState(0);
+   const [refreshing, setRefreshing] = useState(false);
+   const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
+   const [showMenu, setShowMenu] = useState(false);
+   const [showEndKMModal, setShowEndKMModal] = useState(false);
+   const [endKM, setEndKM] = useState('');
+   const [activeRide, setActiveRide] = useState<any>(null);
+   const [currentRideId, setCurrentRideId] = useState<number | null>(null);
+   const [showPickupModal, setShowPickupModal] = useState(false);
+   const [showDropoffModal, setShowDropoffModal] = useState(false);
+   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+   const [isPickupLoading, setIsPickupLoading] = useState(false);
+   const [isDropoffLoading, setIsDropoffLoading] = useState(false);
+   const [rideOffer, setRideOffer] = useState<any>(null);
+   const [offerCountdown, setOfferCountdown] = useState(0);
+   const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
+   const [rideOfferSound, setRideOfferSound] = useState<any>(null);
+   const [showChat, setShowChat] = useState(false);
+   const [chatMessages, setChatMessages] = useState<any[]>([]);
+   const [chatInput, setChatInput] = useState('');
+   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -92,6 +95,7 @@ export default function DashboardScreen() {
       playThroughEarpieceAndroid: false,
     });
   }, []);
+
 
   useEffect(() => {
     if (!driverOnline) {
@@ -165,8 +169,10 @@ export default function DashboardScreen() {
         // Stop any existing sound first
         stopRideOfferSound();
 
-        // Play ride offer sound
-        playRideOfferSound();
+        // Play ride offer sound if enabled
+        if (settings.sound.rideOfferSound) {
+          playRideOfferSound();
+        }
 
         setRideOffer(data);
         setOfferCountdown(30); // 30 seconds countdown
@@ -254,7 +260,9 @@ export default function DashboardScreen() {
         // If message is from client (passenger), increment unread count and play sound
         if (data.sender !== 'driver') {
           setUnreadMessagesCount(prev => prev + 1);
-          playMessageSound();
+          if (settings.sound.messageSound) {
+            playMessageSound();
+          }
         }
       };
 
@@ -617,8 +625,10 @@ export default function DashboardScreen() {
     if (!rideId) {
       return;
     }
-    // Play pickup beep sound
-    playPickupBeep();
+    // Play pickup beep sound if enabled
+    if (settings.sound.pickupDropoffSound) {
+      playPickupBeep();
+    }
     setIsPickupLoading(true);
     try {
       // Update ride status to PICKED_UP and set pickedAt timestamp
@@ -650,8 +660,10 @@ export default function DashboardScreen() {
   const handleDropoffConfirm = async () => {
     const rideId = activeRide?.id;
     if (!rideId) return;
-    // Play dropoff beep sound
-    playDropoffBeep();
+    // Play dropoff beep sound if enabled
+    if (settings.sound.pickupDropoffSound) {
+      playDropoffBeep();
+    }
     setIsDropoffLoading(true);
     try {
       const res = await api.put(`/api/driver/rides/${rideId}/status`, {
@@ -846,6 +858,8 @@ export default function DashboardScreen() {
     if (driverBusy) return '#ffc107'; // yellow
     return '#28a745'; // green
   };
+
+  const styles = getStyles(isDarkMode);
 
   return (
     <View style={styles.container}>
@@ -1245,16 +1259,10 @@ export default function DashboardScreen() {
   );
 }
 
-const PersonIcon = () => (
-  <View style={styles.personIcon}>
-    <View style={styles.personHead} />
-    <View style={styles.personBody} />
-  </View>
-);
-
-const styles = StyleSheet.create({
+const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: isDarkMode ? '#121212' : '#f5f5f5',
   },
   statusBar: {
     position: 'absolute',
@@ -1289,7 +1297,7 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.9)',
     borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1300,14 +1308,14 @@ const styles = StyleSheet.create({
   hamburgerLine: {
     width: 20,
     height: 2,
-    backgroundColor: '#333',
+    backgroundColor: isDarkMode ? '#fff' : '#333',
     marginVertical: 2,
   },
   menuOverlay: {
     position: 'absolute',
     top: 120,
     left: 20,
-    backgroundColor: '#fff',
+    backgroundColor: isDarkMode ? '#333' : '#fff',
     borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1321,17 +1329,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: isDarkMode ? '#555' : '#f0f0f0',
   },
   menuItemText: {
     fontSize: 16,
-    color: '#333',
+    color: isDarkMode ? '#fff' : '#333',
   },
   mapContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: isDarkMode ? '#121212' : '#f0f0f0',
   },
   map: {
     width: '100%',
@@ -1339,7 +1347,7 @@ const styles = StyleSheet.create({
   },
   mapPlaceholderText: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     textAlign: 'center',
   },
   modalOverlay: {
@@ -1355,13 +1363,14 @@ const styles = StyleSheet.create({
   },
   kmInput: {
     height: 50,
-    borderColor: '#ddd',
+    borderColor: isDarkMode ? '#555' : '#ddd',
     borderWidth: 1,
     borderRadius: 8,
     marginBottom: 20,
     paddingHorizontal: 15,
     fontSize: 16,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: isDarkMode ? '#333' : '#f9f9f9',
+    color: isDarkMode ? '#fff' : '#000',
     textAlign: 'center',
   },
   personIcon: {
@@ -1395,7 +1404,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   rideModalCard: {
-    backgroundColor: 'white',
+    backgroundColor: isDarkMode ? '#333' : 'white',
     margin: 20,
     borderRadius: 12,
     padding: 20,
@@ -1410,22 +1419,22 @@ const styles = StyleSheet.create({
   rideModalPrice: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: isDarkMode ? '#fff' : '#333',
     marginBottom: 8,
   },
   rideModalDistance: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 4,
   },
   rideModalAddress: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 4,
   },
   rideModalType: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 8,
   },
   rideModalId: {
@@ -1433,7 +1442,7 @@ const styles = StyleSheet.create({
     top: 10,
     left: 10,
     fontSize: 14,
-    color: '#999',
+    color: isDarkMode ? '#ccc' : '#999',
     fontWeight: 'bold',
   },
   rideModalButtons: {
@@ -1487,7 +1496,7 @@ const styles = StyleSheet.create({
   },
   sliderTrack: {
     height: 50,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: isDarkMode ? '#555' : '#f0f0f0',
     borderRadius: 25,
     position: 'relative',
     overflow: 'hidden',
@@ -1521,7 +1530,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     fontSize: 14,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
   },
   sliderSpinner: {
     position: 'absolute',
@@ -1541,7 +1550,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   endShiftMenu: {
-    backgroundColor: '#fff',
+    backgroundColor: isDarkMode ? '#333' : '#fff',
     margin: 20,
     borderRadius: 10,
     padding: 20,
@@ -1554,13 +1563,13 @@ const styles = StyleSheet.create({
   endShiftTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: isDarkMode ? '#fff' : '#333',
     textAlign: 'center',
     marginBottom: 10,
   },
   endShiftMessage: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
@@ -1632,7 +1641,7 @@ const styles = StyleSheet.create({
     zIndex: 3000,
   },
   rideOfferCard: {
-    backgroundColor: 'white',
+    backgroundColor: isDarkMode ? '#333' : 'white',
     margin: 20,
     borderRadius: 12,
     padding: 20,
@@ -1647,12 +1656,12 @@ const styles = StyleSheet.create({
   rideOfferTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: isDarkMode ? '#fff' : '#333',
     marginBottom: 10,
   },
   rideOfferId: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 8,
   },
   rideOfferPrice: {
@@ -1663,12 +1672,12 @@ const styles = StyleSheet.create({
   },
   rideOfferDistance: {
     fontSize: 16,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 4,
   },
   rideOfferAddress: {
     fontSize: 14,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 2,
     textAlign: 'center',
   },
@@ -1741,7 +1750,7 @@ const styles = StyleSheet.create({
     zIndex: 3000,
   },
   chatModalCard: {
-    backgroundColor: 'white',
+    backgroundColor: isDarkMode ? '#333' : 'white',
     width: '90%',
     maxWidth: 400,
     height: '70%',
@@ -1761,16 +1770,16 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: isDarkMode ? '#555' : '#f0f0f0',
   },
   chatModalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: isDarkMode ? '#fff' : '#333',
   },
   chatModalClose: {
     fontSize: 24,
-    color: '#666',
+    color: isDarkMode ? '#ccc' : '#666',
     padding: 5,
   },
   chatMessages: {
@@ -1789,7 +1798,7 @@ const styles = StyleSheet.create({
   },
   passengerMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e9ecef',
+    backgroundColor: isDarkMode ? '#555' : '#e9ecef',
   },
   messageText: {
     color: '#000',
@@ -1802,13 +1811,14 @@ const styles = StyleSheet.create({
   chatInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: isDarkMode ? '#555' : '#ddd',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 10,
     fontSize: 14,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: isDarkMode ? '#444' : '#f9f9f9',
+    color: isDarkMode ? '#fff' : '#000',
   },
   chatSendButton: {
     backgroundColor: '#007bff',
@@ -1842,7 +1852,7 @@ const styles = StyleSheet.create({
     maxHeight: 50,
     paddingVertical: 5,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: isDarkMode ? '#555' : '#f0f0f0',
   },
   quickReplyButton: {
     backgroundColor: '#6c757d',

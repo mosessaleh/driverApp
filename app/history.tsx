@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, RefreshControl } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDriverHistory } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
 
@@ -14,6 +16,7 @@ export default function HistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filterVisible, setFilterVisible] = useState(false);
 
   useEffect(() => {
     loadHistory();
@@ -86,12 +89,74 @@ export default function HistoryScreen() {
 
   const handleFilter = () => {
     loadHistory();
+    setFilterVisible(false);
   };
 
   const handleClearFilter = () => {
     setStartDate('');
     setEndDate('');
     loadHistory();
+    setFilterVisible(false);
+  };
+
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleQuickFilter = async (filter: string) => {
+    const now = new Date();
+    let startDateStr: string | undefined;
+    let endDateStr: string | undefined;
+
+    if (filter === 'Today') {
+      // Get today's date in local time as YYYY-MM-DD
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      startDateStr = formatLocalDate(today);
+      endDateStr = startDateStr; // Same day
+    } else if (filter === 'This week') {
+      const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
+      startOfWeek.setHours(0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      startDateStr = formatLocalDate(startOfWeek);
+      endDateStr = formatLocalDate(endOfWeek);
+    } else if (filter === 'All time') {
+      startDateStr = undefined;
+      endDateStr = undefined;
+    }
+
+    // Load history directly with the calculated dates
+    if (!authState.token) return;
+
+    setLoading(true);
+    try {
+      const response = await getDriverHistory(authState.token, startDateStr, endDateStr);
+      if (response.ok && response.rides) {
+        setRides(response.rides);
+        setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
+      } else {
+        Alert.alert('Error', 'Failed to load history data');
+      }
+    } catch (error) {
+      console.error('Error loading history:', error);
+      Alert.alert('Error', 'Failed to load history data');
+    } finally {
+      setLoading(false);
+      setFilterVisible(false);
+    }
+  };
+
+  const formatDateForInput = (date: Date) => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   const goBack = () => {
@@ -106,6 +171,9 @@ export default function HistoryScreen() {
           <Text style={styles.backButtonText}>❮</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>History</Text>
+        <TouchableOpacity style={styles.filterToggleButton} onPress={() => setFilterVisible(!filterVisible)}>
+          <Text style={styles.filterToggleButtonText}>Filter</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Summary Box */}
@@ -122,8 +190,21 @@ export default function HistoryScreen() {
       </View>
 
       {/* Filter Box */}
-      <View style={styles.filterContainer}>
+      {filterVisible && (
+        <View style={styles.filterContainer}>
         <Text style={styles.filterTitle}>Filter by Date</Text>
+        <View style={styles.quickFilterButtons}>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('Today')}>
+            <Text style={styles.quickFilterButtonText}>Today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('This week')}>
+            <Text style={styles.quickFilterButtonText}>This week</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('All time')}>
+            <Text style={styles.quickFilterButtonText}>All time</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.orText}>Or</Text>
         <View style={styles.filterRow}>
           <View style={styles.filterInputContainer}>
             <Text style={styles.filterLabel}>From</Text>
@@ -155,6 +236,7 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       {/* Rides List */}
       <ScrollView 
@@ -199,6 +281,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 15,
     paddingBottom: 10,
@@ -219,14 +302,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginLeft: 20,
+    flex: 1,
+    textAlign: 'center',
+  },
+  filterToggleButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  filterToggleButtonText: {
+    fontSize: 16,
+    color: '#007bff',
+    fontWeight: 'bold',
   },
   summaryContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    margin: 20,
+    marginHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 10,
     borderRadius: 12,
-    padding: 15,
+    padding: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -256,9 +351,9 @@ const styles = StyleSheet.create({
   filterContainer: {
     backgroundColor: '#fff',
     marginHorizontal: 20,
-    marginBottom: 15,
+    marginBottom: 10,
     borderRadius: 12,
-    padding: 15,
+    padding: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -379,5 +474,30 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#28a745',
+  },
+  quickFilterButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  quickFilterButton: {
+    backgroundColor: '#e9ecef',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    flex: 1,
+    marginHorizontal: 2,
+    alignItems: 'center',
+  },
+  quickFilterButtonText: {
+    color: '#495057',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  orText: {
+    textAlign: 'center',
+    fontSize: 14,
+    color: '#666',
+    marginVertical: 10,
   },
 });
