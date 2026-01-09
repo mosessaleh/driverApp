@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Image, Alert, RefreshControl } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
-import { getDriverProfile } from '../src/services/api';
+import { getDriverProfile, requestDriverPasswordReset } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -64,13 +64,24 @@ export default function ProfileScreen() {
   };
 
 
-  const handleActionPress = (action: string) => {
+  const handleActionPress = async (action: string) => {
     switch (action) {
       case 'change_password':
-        Alert.alert('Feature Coming Soon', 'Password change functionality will be available soon.');
-        break;
-      case 'notifications':
-        Alert.alert('Feature Coming Soon', 'Notification settings will be available soon.');
+        if (!profileData?.drEmail) {
+          Alert.alert('Error', 'Email not found in profile.');
+          return;
+        }
+        try {
+          const response = await requestDriverPasswordReset(profileData.drEmail);
+          if (response.ok) {
+            Alert.alert('Success', 'Password reset link has been sent to your email.');
+          } else {
+            Alert.alert('Error', response.error || 'Failed to send reset link.');
+          }
+        } catch (error) {
+          console.error('Password reset error:', error);
+          Alert.alert('Error', 'Failed to send reset link. Please try again.');
+        }
         break;
       default:
         break;
@@ -259,10 +270,6 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.actionButton} onPress={() => handleActionPress('change_password')}>
               <Ionicons name="key-outline" size={20} color="#007bff" />
               <Text style={styles.actionText}>Change Password</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => handleActionPress('notifications')}>
-              <Ionicons name="notifications-outline" size={20} color="#007bff" />
-              <Text style={styles.actionText}>Notification Settings</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -159,3 +159,7 @@ export const getDriverHistory = async (token: string, startDate?: string, endDat
 export const endShift = async (endKM: number, token: string) => {
   return api.post('/api/driver/end-shift', { endKM }, token);
 };
+
+export const requestDriverPasswordReset = async (email: string) => {
+  return api.post('/api/driver/request-reset', { email });
+};
