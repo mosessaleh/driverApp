@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { AuthState, User } from '../types';
-import { loginDriver, getDriverStatus, logoutDriver } from '../services/api';
+import { loginDriver, getDriverStatus, logoutDriver, updatePushToken } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 
 const AuthContext = createContext<{
@@ -64,6 +65,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       disconnectSocket();
     };
+  }, [authState.token]);
+
+  // Register for push notifications
+  useEffect(() => {
+    const registerForPushNotifications = async () => {
+      if (!authState.token) return;
+
+      console.log('App ownership:', Constants.appOwnership);
+      console.log('Expo Go check:', Constants.appOwnership === 'expo' ? 'Running in Expo Go' : 'Not Expo Go');
+
+      // Skip push notifications in Expo Go as they are not supported in SDK 54+
+      if (Constants.appOwnership === 'expo') {
+        console.log('Skipping push notifications in Expo Go');
+        return;
+      }
+
+      try {
+        // Dynamically import expo-notifications only when not in Expo Go
+        const { getExpoPushTokenAsync } = await import('expo-notifications');
+        const tokenData = await getExpoPushTokenAsync();
+        const pushToken = tokenData.data;
+
+        // Send push token to server
+        await updatePushToken(pushToken, authState.token);
+        console.log('Push token registered:', pushToken);
+      } catch (error) {
+        // Push notifications may not be available
+        console.warn('Push notifications not available:', error instanceof Error ? error.message : String(error));
+        console.log('Error type:', typeof error, 'Error value:', error);
+        // Don't fail the login process due to push notification issues
+      }
+    };
+
+    registerForPushNotifications();
   }, [authState.token]);
 
   const login = async (username: string, password: string, startKM: number) => {

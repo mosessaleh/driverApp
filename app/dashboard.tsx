@@ -1313,7 +1313,7 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   menuOverlay: {
     position: 'absolute',
-    top: 120,
+    top: 100,
     left: 20,
     backgroundColor: isDarkMode ? '#333' : '#fff',
     borderRadius: 8,

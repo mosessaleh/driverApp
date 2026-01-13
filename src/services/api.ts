@@ -163,3 +163,7 @@ export const endShift = async (endKM: number, token: string) => {
 export const requestDriverPasswordReset = async (email: string) => {
   return api.post('/api/driver/request-reset', { email });
 };
+
+export const updatePushToken = async (pushToken: string, token: string) => {
+  return api.post('/api/driver/push-token', { pushToken }, token);
+};
