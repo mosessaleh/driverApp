@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "DriverApp",
-    "slug": "DriverApp",
+    "slug": "taxi",
     "version": "1.0.0",
     "scheme": "driverapp",
     "orientation": "portrait",
@@ -21,7 +21,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location even when not in use for ride tracking."
       },
       "config": {
-        "googleMapsApiKey": "AIzaSyDlYuoRX68-6aL9CLQqYcc6zWVmGMkGdxw"
+        "googleMapsApiKey": "AIzaSyCmYI_xnBdw-FRIp6FjkulduUNte8n3FWk"
       }
     },
     "android": {
@@ -41,7 +41,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyDlYuoRX68-6aL9CLQqYcc6zWVmGMkGdxw"
+          "apiKey": "AIzaSyCmYI_xnBdw-FRIp6FjkulduUNte8n3FWk"
         }
       }
     },
@@ -61,10 +61,10 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "d54b9de8-0006-44a8-b2e1-6c123804e0fc"
+        "projectId": "17b1fb29-deb4-4062-9438-51b6732f8312"
       },
       "router": {}
     },
-    "owner": "mosessaleh"
+    "owner": "sy-taxi"
   }
 }

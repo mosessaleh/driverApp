@@ -675,6 +675,17 @@ export default function DashboardScreen() {
         setActiveRide(null);
         setCurrentRideId(null);
         setRouteCoordinates([]);
+        // Reload driver status to update busy state after ride completion
+        await loadDriverStatus();
+        // Animate map back to driver's current location
+        if (currentLocation && mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
         if (res.paymentResult && !res.paymentResult.success) {
           alert(`Ride completed but payment failed: ${res.paymentResult.error}`);
         } else {
@@ -1288,7 +1299,7 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    top: 50,
+    top: 60,
     left: 20,
     zIndex: 1000,
   },
@@ -1336,7 +1347,11 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? '#fff' : '#333',
   },
   mapContainer: {
-    flex: 1,
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: isDarkMode ? '#121212' : '#f0f0f0',
