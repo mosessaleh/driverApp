@@ -10,7 +10,7 @@ import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
 
 const { width, height } = Dimensions.get('window');
 
@@ -252,6 +252,28 @@ export default function DashboardScreen() {
 
       onRideOfferRejected(handleRideOfferRejected);
 
+      // Listen for ride cancellation
+      const handleRideCancelled = async (data: { rideId: number }) => {
+        console.log('=== RECEIVED RIDE CANCELLED ===');
+        console.log('Cancellation data:', data);
+        console.log('Current ride offer:', rideOffer);
+        // Only clear if this cancellation matches the current offer
+        if (rideOffer && rideOffer.rideId === data.rideId) {
+          console.log('Clearing offer due to cancellation for matching rideId');
+          await stopRideOfferSound();
+          setRideOffer(null);
+          setOfferCountdown(0);
+          if (offerTimeout) {
+            clearInterval(offerTimeout);
+            setOfferTimeout(null);
+          }
+        } else {
+          console.log('Ignoring cancellation for non-matching rideId');
+        }
+      };
+
+      onRideCancelled(handleRideCancelled);
+
       // Listen for chat messages
       const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
         console.log('Received chat message:', data);
@@ -281,6 +303,7 @@ export default function DashboardScreen() {
         offRideOffer();
         offRideOfferTimeout();
         offRideOfferRejected();
+        offRideCancelled();
         offNewMessage();
         if (offerTimeout) {
           clearInterval(offerTimeout);

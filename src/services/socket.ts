@@ -180,6 +180,18 @@ export const offRideOfferRejected = () => {
   }
 };
 
+export const onRideCancelled = (callback: (data: { rideId: number }) => void) => {
+  if (socket) {
+    socket.on('rideCancelled', callback);
+  }
+};
+
+export const offRideCancelled = () => {
+  if (socket) {
+    socket.off('rideCancelled');
+  }
+};
+
 export const sendRideTimeout = (rideId: number, driverId: number) => {
   if (socket) {
     socket.emit('rideTimeout', { rideId, driverId });
