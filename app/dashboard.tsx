@@ -630,30 +630,40 @@ export default function DashboardScreen() {
       playPickupBeep();
     }
     setIsPickupLoading(true);
+    // Update ride status locally for immediate UI update
+    setActiveRide((prev: any) => prev ? { ...prev, status: 'PICKED_UP' } : null);
+    setShowPickupModal(false);
+    setShowDropoffModal(true);
+    // Clear previous route and fetch new route from pickup to dropoff
+    setRouteCoordinates([]);
+    fetchDirections(
+      { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+      { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
+    );
     try {
       // Update ride status to PICKED_UP and set pickedAt timestamp
       const res = await api.put(`/api/driver/rides/${rideId}/status`, {
         status: 'PICKED_UP',
         pickedAt: new Date().toISOString()
       }, authState.token!);
-      if (res.ok) {
-        setIsPickupLoading(false);
-        setShowPickupModal(false);
-        setShowDropoffModal(true);
-        // Clear previous route and fetch new route from pickup to dropoff
+      if (!res.ok) {
+        // If API fails, revert the local changes
+        setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
+        setShowPickupModal(true);
+        setShowDropoffModal(false);
         setRouteCoordinates([]);
-        fetchDirections(
-          { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
-          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
-        );
-      } else {
-        setIsPickupLoading(false);
         alert('Failed to update ride status');
       }
     } catch (e) {
       console.error('Error picking up ride:', e);
-      setIsPickupLoading(false);
+      // Revert on error
+      setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
+      setShowPickupModal(true);
+      setShowDropoffModal(false);
+      setRouteCoordinates([]);
       alert('Error picking up ride');
+    } finally {
+      setIsPickupLoading(false);
     }
   };
 
