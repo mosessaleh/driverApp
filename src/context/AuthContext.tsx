@@ -67,6 +67,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [authState.token]);
 
+  // Background fetch is disabled for now to avoid native module issues in development
+  // TODO: Re-enable when using development build
+  // useEffect(() => {
+  //   ...
+  // }, [authState.token]);
+
   // Register for push notifications
   useEffect(() => {
     const registerForPushNotifications = async () => {

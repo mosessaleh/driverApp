@@ -11,6 +11,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
+import { sendLocalNotification } from '../src/services/notifications';
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,8 +51,9 @@ export default function DashboardScreen() {
    const [chatMessages, setChatMessages] = useState<any[]>([]);
    const [chatInput, setChatInput] = useState('');
    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+   const [isBatchNotificationActive, setIsBatchNotificationActive] = useState(false);
 
-  const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
+   const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -127,6 +129,9 @@ export default function DashboardScreen() {
       if (authState.user?.shiftStartTime) {
         setShiftStartTime(authState.user.shiftStartTime);
       }
+
+      // Load batch notification state
+      loadBatchNotificationState();
 
       // Load driver status after a short delay to ensure socket connection
       const loadInitialStatus = async () => {
@@ -494,6 +499,64 @@ export default function DashboardScreen() {
         console.log(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadDriverStatus(retryCount + 1), delay);
       }
+    }
+  };
+
+  const loadBatchNotificationState = async () => {
+    try {
+      const state = await AsyncStorage.getItem('batchNotificationActive');
+      if (state === 'true') {
+        setIsBatchNotificationActive(true);
+        startBatchNotification();
+      }
+    } catch (error) {
+      console.error('Error loading batch notification state:', error);
+    }
+  };
+
+  const startBatchNotification = async () => {
+    console.log('startBatchNotification called, driverId:', authState.user?.id);
+    if (!authState.token || !authState.user?.id) {
+      console.log('No token or user id');
+      return;
+    }
+    try {
+      const response = await api.post('/api/driver-batch-notification/start', { driverId: authState.user.id }, authState.token);
+      console.log('API response:', response);
+      AsyncStorage.setItem('batchNotificationActive', 'true');
+    } catch (error) {
+      console.error('Error starting batch notification:', error);
+      alert('Error starting batch notification: ' + (error as Error).message);
+    }
+  };
+
+  const stopBatchNotification = async () => {
+    console.log('stopBatchNotification called, driverId:', authState.user?.id);
+    if (!authState.token || !authState.user?.id) {
+      console.log('No token or user id');
+      return;
+    }
+    try {
+      const response = await api.post('/api/driver-batch-notification/stop', { driverId: authState.user.id }, authState.token);
+      console.log('API response:', response);
+      AsyncStorage.setItem('batchNotificationActive', 'false');
+    } catch (error) {
+      console.error('Error stopping batch notification:', error);
+      alert('Error stopping batch notification: ' + (error as Error).message);
+    }
+  };
+
+  const toggleBatchNotification = async () => {
+    console.log('toggleBatchNotification called, active:', isBatchNotificationActive);
+    console.log('authState.user:', authState.user);
+    if (isBatchNotificationActive) {
+      await stopBatchNotification();
+      setIsBatchNotificationActive(false);
+      alert('Batch notification stopped');
+    } else {
+      await startBatchNotification();
+      setIsBatchNotificationActive(true);
+      alert('Batch notification started');
     }
   };
 
@@ -994,6 +1057,17 @@ export default function DashboardScreen() {
               <Text style={styles.menuItemText}>End Shift</Text>
             </TouchableOpacity>
            )}
+           <TouchableOpacity
+             style={styles.menuItem}
+             onPress={() => {
+               setShowMenu(false);
+               toggleBatchNotification();
+             }}
+           >
+             <Text style={styles.menuItemText}>
+               {isBatchNotificationActive ? 'Stop Batch Notification' : 'Start Batch Notification'}
+             </Text>
+           </TouchableOpacity>
         </View>
       )}
 

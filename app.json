@@ -32,6 +32,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.driverapp.driverapp",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -50,6 +51,8 @@
     },
     "plugins": [
       "expo-router",
+      "expo-task-manager",
+      "expo-background-fetch",
       [
         "expo-location",
         {
@@ -57,7 +60,15 @@
           "locationAlwaysAndWhenInUsePermission": "Allow DriverApp to access your location for ride tracking."
         }
       ],
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "defaultChannel": "default",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
     ],
     "extra": {
       "eas": {
