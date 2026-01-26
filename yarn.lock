@@ -1923,11 +1923,6 @@
   dependencies:
     firebase "12.7.0"
 
-"@react-native-firebase/messaging@^23.8.3":
-  version "23.8.3"
-  resolved "https://registry.npmjs.org/@react-native-firebase/messaging/-/messaging-23.8.3.tgz"
-  integrity sha512-P3DzmTd+opPEd/qQGJoXsZkynoSsYaGseQ8xGiwcLC6y/MzIiaI1DqrAs6yJVZTjgTX464Oh3+6gPExfHzhnmA==
-
 "@react-native/assets-registry@0.81.5":
   version "0.81.5"
   resolved "https://registry.npmjs.org/@react-native/assets-registry/-/assets-registry-0.81.5.tgz"

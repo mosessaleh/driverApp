@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState, Alert, BackHandler } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
@@ -324,6 +324,44 @@ export default function DashboardScreen() {
       stopLocationTracking();
     };
   }, [authState.token]);
+
+  // Handle app state changes (background/foreground)
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        Alert.alert(
+          'Warning',
+          'If you close the app or put it in the background, you may face problems receiving new ride requests. It is recommended to keep the app open to ensure notifications are received.',
+          [{ text: 'OK' }]
+        );
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
+
+  // Handle back button press on Android
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        'Warning',
+        'If you close the app, you may face problems receiving new ride requests. Are you sure you want to exit?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => null },
+          { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() }
+        ]
+      );
+      return true; // Prevent default back action
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+
+    return () => backHandler?.remove();
+  }, []);
 
   // Animate map to current location when it changes
   useEffect(() => {
