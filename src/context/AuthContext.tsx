@@ -89,13 +89,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         // Dynamically import expo-notifications only when not in Expo Go
-        const { getExpoPushTokenAsync } = await import('expo-notifications');
+        const { getExpoPushTokenAsync, requestPermissionsAsync } = await import('expo-notifications');
+
+        // Request permissions first
+        console.log('Requesting notification permissions...');
+        const { status: permissionStatus } = await requestPermissionsAsync();
+        console.log('Notification permission status:', permissionStatus);
+
+        if (permissionStatus !== 'granted') {
+          console.warn('Notification permissions not granted');
+          return;
+        }
+
         const tokenData = await getExpoPushTokenAsync();
         const pushToken = tokenData.data;
 
         // Send push token to server
         await updatePushToken(pushToken, authState.token);
         console.log('Push token registered:', pushToken);
+        console.log('Push token length:', pushToken.length);
+        console.log('Push token starts with:', pushToken.substring(0, 20));
       } catch (error) {
         // Push notifications may not be available
         console.warn('Push notifications not available:', error instanceof Error ? error.message : String(error));

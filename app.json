@@ -52,12 +52,15 @@
       "notification": {
         "channels": [
           {
-            "name": "Default",
-            "id": "default",
-            "description": "Default notification channel",
+            "name": "Batch Notifications",
+            "id": "batch",
+            "description": "Notifications for batch updates",
             "sound": true,
-            "vibration": true,
-            "importance": "max"
+            "vibration": [0, 250, 250, 250],
+            "importance": "high",
+            "visibility": "public",
+            "vibrate": true,
+            "showBadge": true
           }
         ]
       }
@@ -80,7 +83,7 @@
         "expo-notifications",
         {
           "color": "#ffffff",
-          "defaultChannel": "default"
+          "defaultChannel": "batch"
         }
       ],
       "expo-font"
