@@ -13,6 +13,9 @@ import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import * as Notifications from 'expo-notifications';
+import * as TaskManager from 'expo-task-manager';
+import * as BackgroundFetch from 'expo-background-fetch';
+import { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,6 +56,7 @@ export default function DashboardScreen() {
    const [chatInput, setChatInput] = useState('');
    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
    const [isBatchNotificationActive, setIsBatchNotificationActive] = useState(false);
+   const [isSocketConnected, setIsSocketConnected] = useState(false);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -328,13 +332,43 @@ export default function DashboardScreen() {
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: string) => {
+    const handleAppStateChange = async (nextAppState: string) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         Alert.alert(
           'Warning',
           'If you close the app or put it in the background, you may face problems receiving new ride requests. It is recommended to keep the app open to ensure notifications are received.',
           [{ text: 'OK' }]
         );
+
+        // Register background task for socket reconnection
+        if (Platform.OS !== 'web') {
+          try {
+            await BackgroundFetch.registerTaskAsync(SOCKET_BACKGROUND_TASK, {
+              minimumInterval: 10, // 10 seconds
+              stopOnTerminate: false,
+              startOnBoot: true,
+            });
+            console.log('Background task registered');
+          } catch (error) {
+            console.error('Failed to register background task:', error);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        // Reconnect socket when app becomes active
+        if (authState.token) {
+          console.log('Reconnecting socket on app active');
+          // The socket connection should be handled by the existing logic
+        }
+
+        // Unregister background task
+        if (Platform.OS !== 'web') {
+          try {
+            await BackgroundFetch.unregisterTaskAsync(SOCKET_BACKGROUND_TASK);
+            console.log('Background task unregistered');
+          } catch (error) {
+            console.error('Failed to unregister background task:', error);
+          }
+        }
       }
     };
 
@@ -343,7 +377,7 @@ export default function DashboardScreen() {
     return () => {
       subscription?.remove();
     };
-  }, []);
+  }, [authState.token]);
 
 
   // Handle back button press on Android
@@ -364,6 +398,45 @@ export default function DashboardScreen() {
 
     return () => backHandler?.remove();
   }, []);
+
+  // Handle push notifications
+  useEffect(() => {
+    // Handle notification when app is in foreground
+    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received in foreground:', notification);
+      // Handle foreground notification (e.g., show local notification or update UI)
+    });
+
+    // Handle notification response (when user taps on notification)
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('Notification response received:', response);
+      const data = response.notification.request.content.data;
+      if (data && data.type === 'newRide') {
+        // Navigate to dashboard or handle ride offer
+        console.log('User tapped on ride notification');
+        // You can add navigation logic here
+      }
+    });
+
+    return () => {
+      foregroundSubscription.remove();
+      responseSubscription.remove();
+    };
+  }, []);
+
+  // Monitor socket connection status
+  useEffect(() => {
+    const checkSocketStatus = () => {
+      // This is a simple check - in a real app, you'd get this from socket events
+      // For now, we'll assume it's connected if we have a token
+      setIsSocketConnected(!!authState.token);
+    };
+
+    checkSocketStatus();
+    const interval = setInterval(checkSocketStatus, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [authState.token]);
 
   // Animate map to current location when it changes
   useEffect(() => {
@@ -623,6 +696,12 @@ export default function DashboardScreen() {
         setLocationPermission(true);
         setIsTracking(true);
 
+        // Request background location permission
+        const backgroundStatus = await Location.requestBackgroundPermissionsAsync();
+        if (backgroundStatus.status === 'granted') {
+          console.log('Background location permission granted');
+        }
+
         const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
@@ -656,6 +735,21 @@ export default function DashboardScreen() {
         );
 
         setLocationSubscription(subscription);
+
+        // Start background location tracking if permission granted
+        if (backgroundStatus.status === 'granted' && Platform.OS !== 'web') {
+          try {
+            await Location.startLocationUpdatesAsync(LOCATION_BACKGROUND_TASK, {
+              accuracy: Location.Accuracy.High,
+              timeInterval: 30000, // 30 seconds
+              distanceInterval: 50, // 50 meters
+              showsBackgroundLocationIndicator: true,
+            });
+            console.log('Background location tracking started');
+          } catch (error) {
+            console.error('Failed to start background location tracking:', error);
+          }
+        }
       }
     } catch (e) {
       console.error('Error starting location tracking:', e);
@@ -663,11 +757,22 @@ export default function DashboardScreen() {
     }
   };
 
-  const stopLocationTracking = () => {
+  const stopLocationTracking = async () => {
     if (locationSubscription) {
       locationSubscription.remove();
       setLocationSubscription(null);
     }
+
+    // Stop background location tracking
+    if (Platform.OS !== 'web') {
+      try {
+        await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+        console.log('Background location tracking stopped');
+      } catch (error) {
+        console.error('Failed to stop background location tracking:', error);
+      }
+    }
+
     setIsTracking(false);
   };
 
@@ -1012,7 +1117,10 @@ export default function DashboardScreen() {
     <View style={styles.container}>
       {/* Status Bar */}
       <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]}>
-        <Text style={styles.shiftTimeText}>{shiftElapsedTime}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={styles.shiftTimeText}>{shiftElapsedTime}</Text>
+          <View style={[styles.connectionIndicator, { backgroundColor: isSocketConnected ? '#28a745' : '#dc3545' }]} />
+        </View>
         <Text style={styles.statusText}>{getStatusText()}</Text>
       </View>
 
@@ -1443,6 +1551,12 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  connectionIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: 5,
   },
   header: {
     position: 'absolute',

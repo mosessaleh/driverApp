@@ -1,11 +1,15 @@
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { connectSocket } from '../services/socket';
+import { connectSocket, getSocket } from '../services/socket';
+import * as Location from 'expo-location';
 
 const SOCKET_BACKGROUND_TASK = 'socket-background-task';
+const LOCATION_BACKGROUND_TASK = 'location-background-task';
 
 if (Constants.appOwnership !== 'expo') {
   const TaskManager = require('expo-task-manager');
+
+  // Socket reconnection task
   TaskManager.defineTask(SOCKET_BACKGROUND_TASK, async () => {
     try {
       console.log('Running socket background task for driver');
@@ -16,9 +20,16 @@ if (Constants.appOwnership !== 'expo') {
       const vehicleTypeId = vehicleTypeIdStr ? parseInt(vehicleTypeIdStr) : 1;
 
       if (token) {
-        // Reconnect socket
-        connectSocket(token, vehicleTypeId);
-        console.log('Reconnected driver socket in background');
+        const socket = getSocket();
+        if (!socket || !socket.connected) {
+          console.log('Socket not connected, attempting to reconnect');
+          connectSocket(token, vehicleTypeId);
+          console.log('Reconnected driver socket in background');
+        } else {
+          console.log('Socket already connected in background');
+        }
+      } else {
+        console.log('No token found for background socket reconnection');
       }
 
       return 'success';
@@ -27,6 +38,22 @@ if (Constants.appOwnership !== 'expo') {
       return 'failure';
     }
   });
+
+  // Location tracking task
+  TaskManager.defineTask(LOCATION_BACKGROUND_TASK, async ({ data, error }: any) => {
+    if (error) {
+      console.error('Location background task error:', error);
+      return;
+    }
+
+    if (data) {
+      const { locations } = data;
+      console.log('Received location update in background:', locations);
+
+      // Here you can send location to server or handle it
+      // For now, just log it
+    }
+  });
 }
 
-export { SOCKET_BACKGROUND_TASK };
+export { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK };

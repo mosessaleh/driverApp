@@ -42,7 +42,9 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.WAKE_LOCK",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ],
       "config": {
         "googleMaps": {
@@ -63,6 +65,9 @@
             "showBadge": true
           }
         ]
+      },
+      "foregroundService": {
+        "types": ["location"]
       }
     },
     "web": {
@@ -84,6 +89,15 @@
         {
           "color": "#ffffff",
           "defaultChannel": "batch"
+        }
+      ],
+      [
+        "expo-task-manager",
+        {
+          "taskManager": {
+            "socket-background-task": "socketBackgroundTask",
+            "location-background-task": "locationBackgroundTask"
+          }
         }
       ],
       "expo-font"
