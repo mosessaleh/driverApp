@@ -167,3 +167,25 @@ export const requestDriverPasswordReset = async (email: string) => {
 export const updatePushToken = async (pushToken: string, token: string) => {
   return api.post('/api/driver/push-token', { pushToken }, token);
 };
+
+export const getAnalytics = async (token: string, period: string = 'month') => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/driver/analytics?period=${period}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Cache-Control': 'no-cache',
+      },
+    });
+
+    const data = await response.json();
+    return {
+      ok: response.ok,
+      status: response.status,
+      data: data,
+    };
+  } catch (error) {
+    console.error('Analytics fetch error:', error);
+    throw error;
+  }
+};

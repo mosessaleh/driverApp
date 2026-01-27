@@ -1167,6 +1167,17 @@ export default function DashboardScreen() {
               <Text style={styles.menuItemText}>History</Text>
             </TouchableOpacity>
           )}
+          {!activeRide && (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                router.push('/analytics');
+              }}
+            >
+              <Text style={styles.menuItemText}>Analytics</Text>
+            </TouchableOpacity>
+          )}
            <TouchableOpacity
              style={styles.menuItem}
              onPress={() => {
