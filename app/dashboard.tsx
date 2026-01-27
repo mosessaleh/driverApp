@@ -19,6 +19,10 @@ import { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK } from '../src/tasks/s
 
 const { width, height } = Dimensions.get('window');
 
+export const options = {
+  headerShown: false,
+};
+
 export default function DashboardScreen() {
    const { authState, logout } = useAuth();
    const { settings, isDarkMode } = useSettings();
@@ -55,13 +59,18 @@ export default function DashboardScreen() {
    const [chatMessages, setChatMessages] = useState<any[]>([]);
    const [chatInput, setChatInput] = useState('');
    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
-   const [isBatchNotificationActive, setIsBatchNotificationActive] = useState(false);
    const [isSocketConnected, setIsSocketConnected] = useState(false);
+   const [showShiftWarning, setShowShiftWarning] = useState(false);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
+
+  // Animations for bouncing dots
+  const dot1Anim = useRef(new Animated.Value(1)).current;
+  const dot2Anim = useRef(new Animated.Value(1)).current;
+  const dot3Anim = useRef(new Animated.Value(1)).current;
 
   // Slider refs and state
   const sliderPositionRef = useRef(0);
@@ -126,6 +135,43 @@ export default function DashboardScreen() {
     }
   }, [driverOnline, textOpacityAnim]);
 
+  // Animation for bouncing dots
+  useEffect(() => {
+    if (driverOnline && !driverBusy && !activeRide) {
+      const animateDot = (anim: Animated.Value, delay: number) => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(anim, {
+              toValue: 1.5,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      };
+      setTimeout(() => animateDot(dot1Anim, 0), 0);
+      setTimeout(() => animateDot(dot2Anim, 0), 200);
+      setTimeout(() => animateDot(dot3Anim, 0), 400);
+      return () => {
+        dot1Anim.stopAnimation();
+        dot2Anim.stopAnimation();
+        dot3Anim.stopAnimation();
+        dot1Anim.setValue(1);
+        dot2Anim.setValue(1);
+        dot3Anim.setValue(1);
+      };
+    } else {
+      dot1Anim.setValue(1);
+      dot2Anim.setValue(1);
+      dot3Anim.setValue(1);
+    }
+  }, [driverOnline, driverBusy, activeRide, dot1Anim, dot2Anim, dot3Anim]);
+
   useEffect(() => {
     if (authState.token) {
       getCurrentLocation();
@@ -134,9 +180,6 @@ export default function DashboardScreen() {
       if (authState.user?.shiftStartTime) {
         setShiftStartTime(authState.user.shiftStartTime);
       }
-
-      // Load batch notification state
-      loadBatchNotificationState();
 
       // Load driver status after a short delay to ensure socket connection
       const loadInitialStatus = async () => {
@@ -465,7 +508,7 @@ export default function DashboardScreen() {
     }
   }, [bannedUntil]);
 
-  // Shift elapsed time counter
+  // Shift elapsed time counter and warning check
   useEffect(() => {
     if (shiftStartTime) {
       const updateElapsedTime = () => {
@@ -479,6 +522,12 @@ export default function DashboardScreen() {
 
         const formatted = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         setShiftElapsedTime(formatted);
+
+        // Check for 11-hour warning
+        const elapsedHours = (now - start) / (1000 * 60 * 60);
+        if (elapsedHours >= 11 && !showShiftWarning) {
+          setShowShiftWarning(true);
+        }
       };
 
       updateElapsedTime(); // Initial update
@@ -486,8 +535,9 @@ export default function DashboardScreen() {
       return () => clearInterval(interval);
     } else {
       setShiftElapsedTime('00:00:00');
+      setShowShiftWarning(false);
     }
-  }, [shiftStartTime]);
+  }, [shiftStartTime, showShiftWarning]);
 
   // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
   useEffect(() => {
@@ -560,8 +610,20 @@ export default function DashboardScreen() {
       // Set shift start time
       if (res.shiftStartTime) {
         setShiftStartTime(res.shiftStartTime);
+
+        // Check if shift has exceeded 11 hours
+        const start = new Date(res.shiftStartTime).getTime();
+        const now = Date.now();
+        const elapsedHours = (now - start) / (1000 * 60 * 60);
+
+        if (elapsedHours >= 11) {
+          setShowShiftWarning(true);
+        } else {
+          setShowShiftWarning(false);
+        }
       } else {
         setShiftStartTime(null);
+        setShowShiftWarning(false);
       }
 
       // Check for current active ride
@@ -612,64 +674,6 @@ export default function DashboardScreen() {
         console.log(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadDriverStatus(retryCount + 1), delay);
       }
-    }
-  };
-
-  const loadBatchNotificationState = async () => {
-    try {
-      const state = await AsyncStorage.getItem('batchNotificationActive');
-      if (state === 'true') {
-        setIsBatchNotificationActive(true);
-        startBatchNotification();
-      }
-    } catch (error) {
-      console.error('Error loading batch notification state:', error);
-    }
-  };
-
-  const startBatchNotification = async () => {
-    console.log('startBatchNotification called, driverId:', authState.user?.id);
-    if (!authState.token || !authState.user?.id) {
-      console.log('No token or user id');
-      return;
-    }
-    try {
-      const response = await api.post('/api/driver-batch-notification/start', { driverId: authState.user.id }, authState.token);
-      console.log('API response:', response);
-      AsyncStorage.setItem('batchNotificationActive', 'true');
-    } catch (error) {
-      console.error('Error starting batch notification:', error);
-      alert('Error starting batch notification: ' + (error as Error).message);
-    }
-  };
-
-  const stopBatchNotification = async () => {
-    console.log('stopBatchNotification called, driverId:', authState.user?.id);
-    if (!authState.token || !authState.user?.id) {
-      console.log('No token or user id');
-      return;
-    }
-    try {
-      const response = await api.post('/api/driver-batch-notification/stop', { driverId: authState.user.id }, authState.token);
-      console.log('API response:', response);
-      AsyncStorage.setItem('batchNotificationActive', 'false');
-    } catch (error) {
-      console.error('Error stopping batch notification:', error);
-      alert('Error stopping batch notification: ' + (error as Error).message);
-    }
-  };
-
-  const toggleBatchNotification = async () => {
-    console.log('toggleBatchNotification called, active:', isBatchNotificationActive);
-    console.log('authState.user:', authState.user);
-    if (isBatchNotificationActive) {
-      await stopBatchNotification();
-      setIsBatchNotificationActive(false);
-      alert('Batch notification stopped');
-    } else {
-      await startBatchNotification();
-      setIsBatchNotificationActive(true);
-      alert('Batch notification started');
     }
   };
 
@@ -1205,17 +1209,6 @@ export default function DashboardScreen() {
               <Text style={styles.menuItemText}>End Shift</Text>
             </TouchableOpacity>
            )}
-           <TouchableOpacity
-             style={styles.menuItem}
-             onPress={() => {
-               setShowMenu(false);
-               toggleBatchNotification();
-             }}
-           >
-             <Text style={styles.menuItemText}>
-               {isBatchNotificationActive ? 'Stop Batch Notification' : 'Start Batch Notification'}
-             </Text>
-           </TouchableOpacity>
         </View>
       )}
 
@@ -1514,11 +1507,55 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* Shift Warning Modal */}
+      {showShiftWarning && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.shiftWarningModal}>
+            <Text style={styles.shiftWarningTitle}>⚠️ Shift Duration Warning</Text>
+            <Text style={styles.shiftWarningMessage}>
+              Your current shift has exceeded 11 hours, which violates Danish traffic safety regulations.
+            </Text>
+            <Text style={styles.shiftWarningMessage}>
+              You must end your shift immediately. Failure to do so within 1 hour will result in a 3-day suspension from the platform.
+            </Text>
+            <View style={styles.shiftWarningButtons}>
+              <TouchableOpacity
+                style={[styles.shiftWarningButton, styles.shiftEndShiftButton]}
+                onPress={() => {
+                  setShowShiftWarning(false);
+                  setShowEndKMModal(true);
+                }}
+              >
+                <Text style={styles.endShiftButtonText}>End Shift Now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.shiftWarningButton, styles.laterButton]}
+                onPress={() => setShowShiftWarning(false)}
+              >
+                <Text style={styles.laterButtonText}>Remind Me Later</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Floating Go Button */}
       {!driverOnline && (
         <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
           <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>GO</Animated.Text>
         </TouchableOpacity>
+      )}
+
+      {/* Searching for Trips Bar */}
+      {driverOnline && !driverBusy && !activeRide && (
+        <View style={styles.searchingBar}>
+          <View style={styles.dotsContainer}>
+            <Animated.View style={[styles.dot, { transform: [{ scale: dot1Anim }] }]} />
+            <Animated.View style={[styles.dot, { transform: [{ scale: dot2Anim }] }]} />
+            <Animated.View style={[styles.dot, { transform: [{ scale: dot3Anim }] }]} />
+          </View>
+          <Text style={styles.searchingText}>Searching for trips</Text>
+        </View>
       )}
 
     </View>
@@ -2142,5 +2179,90 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  shiftWarningModal: {
+    backgroundColor: isDarkMode ? '#333' : '#fff',
+    margin: 20,
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    alignItems: 'center',
+  },
+  shiftWarningTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#dc3545',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  shiftWarningMessage: {
+    fontSize: 16,
+    color: isDarkMode ? '#ccc' : '#666',
+    textAlign: 'center',
+    marginBottom: 10,
+    lineHeight: 22,
+  },
+  shiftWarningButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: 20,
+  },
+  shiftWarningButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  shiftEndShiftButton: {
+    backgroundColor: '#dc3545',
+  },
+  laterButton: {
+    backgroundColor: '#6c757d',
+  },
+  endShiftButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  laterButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  searchingBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 70,
+    backgroundColor: '#fff',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    zIndex: 1000,
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#007bff',
+    marginHorizontal: 5,
+  },
+  searchingText: {
+    color: '#000',
+    fontSize: 16,
   },
 });
