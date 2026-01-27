@@ -4,6 +4,7 @@ import { SettingsProvider } from '../src/context/SettingsContext';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
+import '../src/i18n';
 
 // Configure notifications
 Notifications.setNotificationHandler({

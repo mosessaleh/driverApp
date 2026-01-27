@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, 
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
+import { useTranslation } from '../src/hooks/useTranslation';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift } from '../src/services/api';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
@@ -24,9 +25,10 @@ export const options = {
 };
 
 export default function DashboardScreen() {
-   const { authState, logout } = useAuth();
-   const { settings, isDarkMode } = useSettings();
-   const router = useRouter();
+    const { authState, logout } = useAuth();
+    const { settings, isDarkMode, isRTL } = useSettings();
+    const { t } = useTranslation();
+    const router = useRouter();
    const [driverOnline, setDriverOnline] = useState(false);
    const [driverBusy, setDriverBusy] = useState(false);
    const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
@@ -1102,10 +1104,10 @@ export default function DashboardScreen() {
   };
 
   const getStatusText = () => {
-    if (bannedUntil && banCountdown > 0) return `Banned - ${banCountdown}s`;
-    if (!driverOnline) return 'Offline';
-    if (driverBusy) return 'Online - Busy';
-    return 'Online - Available';
+    if (bannedUntil && banCountdown > 0) return `${t('banned')} - ${banCountdown}${t('seconds')}`;
+    if (!driverOnline) return t('offline');
+    if (driverBusy) return `${t('online')} - ${t('busy')}`;
+    return `${t('online')} - ${t('available')}`;
   };
 
   const getStatusColor = () => {
@@ -1153,7 +1155,7 @@ export default function DashboardScreen() {
                 goToProfile();
               }}
             >
-              <Text style={styles.menuItemText}>Profile</Text>
+              <Text style={styles.menuItemText}>{t('profile')}</Text>
             </TouchableOpacity>
           )}
           {!activeRide && (
@@ -1164,7 +1166,7 @@ export default function DashboardScreen() {
                 router.push('/history');
               }}
             >
-              <Text style={styles.menuItemText}>History</Text>
+              <Text style={styles.menuItemText}>{t('history')}</Text>
             </TouchableOpacity>
           )}
           {!activeRide && (
@@ -1175,7 +1177,7 @@ export default function DashboardScreen() {
                 router.push('/analytics');
               }}
             >
-              <Text style={styles.menuItemText}>Analytics</Text>
+              <Text style={styles.menuItemText}>{t('analytics')}</Text>
             </TouchableOpacity>
           )}
            <TouchableOpacity
@@ -1185,7 +1187,7 @@ export default function DashboardScreen() {
                goToSettings();
              }}
            >
-             <Text style={styles.menuItemText}>Settings</Text>
+             <Text style={styles.menuItemText}>{t('settings')}</Text>
            </TouchableOpacity>
            {!driverBusy && driverOnline && !bannedUntil && (
              <TouchableOpacity
@@ -1195,7 +1197,7 @@ export default function DashboardScreen() {
                  handleToggleBusy();
                }}
              >
-               <Text style={styles.menuItemText}>Pause</Text>
+               <Text style={styles.menuItemText}>{t('pause')}</Text>
              </TouchableOpacity>
            )}
            {driverBusy && driverOnline && !bannedUntil && (
@@ -1206,7 +1208,7 @@ export default function DashboardScreen() {
                  handleToggleBusy();
                }}
              >
-               <Text style={styles.menuItemText}>End Pause</Text>
+               <Text style={styles.menuItemText}>{t('end_pause')}</Text>
              </TouchableOpacity>
            )}
            {!activeRide && (
@@ -1217,7 +1219,7 @@ export default function DashboardScreen() {
                 setShowEndKMModal(true);
               }}
             >
-              <Text style={styles.menuItemText}>End Shift</Text>
+              <Text style={styles.menuItemText}>{t('end_shift')}</Text>
             </TouchableOpacity>
            )}
         </View>
@@ -1361,7 +1363,7 @@ export default function DashboardScreen() {
                 style={styles.rideNavButton}
                 onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
               >
-                <Text style={styles.rideNavButtonText}>NAV</Text>
+                <Text style={styles.rideNavButtonText}>{t('nav')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.chatButton}
@@ -1371,7 +1373,7 @@ export default function DashboardScreen() {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.chatButtonText}>💬 Chat</Text>
+                  <Text style={styles.chatButtonText}>💬 {t('chat')}</Text>
                   {unreadMessagesCount > 0 && (
                     <View style={styles.unreadBadge}>
                       <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
@@ -1386,7 +1388,7 @@ export default function DashboardScreen() {
                     <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>Picking up passenger...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.pickupButtonText}>Hold to Pick Up</Text>
+                  <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1416,7 +1418,7 @@ export default function DashboardScreen() {
                     <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>Dropping off...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.dropoffButtonText}>Hold to Drop Off</Text>
+                  <Text style={styles.dropoffButtonText}>{t('hold_to_dropoff')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1565,7 +1567,7 @@ export default function DashboardScreen() {
             <Animated.View style={[styles.dot, { transform: [{ scale: dot2Anim }] }]} />
             <Animated.View style={[styles.dot, { transform: [{ scale: dot3Anim }] }]} />
           </View>
-          <Text style={styles.searchingText}>Searching for trips</Text>
+          <Text style={styles.searchingText}>{t('searching_trips')}</Text>
         </View>
       )}
 

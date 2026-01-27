@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../src/context/AuthContext';
+import { useSettings } from '../src/context/SettingsContext';
+import { useTranslation } from '../src/hooks/useTranslation';
 
 interface Settings {
   notifications: {
@@ -187,43 +189,8 @@ const getSettingsStyles = (isDarkMode: boolean) => StyleSheet.create({
 });
 
 export default function SettingsScreen() {
-   const [settings, setSettings] = useState<Settings>(defaultSettings);
-   const isDarkMode = settings.appearance.darkMode;
-
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    try {
-      const savedSettings = await AsyncStorage.getItem('driverSettings');
-      if (savedSettings) {
-        setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
-  };
-
-  const saveSettings = async (newSettings: Settings) => {
-    try {
-      await AsyncStorage.setItem('driverSettings', JSON.stringify(newSettings));
-      setSettings(newSettings);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  };
-
-  const updateSetting = (category: keyof Settings, key: string, value: any) => {
-    const newSettings = {
-      ...settings,
-      [category]: {
-        ...settings[category],
-        [key]: value,
-      },
-    };
-    saveSettings(newSettings);
-  };
+    const { settings, updateSetting, isDarkMode, isRTL } = useSettings();
+    const { t, changeLanguage } = useTranslation();
 
 
   const styles = getSettingsStyles(isDarkMode);
@@ -231,15 +198,15 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={styles.title}>{t('settings')}</Text>
       </View>
 
       {/* Notification Settings */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notification Settings</Text>
+        <Text style={styles.sectionTitle}>{t('notification_settings')}</Text>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>New Ride Notifications</Text>
+          <Text style={styles.settingLabel}>{t('new_ride_notifications')}</Text>
           <Switch
             value={settings.notifications.rideOffers}
             onValueChange={(value) => updateSetting('notifications', 'rideOffers', value)}
@@ -247,7 +214,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Message Notifications</Text>
+          <Text style={styles.settingLabel}>{t('message_notifications')}</Text>
           <Switch
             value={settings.notifications.chatMessages}
             onValueChange={(value) => updateSetting('notifications', 'chatMessages', value)}
@@ -255,7 +222,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Ride Update Notifications</Text>
+          <Text style={styles.settingLabel}>{t('ride_update_notifications')}</Text>
           <Switch
             value={settings.notifications.rideUpdates}
             onValueChange={(value) => updateSetting('notifications', 'rideUpdates', value)}
@@ -263,7 +230,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Vibration</Text>
+          <Text style={styles.settingLabel}>{t('vibration')}</Text>
           <Switch
             value={settings.notifications.vibration}
             onValueChange={(value) => updateSetting('notifications', 'vibration', value)}
@@ -273,10 +240,10 @@ export default function SettingsScreen() {
 
       {/* Sound Settings */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sound Settings</Text>
+        <Text style={styles.sectionTitle}>{t('sound_settings')}</Text>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Message Sound</Text>
+          <Text style={styles.settingLabel}>{t('message_sound')}</Text>
           <Switch
             value={settings.sound.messageSound}
             onValueChange={(value) => updateSetting('sound', 'messageSound', value)}
@@ -284,7 +251,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Pickup & Dropoff Sound</Text>
+          <Text style={styles.settingLabel}>{t('pickup_dropoff_sound')}</Text>
           <Switch
             value={settings.sound.pickupDropoffSound}
             onValueChange={(value) => updateSetting('sound', 'pickupDropoffSound', value)}
@@ -294,54 +261,71 @@ export default function SettingsScreen() {
 
       {/* Appearance Settings */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Appearance Settings</Text>
+        <Text style={styles.sectionTitle}>{t('appearance_settings')}</Text>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Dark Mode</Text>
+          <Text style={styles.settingLabel}>{t('dark_mode')}</Text>
           <Switch
             value={settings.appearance.darkMode}
             onValueChange={(value) => updateSetting('appearance', 'darkMode', value)}
           />
         </View>
 
-
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>Language</Text>
+          <Text style={styles.settingLabel}>{t('language')}</Text>
           <View style={styles.languageOptions}>
             <TouchableOpacity
               style={[styles.languageButton, settings.appearance.language === 'en' && styles.selectedLanguage]}
-              onPress={() => updateSetting('appearance', 'language', 'en')}
+              onPress={() => {
+                updateSetting('appearance', 'language', 'en');
+                changeLanguage('en');
+              }}
             >
               <Text style={styles.languageText}>English</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.languageButton, settings.appearance.language === 'ar' && styles.selectedLanguage]}
+              onPress={() => {
+                updateSetting('appearance', 'language', 'ar');
+                changeLanguage('ar');
+              }}
+            >
+              <Text style={styles.languageText}>العربية</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.languageButton, settings.appearance.language === 'da' && styles.selectedLanguage]}
+              onPress={() => {
+                updateSetting('appearance', 'language', 'da');
+                changeLanguage('da');
+              }}
+            >
+              <Text style={styles.languageText}>Dansk</Text>
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-
-
-
       {/* General Settings */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>General Settings</Text>
+        <Text style={styles.sectionTitle}>{t('general_settings')}</Text>
 
-        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert('Clear Cache', 'Cache cleared successfully')}>
-          <Text style={styles.settingLabel}>Clear Cache</Text>
+        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert(t('clear_cache'), 'Cache cleared successfully')}>
+          <Text style={styles.settingLabel}>{t('clear_cache')}</Text>
           <Text style={{ color: '#007bff' }}></Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert('Report Issue', 'This feature will be implemented soon')}>
-          <Text style={styles.settingLabel}>Report Issue</Text>
+        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert(t('report_issue'), 'This feature will be implemented soon')}>
+          <Text style={styles.settingLabel}>{t('report_issue')}</Text>
           <Text style={{ color: '#007bff' }}></Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert('Contact Support', 'This feature will be implemented soon')}>
-          <Text style={styles.settingLabel}>Contact Support</Text>
+        <TouchableOpacity style={styles.settingItem} onPress={() => Alert.alert(t('contact_support'), 'This feature will be implemented soon')}>
+          <Text style={styles.settingLabel}>{t('contact_support')}</Text>
           <Text style={{ color: '#007bff' }}></Text>
         </TouchableOpacity>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>App Version</Text>
+          <Text style={styles.settingLabel}>{t('app_version')}</Text>
           <Text style={styles.settingLabel}>{settings.general.appVersion}</Text>
         </View>
       </View>
