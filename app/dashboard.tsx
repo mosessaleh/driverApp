@@ -63,6 +63,7 @@ export default function DashboardScreen() {
    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
    const [isSocketConnected, setIsSocketConnected] = useState(false);
    const [showShiftWarning, setShowShiftWarning] = useState(false);
+   const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -410,8 +411,13 @@ export default function DashboardScreen() {
           try {
             await BackgroundFetch.unregisterTaskAsync(SOCKET_BACKGROUND_TASK);
             console.log('Background task unregistered');
-          } catch (error) {
-            console.error('Failed to unregister background task:', error);
+          } catch (error: any) {
+            // Check if the error is because the task is not found (already unregistered or never registered)
+            if (error.message && (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))) {
+              console.log('Background task was not registered, skipping unregister');
+            } else {
+              console.error('Failed to unregister background task:', error);
+            }
           }
         }
       }
@@ -527,8 +533,15 @@ export default function DashboardScreen() {
 
         // Check for 11-hour warning
         const elapsedHours = (now - start) / (1000 * 60 * 60);
-        if (elapsedHours >= 11 && !showShiftWarning) {
+        if (elapsedHours >= 11 && !showShiftWarning && !suppressShiftWarning) {
           setShowShiftWarning(true);
+          if (!driverBusy && authState.token) {
+            toggleDriverBusy(true, authState.token).then(res => {
+              if (res.success) {
+                setDriverBusy(true);
+              }
+            });
+          }
         }
       };
 
@@ -539,7 +552,7 @@ export default function DashboardScreen() {
       setShiftElapsedTime('00:00:00');
       setShowShiftWarning(false);
     }
-  }, [shiftStartTime, showShiftWarning]);
+  }, [shiftStartTime, showShiftWarning, suppressShiftWarning]);
 
   // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
   useEffect(() => {
@@ -618,8 +631,15 @@ export default function DashboardScreen() {
         const now = Date.now();
         const elapsedHours = (now - start) / (1000 * 60 * 60);
 
-        if (elapsedHours >= 11) {
+        if (elapsedHours >= 11 && !suppressShiftWarning) {
           setShowShiftWarning(true);
+          if (!driverBusy && authState.token) {
+            toggleDriverBusy(true, authState.token).then(res => {
+              if (res.success) {
+                setDriverBusy(true);
+              }
+            });
+          }
         } else {
           setShowShiftWarning(false);
         }
@@ -1155,6 +1175,7 @@ export default function DashboardScreen() {
                 goToProfile();
               }}
             >
+              <Text style={styles.menuItemIcon}>👤</Text>
               <Text style={styles.menuItemText}>{t('profile')}</Text>
             </TouchableOpacity>
           )}
@@ -1166,6 +1187,7 @@ export default function DashboardScreen() {
                 router.push('/history');
               }}
             >
+              <Text style={styles.menuItemIcon}>📋</Text>
               <Text style={styles.menuItemText}>{t('history')}</Text>
             </TouchableOpacity>
           )}
@@ -1177,51 +1199,56 @@ export default function DashboardScreen() {
                 router.push('/analytics');
               }}
             >
+              <Text style={styles.menuItemIcon}>📊</Text>
               <Text style={styles.menuItemText}>{t('analytics')}</Text>
             </TouchableOpacity>
           )}
-           <TouchableOpacity
-             style={styles.menuItem}
-             onPress={() => {
-               setShowMenu(false);
-               goToSettings();
-             }}
-           >
-             <Text style={styles.menuItemText}>{t('settings')}</Text>
-           </TouchableOpacity>
-           {!driverBusy && driverOnline && !bannedUntil && (
-             <TouchableOpacity
-               style={styles.menuItem}
-               onPress={() => {
-                 setShowMenu(false);
-                 handleToggleBusy();
-               }}
-             >
-               <Text style={styles.menuItemText}>{t('pause')}</Text>
-             </TouchableOpacity>
-           )}
-           {driverBusy && driverOnline && !bannedUntil && (
-             <TouchableOpacity
-               style={styles.menuItem}
-               onPress={() => {
-                 setShowMenu(false);
-                 handleToggleBusy();
-               }}
-             >
-               <Text style={styles.menuItemText}>{t('end_pause')}</Text>
-             </TouchableOpacity>
-           )}
-           {!activeRide && (
             <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                goToSettings();
+              }}
+            >
+              <Text style={styles.menuItemIcon}>⚙️</Text>
+              <Text style={styles.menuItemText}>{t('settings')}</Text>
+            </TouchableOpacity>
+            {!driverBusy && driverOnline && !bannedUntil && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleToggleBusy();
+                }}
+              >
+                <Text style={styles.menuItemIcon}>⏸️</Text>
+                <Text style={styles.menuItemText}>{t('pause')}</Text>
+              </TouchableOpacity>
+            )}
+            {driverBusy && driverOnline && !bannedUntil && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleToggleBusy();
+                }}
+              >
+                <Text style={styles.menuItemIcon}>▶️</Text>
+                <Text style={styles.menuItemText}>{t('end_pause')}</Text>
+              </TouchableOpacity>
+            )}
+            {!activeRide && (
+             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
                 setShowMenu(false);
                 setShowEndKMModal(true);
               }}
             >
+              <Text style={styles.menuItemIcon}>🏁</Text>
               <Text style={styles.menuItemText}>{t('end_shift')}</Text>
             </TouchableOpacity>
-           )}
+            )}
         </View>
       )}
 
@@ -1324,6 +1351,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.endShiftButton, styles.cancelButton]}
                 onPress={() => {
+                  setSuppressShiftWarning(false);
                   setShowEndKMModal(false);
                   setEndKM('');
                 }}
@@ -1535,6 +1563,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.shiftWarningButton, styles.shiftEndShiftButton]}
                 onPress={() => {
+                  setSuppressShiftWarning(true);
                   setShowShiftWarning(false);
                   setShowEndKMModal(true);
                 }}
@@ -1578,7 +1607,7 @@ export default function DashboardScreen() {
 const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDarkMode ? '#121212' : '#f5f5f5',
+    backgroundColor: isDarkMode ? '#0f0f0f' : '#ffffff',
   },
   statusBar: {
     position: 'absolute',
@@ -1589,24 +1618,42 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
+    backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)',
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? '#333' : '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
     zIndex: 1000,
   },
   statusText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   shiftTimeText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
   connectionIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginLeft: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginLeft: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 3,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)',
   },
   header: {
     position: 'absolute',
@@ -1615,47 +1662,59 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     zIndex: 1000,
   },
   menuButton: {
-    width: 40,
-    height: 40,
+    width: 50,
+    height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 8,
+    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 25,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
   },
   hamburgerLine: {
-    width: 20,
-    height: 2,
+    width: 24,
+    height: 3,
     backgroundColor: isDarkMode ? '#fff' : '#333',
     marginVertical: 2,
+    borderRadius: 1.5,
   },
   menuOverlay: {
     position: 'absolute',
-    top: 100,
+    top: 130,
     left: 20,
-    backgroundColor: isDarkMode ? '#333' : '#fff',
-    borderRadius: 8,
+    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)',
+    borderRadius: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    minWidth: 150,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+    minWidth: 200,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
     zIndex: 1000,
   },
   menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? '#555' : '#f0f0f0',
+    borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+  },
+  menuItemIcon: {
+    fontSize: 18,
   },
   menuItemText: {
     fontSize: 16,
     color: isDarkMode ? '#fff' : '#333',
+    fontWeight: '500',
+    marginLeft: 12,
   },
   mapContainer: {
     position: 'absolute',
@@ -1730,23 +1789,28 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     zIndex: 1000,
   },
   rideModalCard: {
-    backgroundColor: isDarkMode ? '#333' : 'white',
+    backgroundColor: isDarkMode ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.95)',
     margin: 20,
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 20,
+    padding: 25,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 15,
     alignItems: 'center',
     position: 'relative',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
   },
   rideModalPrice: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
-    marginBottom: 8,
+    color: '#28a745',
+    marginBottom: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   rideModalDistance: {
     fontSize: 16,
@@ -1791,30 +1855,50 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   pickupButton: {
     backgroundColor: '#28a745',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 25,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#28a745',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   pickupButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   dropoffButton: {
     backgroundColor: '#dc3545',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 25,
     width: '100%',
     alignItems: 'center',
+    shadowColor: '#dc3545',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   dropoffButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   sliderContainer: {
     width: '100%',
@@ -1929,31 +2013,30 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   floatingGoButton: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 40,
     left: '50%',
-    marginLeft: -40, // Half of width to center
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    marginLeft: -45, // Half of width to center
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: '#28a745',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 15,
-    // Add gradient-like effect with border
-    borderWidth: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 20,
+    borderWidth: 4,
     borderColor: '#fff',
   },
   floatingGoButtonText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
   rideOfferModal: {
     position: 'absolute',
@@ -1967,17 +2050,19 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     zIndex: 3000,
   },
   rideOfferCard: {
-    backgroundColor: isDarkMode ? '#333' : 'white',
+    backgroundColor: isDarkMode ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.95)',
     margin: 20,
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 20,
+    padding: 25,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 15,
     alignItems: 'center',
-    minWidth: 300,
+    minWidth: 320,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
   },
   rideOfferTitle: {
     fontSize: 20,
@@ -2027,19 +2112,39 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   acceptButton: {
     backgroundColor: '#28a745',
+    shadowColor: '#28a745',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   rejectButton: {
     backgroundColor: '#dc3545',
+    shadowColor: '#dc3545',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   acceptButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   rejectButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   callIconInModal: {
     position: 'absolute',
@@ -2253,14 +2358,21 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
-    backgroundColor: '#fff',
+    height: 80,
+    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.9)' : 'rgba(255,255,255,0.9)',
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 10,
     zIndex: 1000,
+    borderTopWidth: 1,
+    borderTopColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   dotsContainer: {
     flexDirection: 'row',
@@ -2275,7 +2387,11 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     marginHorizontal: 5,
   },
   searchingText: {
-    color: '#000',
-    fontSize: 16,
+    color: isDarkMode ? '#fff' : '#333',
+    fontSize: 18,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
 });
