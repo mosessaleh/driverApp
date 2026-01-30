@@ -11,7 +11,7 @@ import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
@@ -66,6 +66,15 @@ export default function DashboardScreen() {
    const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
    const [cancelCountdown, setCancelCountdown] = useState(0);
    const [showCancelText, setShowCancelText] = useState(false);
+   const [showCancelModal, setShowCancelModal] = useState(false);
+   const [cancelStep, setCancelStep] = useState<'reason' | 'confirm' | 'loading' | 'success' | 'error'>('reason');
+   const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
+   const [cancelFeeEstimate, setCancelFeeEstimate] = useState<number>(0);
+   const [cancelTimeElapsed, setCancelTimeElapsed] = useState<number>(0);
+   const [cancelDistanceEstimate, setCancelDistanceEstimate] = useState<number>(0);
+   const [cancelErrorMessage, setCancelErrorMessage] = useState<string>('');
+   const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
+   const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -349,24 +358,63 @@ export default function DashboardScreen() {
       onNewMessage(handleNewMessage);
 
       // Listen for pickup proximity notifications
-      const handlePickupProximity = (data: { rideId: number; distanceMeters: number }) => {
+      const handlePickupProximity = async (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => {
         console.log('Received pickup proximity notification:', data);
+        // Only show countdown text, NOT the cancel button yet
         setShowCancelText(true);
-        setCancelCountdown(300); // 5 minutes in seconds
+        setPickupCountdownStart(data.countdownStart);
+        setPickupCountdownDuration(data.countdownDuration);
 
-        const interval = setInterval(() => {
-          setCancelCountdown(prev => {
-            if (prev <= 1) {
-              setShowCancelText(false);
-              clearInterval(interval);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
+        // Save to AsyncStorage to persist across app restarts
+        try {
+          await AsyncStorage.setItem(`pickupCountdown_${data.rideId}`, JSON.stringify({
+            countdownStart: data.countdownStart,
+            countdownDuration: data.countdownDuration,
+            expired: false
+          }));
+        } catch (error) {
+          console.error('Error saving pickup countdown to AsyncStorage:', error);
+        }
+
+        // Start countdown
+        const startCountdown = () => {
+          const interval = setInterval(() => {
+            const now = Date.now();
+            const elapsed = Math.floor((now - data.countdownStart) / 1000);
+            const remaining = data.countdownDuration - elapsed;
+
+            setCancelCountdown(prev => {
+              if (remaining <= 0) {
+                clearInterval(interval);
+                // Countdown finished - show cancel button and clean up
+                AsyncStorage.removeItem(`pickupCountdown_${data.rideId}`).catch(console.error);
+                return 0;
+              }
+              return remaining;
+            });
+          }, 1000);
+        };
+
+        startCountdown();
+      };
+
+      // Listen for pickup countdown expired notification from server
+      const handlePickupCountdownExpired = async (data: { rideId: number }) => {
+        console.log('Received pickup countdown expired notification:', data);
+        // Show cancel button immediately when server confirms countdown expired
+        setCancelCountdown(0);
+        // Clean up AsyncStorage
+        try {
+          await AsyncStorage.removeItem(`pickupCountdown_${data.rideId}`);
+        } catch (error) {
+          console.error('Error removing pickup countdown from AsyncStorage:', error);
+        }
       };
 
       onPickupProximity(handlePickupProximity);
+
+      // Listen for pickup countdown expired from server
+      onPickupCountdownExpired(handlePickupCountdownExpired);
 
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
@@ -384,6 +432,7 @@ export default function DashboardScreen() {
         offRideCancelled();
         offNewMessage();
         offPickupProximity();
+        offPickupCountdownExpired();
         if (offerTimeout) {
           clearInterval(offerTimeout);
         }
@@ -692,6 +741,47 @@ export default function DashboardScreen() {
                 );
               }
             }, 1000);
+
+            // Check for existing pickup countdown in AsyncStorage
+            try {
+              const countdownData = await AsyncStorage.getItem(`pickupCountdown_${ride.id}`);
+              if (countdownData) {
+                const { countdownStart, countdownDuration } = JSON.parse(countdownData);
+                const now = Date.now();
+                const elapsed = Math.floor((now - countdownStart) / 1000);
+                const remaining = countdownDuration - elapsed;
+                if (remaining > 0) {
+                  // Countdown still running - show countdown text only
+                  setShowCancelText(true);
+                  setPickupCountdownStart(countdownStart);
+                  setPickupCountdownDuration(countdownDuration);
+                  setCancelCountdown(remaining);
+
+                  // Resume countdown
+                  const interval = setInterval(() => {
+                    const nowInner = Date.now();
+                    const elapsedInner = Math.floor((nowInner - countdownStart) / 1000);
+                    const remainingInner = countdownDuration - elapsedInner;
+                    setCancelCountdown(prev => {
+                      if (remainingInner <= 0) {
+                        clearInterval(interval);
+                        AsyncStorage.removeItem(`pickupCountdown_${ride.id}`).catch(console.error);
+                        return 0;
+                      }
+                      return remainingInner;
+                    });
+                  }, 1000);
+                } else {
+                  // Countdown already expired - show cancel button immediately
+                  console.log(`Countdown already expired for ride ${ride.id}, showing cancel button`);
+                  setShowCancelText(true);
+                  setCancelCountdown(0);
+                  AsyncStorage.removeItem(`pickupCountdown_${ride.id}`).catch(console.error);
+                }
+              }
+            } catch (error) {
+              console.error('Error loading pickup countdown from AsyncStorage:', error);
+            }
           } else if (ride.status === 'PICKED_UP') {
             // Picked up, show dropoff modal
             setActiveRide(ride);
@@ -710,6 +800,17 @@ export default function DashboardScreen() {
         setActiveRide(null);
         setShowPickupModal(false);
         setShowDropoffModal(false);
+        setShowCancelText(false);
+        setCancelCountdown(0);
+        setPickupCountdownStart(null);
+        // Clean up any remaining countdown data
+        try {
+          const keys = await AsyncStorage.getAllKeys();
+          const countdownKeys = keys.filter(key => key.startsWith('pickupCountdown_'));
+          await AsyncStorage.multiRemove(countdownKeys);
+        } catch (error) {
+          console.error('Error cleaning up countdown data:', error);
+        }
       }
     } catch (e) {
       console.error('Error loading driver status:', e);
@@ -914,6 +1015,16 @@ export default function DashboardScreen() {
     setActiveRide((prev: any) => prev ? { ...prev, status: 'PICKED_UP' } : null);
     setShowPickupModal(false);
     setShowDropoffModal(true);
+    // Clear cancel countdown
+    setShowCancelText(false);
+    setCancelCountdown(0);
+    setPickupCountdownStart(null);
+    // Clean up AsyncStorage
+    try {
+      await AsyncStorage.removeItem(`pickupCountdown_${rideId}`);
+    } catch (error) {
+      console.error('Error removing pickup countdown from AsyncStorage:', error);
+    }
     // Clear previous route and fetch new route from pickup to dropoff
     setRouteCoordinates([]);
     fetchDirections(
@@ -989,6 +1100,115 @@ export default function DashboardScreen() {
       alert('Error completing ride');
     } finally {
       setIsDropoffLoading(false);
+    }
+  };
+
+  // Calculate cancellation fee estimate based on time and distance
+  const calculateCancelFeeEstimate = () => {
+    if (!activeRide?.acceptedAt) return { fee: 0, timeMin: 0, distanceKm: 0 };
+    
+    const acceptedAt = new Date(activeRide.acceptedAt).getTime();
+    const now = Date.now();
+    const timeDiffMs = now - acceptedAt;
+    const timeDiffMin = Math.floor(timeDiffMs / (1000 * 60));
+    
+    // Estimate distance based on average speed of 30 km/h
+    const averageSpeedKmh = 30;
+    const distanceKm = (timeDiffMin / 60) * averageSpeedKmh;
+    
+    // Calculate approximate fee (base + per km + per min)
+    // Using approximate rates: base 30 DKK, 15 DKK/km, 2 DKK/min
+    const basePrice = 30;
+    const perKmPrice = 15;
+    const perMinPrice = 2;
+    
+    const fee = Math.round(basePrice + (distanceKm * perKmPrice) + (timeDiffMin * perMinPrice));
+    
+    return { fee, timeMin: timeDiffMin, distanceKm: Math.round(distanceKm * 10) / 10 };
+  };
+
+  const handleCancelRide = async (reason: string) => {
+    const rideId = activeRide?.id;
+    if (!rideId) return;
+    
+    setCancelStep('loading');
+    
+    try {
+      const res = await api.put(`/api/driver/rides/${rideId}/cancel`, {
+        reason: reason,
+        canceledBy: 'driver'
+      }, authState.token!);
+      
+      if (res.ok) {
+        setCancelStep('success');
+        // Wait a bit then close and reset
+        setTimeout(async () => {
+          setShowCancelModal(false);
+          setCancelStep('reason');
+          setSelectedCancelReason(null);
+          setShowPickupModal(false);
+          setActiveRide(null);
+          setCurrentRideId(null);
+          setRouteCoordinates([]);
+          setShowCancelText(false);
+          setCancelCountdown(0);
+          setPickupCountdownStart(null);
+          
+          // Clean up AsyncStorage
+          try {
+            await AsyncStorage.removeItem(`pickupCountdown_${rideId}`);
+          } catch (error) {
+            console.error('Error removing pickup countdown from AsyncStorage:', error);
+          }
+          
+          // Reload driver status to update busy state
+          await loadDriverStatus();
+        }, 2000);
+      } else {
+        setCancelStep('error');
+        setCancelErrorMessage(res.error || t('cancel_ride_error_message'));
+      }
+    } catch (e: any) {
+      console.error('Error canceling ride:', e);
+      setCancelStep('error');
+      setCancelErrorMessage(e?.message || t('cancel_ride_error_message'));
+    }
+  };
+
+  const openCancelModal = () => {
+    const estimate = calculateCancelFeeEstimate();
+    setCancelFeeEstimate(estimate.fee);
+    setCancelTimeElapsed(estimate.timeMin);
+    setCancelDistanceEstimate(estimate.distanceKm);
+    setCancelStep('reason');
+    setSelectedCancelReason(null);
+    setCancelErrorMessage('');
+    setShowCancelModal(true);
+  };
+
+  const closeCancelModal = () => {
+    if (cancelStep === 'loading') return; // Prevent closing while processing
+    setShowCancelModal(false);
+    setTimeout(() => {
+      setCancelStep('reason');
+      setSelectedCancelReason(null);
+      setCancelErrorMessage('');
+    }, 300);
+  };
+
+  const selectCancelReason = (reason: string) => {
+    setSelectedCancelReason(reason);
+    setCancelStep('confirm');
+  };
+
+  const goBackToReason = () => {
+    setCancelStep('reason');
+    setSelectedCancelReason(null);
+  };
+
+  const confirmCancelRide = () => {
+    if (selectedCancelReason) {
+      handleCancelRide(selectedCancelReason);
     }
   };
 
@@ -1442,12 +1662,162 @@ export default function DashboardScreen() {
                   <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
                 )}
               </TouchableOpacity>
-              {showCancelText && (
+              {showCancelText && cancelCountdown > 0 && (
                 <Text style={styles.cancelOnText}>
                   Cancel on: {Math.floor(cancelCountdown / 60)}:{(cancelCountdown % 60).toString().padStart(2, '0')}
                 </Text>
               )}
+              {showCancelText && cancelCountdown === 0 && (
+                <TouchableOpacity style={styles.cancelRideButton} onPress={openCancelModal}>
+                  <Text style={styles.cancelRideButtonText}>{t('cancel_ride')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
+          </View>
+        </View>
+      )}
+
+      {/* Cancel Ride Modal - New Design */}
+      {showCancelModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.cancelModalCard}>
+            {/* Header */}
+            <View style={styles.cancelModalHeader}>
+              <Text style={styles.cancelModalTitle}>
+                {cancelStep === 'reason' && t('cancel_ride_title')}
+                {cancelStep === 'confirm' && t('cancel_ride_confirm_title')}
+                {cancelStep === 'loading' && t('cancel_ride_processing')}
+                {cancelStep === 'success' && t('cancel_ride_success')}
+                {cancelStep === 'error' && t('cancel_ride_error')}
+              </Text>
+              {cancelStep !== 'loading' && (
+                <TouchableOpacity onPress={closeCancelModal} style={styles.cancelModalCloseButton}>
+                  <Text style={styles.cancelModalCloseText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Step 1: Select Reason */}
+            {cancelStep === 'reason' && (
+              <View style={styles.cancelStepContainer}>
+                <Text style={styles.cancelModalSubtitle}>{t('cancel_ride_subtitle')}</Text>
+                
+                {/* Warning Banner */}
+                <View style={styles.cancelWarningBanner}>
+                  <Text style={styles.cancelWarningIcon}>⚠️</Text>
+                  <Text style={styles.cancelWarningText}>{t('cancel_ride_warning')}</Text>
+                </View>
+
+                {/* Fee Estimate Preview */}
+                <View style={styles.cancelFeePreview}>
+                  <View style={styles.cancelFeeRow}>
+                    <Text style={styles.cancelFeeLabel}>{t('cancel_ride_time_elapsed')}</Text>
+                    <Text style={styles.cancelFeeValue}>{cancelTimeElapsed} {t('minutes_short')}</Text>
+                  </View>
+                  <View style={styles.cancelFeeRow}>
+                    <Text style={styles.cancelFeeLabel}>{t('cancel_ride_distance_traveled')}</Text>
+                    <Text style={styles.cancelFeeValue}>{cancelDistanceEstimate} {t('kilometers_short')}</Text>
+                  </View>
+                  <View style={[styles.cancelFeeRow, styles.cancelFeeTotal]}>
+                    <Text style={styles.cancelFeeTotalLabel}>{t('cancel_ride_fee_estimate')}</Text>
+                    <Text style={styles.cancelFeeTotalValue}>{cancelFeeEstimate} DKK</Text>
+                  </View>
+                </View>
+
+                {/* Reason Options */}
+                <View style={styles.cancelReasonsList}>
+                  {[
+                    { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
+                    { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
+                    { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
+                    { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
+                    { key: 'emergency', icon: '🆘', color: '#dc3545' },
+                    { key: 'other_reason', icon: '📝', color: '#6c757d' },
+                  ].map((reason) => (
+                    <TouchableOpacity
+                      key={reason.key}
+                      style={[styles.cancelReasonOption, { borderLeftColor: reason.color }]}
+                      onPress={() => selectCancelReason(reason.key)}
+                    >
+                      <Text style={styles.cancelReasonIcon}>{reason.icon}</Text>
+                      <Text style={styles.cancelReasonOptionText}>{t(reason.key)}</Text>
+                      <Text style={styles.cancelReasonArrow}>›</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Step 2: Confirm Cancellation */}
+            {cancelStep === 'confirm' && (
+              <View style={styles.cancelStepContainer}>
+                <View style={styles.cancelConfirmIconContainer}>
+                  <Text style={styles.cancelConfirmIcon}>⚠️</Text>
+                </View>
+                <Text style={styles.cancelConfirmMessage}>{t('cancel_ride_confirm_message')}</Text>
+                
+                {/* Selected Reason Display */}
+                <View style={styles.cancelSelectedReason}>
+                  <Text style={styles.cancelSelectedReasonLabel}>{t('cancel_ride_select_reason')}</Text>
+                  <Text style={styles.cancelSelectedReasonValue}>{t(selectedCancelReason || '')}</Text>
+                </View>
+
+                {/* Final Fee Display */}
+                <View style={styles.cancelFinalFee}>
+                  <Text style={styles.cancelFinalFeeLabel}>{t('cancel_ride_fee_estimate')}</Text>
+                  <Text style={styles.cancelFinalFeeValue}>{cancelFeeEstimate} DKK</Text>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.cancelConfirmButtons}>
+                  <TouchableOpacity style={styles.cancelGoBackButton} onPress={goBackToReason}>
+                    <Text style={styles.cancelGoBackButtonText}>{t('cancel_ride_go_back')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelConfirmButton} onPress={confirmCancelRide}>
+                    <Text style={styles.cancelConfirmButtonText}>{t('cancel_ride_confirm')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Step 3: Loading */}
+            {cancelStep === 'loading' && (
+              <View style={styles.cancelStepContainer}>
+                <View style={styles.cancelLoadingContainer}>
+                  <ActivityIndicator size="large" color="#dc3545" />
+                  <Text style={styles.cancelLoadingText}>{t('cancel_ride_processing')}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Step 4: Success */}
+            {cancelStep === 'success' && (
+              <View style={styles.cancelStepContainer}>
+                <View style={styles.cancelSuccessContainer}>
+                  <View style={styles.cancelSuccessIcon}>
+                    <Text style={styles.cancelSuccessIconText}>✓</Text>
+                  </View>
+                  <Text style={styles.cancelSuccessTitle}>{t('cancel_ride_success')}</Text>
+                  <Text style={styles.cancelSuccessMessage}>{t('cancel_ride_success_message')}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Step 5: Error */}
+            {cancelStep === 'error' && (
+              <View style={styles.cancelStepContainer}>
+                <View style={styles.cancelErrorContainer}>
+                  <View style={styles.cancelErrorIcon}>
+                    <Text style={styles.cancelErrorIconText}>✕</Text>
+                  </View>
+                  <Text style={styles.cancelErrorTitle}>{t('cancel_ride_error')}</Text>
+                  <Text style={styles.cancelErrorMessage}>{cancelErrorMessage}</Text>
+                  <TouchableOpacity style={styles.cancelRetryButton} onPress={goBackToReason}>
+                    <Text style={styles.cancelRetryButtonText}>{t('retry')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
         </View>
       )}
@@ -2428,5 +2798,335 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1,
+  },
+  cancelRideButton: {
+    backgroundColor: '#dc3545',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  cancelRideButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Cancel Modal - New Styles
+  cancelModalCard: {
+    backgroundColor: isDarkMode ? '#1e1e1e' : '#fff',
+    margin: 20,
+    borderRadius: 20,
+    padding: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 20,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  cancelModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? '#333' : '#f0f0f0',
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+  },
+  cancelModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: isDarkMode ? '#fff' : '#333',
+    flex: 1,
+  },
+  cancelModalCloseButton: {
+    padding: 5,
+  },
+  cancelModalCloseText: {
+    fontSize: 20,
+    color: isDarkMode ? '#999' : '#666',
+  },
+  cancelStepContainer: {
+    padding: 20,
+  },
+  cancelModalSubtitle: {
+    fontSize: 14,
+    color: isDarkMode ? '#aaa' : '#666',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  // Warning Banner
+  cancelWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? '#3d2817' : '#fff3cd',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ffc107',
+  },
+  cancelWarningIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  cancelWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: isDarkMode ? '#ffc107' : '#856404',
+    lineHeight: 18,
+  },
+  // Fee Preview
+  cancelFeePreview: {
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  cancelFeeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  cancelFeeLabel: {
+    fontSize: 14,
+    color: isDarkMode ? '#aaa' : '#666',
+  },
+  cancelFeeValue: {
+    fontSize: 14,
+    color: isDarkMode ? '#fff' : '#333',
+    fontWeight: '500',
+  },
+  cancelFeeTotal: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: isDarkMode ? '#444' : '#ddd',
+  },
+  cancelFeeTotalLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: isDarkMode ? '#fff' : '#333',
+  },
+  cancelFeeTotalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#dc3545',
+  },
+  // Reason Options
+  cancelReasonsList: {
+    gap: 10,
+  },
+  cancelReasonOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+  },
+  cancelReasonIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  cancelReasonOptionText: {
+    flex: 1,
+    fontSize: 15,
+    color: isDarkMode ? '#fff' : '#333',
+  },
+  cancelReasonArrow: {
+    fontSize: 20,
+    color: isDarkMode ? '#666' : '#999',
+  },
+  // Confirm Step
+  cancelConfirmIconContainer: {
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  cancelConfirmIcon: {
+    fontSize: 50,
+  },
+  cancelConfirmMessage: {
+    fontSize: 15,
+    color: isDarkMode ? '#ccc' : '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  cancelSelectedReason: {
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  cancelSelectedReasonLabel: {
+    fontSize: 12,
+    color: isDarkMode ? '#999' : '#666',
+    marginBottom: 5,
+  },
+  cancelSelectedReasonValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: isDarkMode ? '#fff' : '#333',
+  },
+  cancelFinalFee: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? '#3d1f1f' : '#f8d7da',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  cancelFinalFeeLabel: {
+    fontSize: 14,
+    color: isDarkMode ? '#ff6b6b' : '#721c24',
+  },
+  cancelFinalFeeValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#dc3545',
+  },
+  cancelConfirmButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cancelGoBackButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? '#444' : '#e9ecef',
+  },
+  cancelGoBackButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: isDarkMode ? '#fff' : '#495057',
+  },
+  cancelConfirmButton: {
+    flex: 1.5,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#dc3545',
+  },
+  cancelConfirmButtonText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  // Loading Step
+  cancelLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  cancelLoadingText: {
+    marginTop: 15,
+    fontSize: 14,
+    color: isDarkMode ? '#aaa' : '#666',
+  },
+  // Success Step
+  cancelSuccessContainer: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  cancelSuccessIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#28a745',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  cancelSuccessIconText: {
+    fontSize: 35,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  cancelSuccessTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: isDarkMode ? '#fff' : '#333',
+    marginBottom: 10,
+  },
+  cancelSuccessMessage: {
+    fontSize: 14,
+    color: isDarkMode ? '#aaa' : '#666',
+    textAlign: 'center',
+  },
+  // Error Step
+  cancelErrorContainer: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  cancelErrorIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  cancelErrorIconText: {
+    fontSize: 35,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  cancelErrorTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: isDarkMode ? '#fff' : '#333',
+    marginBottom: 10,
+  },
+  cancelErrorMessage: {
+    fontSize: 14,
+    color: isDarkMode ? '#aaa' : '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  cancelRetryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 12,
+    backgroundColor: '#007bff',
+  },
+  cancelRetryButtonText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  // Legacy styles (keep for compatibility)
+  cancelReasonButton: {
+    backgroundColor: '#6c757d',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cancelReasonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    backgroundColor: '#6c757d',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

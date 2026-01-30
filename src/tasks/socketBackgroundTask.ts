@@ -48,7 +48,7 @@ if (Constants.appOwnership !== 'expo') {
 
     if (data) {
       const { locations } = data;
-      console.log('Received location update in background:', locations);
+      // console.log('Received location update in background:', locations); // Commented out to reduce console noise
 
       // Here you can send location to server or handle it
       // For now, just log it

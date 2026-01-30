@@ -227,7 +227,7 @@ export const offNewMessage = () => {
   }
 };
 
-export const onPickupProximity = (callback: (data: { rideId: number; distanceMeters: number }) => void) => {
+export const onPickupProximity = (callback: (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => void) => {
   if (socket) {
     socket.on('pickupProximity', callback);
   }
@@ -236,6 +236,18 @@ export const onPickupProximity = (callback: (data: { rideId: number; distanceMet
 export const offPickupProximity = () => {
   if (socket) {
     socket.off('pickupProximity');
+  }
+};
+
+export const onPickupCountdownExpired = (callback: (data: { rideId: number }) => void) => {
+  if (socket) {
+    socket.on('pickupCountdownExpired', callback);
+  }
+};
+
+export const offPickupCountdownExpired = () => {
+  if (socket) {
+    socket.off('pickupCountdownExpired');
   }
 };
 
