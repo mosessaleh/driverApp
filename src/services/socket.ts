@@ -227,4 +227,16 @@ export const offNewMessage = () => {
   }
 };
 
+export const onPickupProximity = (callback: (data: { rideId: number; distanceMeters: number }) => void) => {
+  if (socket) {
+    socket.on('pickupProximity', callback);
+  }
+};
+
+export const offPickupProximity = () => {
+  if (socket) {
+    socket.off('pickupProximity');
+  }
+};
+
 export const getSocket = (): Socket | null => socket;

@@ -11,7 +11,7 @@ import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
@@ -64,6 +64,8 @@ export default function DashboardScreen() {
    const [isSocketConnected, setIsSocketConnected] = useState(false);
    const [showShiftWarning, setShowShiftWarning] = useState(false);
    const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
+   const [cancelCountdown, setCancelCountdown] = useState(0);
+   const [showCancelText, setShowCancelText] = useState(false);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -346,6 +348,26 @@ export default function DashboardScreen() {
 
       onNewMessage(handleNewMessage);
 
+      // Listen for pickup proximity notifications
+      const handlePickupProximity = (data: { rideId: number; distanceMeters: number }) => {
+        console.log('Received pickup proximity notification:', data);
+        setShowCancelText(true);
+        setCancelCountdown(300); // 5 minutes in seconds
+
+        const interval = setInterval(() => {
+          setCancelCountdown(prev => {
+            if (prev <= 1) {
+              setShowCancelText(false);
+              clearInterval(interval);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      };
+
+      onPickupProximity(handlePickupProximity);
+
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
         if (authState.token && driverOnline) {
@@ -361,6 +383,7 @@ export default function DashboardScreen() {
         offRideOfferRejected();
         offRideCancelled();
         offNewMessage();
+        offPickupProximity();
         if (offerTimeout) {
           clearInterval(offerTimeout);
         }
@@ -1419,6 +1442,11 @@ export default function DashboardScreen() {
                   <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
                 )}
               </TouchableOpacity>
+              {showCancelText && (
+                <Text style={styles.cancelOnText}>
+                  Cancel on: {Math.floor(cancelCountdown / 60)}:{(cancelCountdown % 60).toString().padStart(2, '0')}
+                </Text>
+              )}
             </View>
           </View>
         </View>
@@ -2005,6 +2033,13 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  cancelOnText: {
+    color: '#dc3545',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 10,
   },
   confirmButtonText: {
     color: '#fff',
