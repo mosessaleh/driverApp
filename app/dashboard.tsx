@@ -533,7 +533,7 @@ export default function DashboardScreen() {
 
         // Check for 11-hour warning
         const elapsedHours = (now - start) / (1000 * 60 * 60);
-        if (elapsedHours >= 11 && !showShiftWarning && !suppressShiftWarning) {
+        if (elapsedHours >= 11 && !showShiftWarning && !suppressShiftWarning && !activeRide) {
           setShowShiftWarning(true);
           if (!driverBusy && authState.token) {
             toggleDriverBusy(true, authState.token).then(res => {
@@ -631,7 +631,7 @@ export default function DashboardScreen() {
         const now = Date.now();
         const elapsedHours = (now - start) / (1000 * 60 * 60);
 
-        if (elapsedHours >= 11 && !suppressShiftWarning) {
+        if (elapsedHours >= 11 && !suppressShiftWarning && !activeRide) {
           setShowShiftWarning(true);
           if (!driverBusy && authState.token) {
             toggleDriverBusy(true, authState.token).then(res => {
