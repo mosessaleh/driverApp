@@ -2025,7 +2025,7 @@ export default function DashboardScreen() {
         isTracking={isTracking}
         totalRidesToday={0}
         earningsToday={0}
-        rating={4.8}
+        rating={authState.user?.rating || 5.0}
       />
 
     </View>

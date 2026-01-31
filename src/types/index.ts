@@ -4,6 +4,7 @@ export interface User {
   car: string;
   shiftId?: number;
   shiftStartTime?: string;
+  rating?: number;
   // Add other user properties as needed
 }
 
