@@ -5,6 +5,9 @@ import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
 import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift } from '../src/services/api';
+import { StatusBar } from '../src/components/StatusBar';
+import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
+import type { DriverStatus } from '../src/components/StatusBar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
@@ -75,8 +78,18 @@ export default function DashboardScreen() {
    const [cancelErrorMessage, setCancelErrorMessage] = useState<string>('');
    const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
    const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
+   const [showStatusExpanded, setShowStatusExpanded] = useState(false);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
+
+   // Helper function to determine driver status
+   const getDriverStatusType = (): DriverStatus => {
+     if (bannedUntil && banCountdown > 0) return 'banned';
+     if (activeRide) return 'on_ride';
+     if (!driverOnline) return 'offline';
+     if (driverBusy) return 'busy';
+     return 'online';
+   };
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -1384,14 +1397,15 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Status Bar */}
-      <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={styles.shiftTimeText}>{shiftElapsedTime}</Text>
-          <View style={[styles.connectionIndicator, { backgroundColor: isSocketConnected ? '#28a745' : '#dc3545' }]} />
-        </View>
-        <Text style={styles.statusText}>{getStatusText()}</Text>
-      </View>
+      {/* New Status Bar */}
+      <StatusBar
+        status={getDriverStatusType()}
+        shiftElapsedTime={shiftElapsedTime}
+        isSocketConnected={isSocketConnected}
+        banCountdown={banCountdown}
+        unreadMessages={unreadMessagesCount}
+        onPress={() => setShowStatusExpanded(true)}
+      />
 
       {/* Header with Hamburger Menu */}
       <View style={styles.header}>
@@ -1997,6 +2011,22 @@ export default function DashboardScreen() {
           <Text style={styles.searchingText}>{t('searching_trips')}</Text>
         </View>
       )}
+
+      {/* Status Bar Expanded Modal */}
+      <StatusBarExpanded
+        visible={showStatusExpanded}
+        onClose={() => setShowStatusExpanded(false)}
+        status={getDriverStatusType()}
+        shiftElapsedTime={shiftElapsedTime}
+        shiftStartTime={shiftStartTime}
+        isSocketConnected={isSocketConnected}
+        currentLocation={currentLocation}
+        locationPermission={locationPermission}
+        isTracking={isTracking}
+        totalRidesToday={0}
+        earningsToday={0}
+        rating={4.8}
+      />
 
     </View>
   );
