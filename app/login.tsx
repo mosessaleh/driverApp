@@ -1,19 +1,65 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Image,
+  Dimensions,
+  Animated,
+  TouchableOpacity,
+  StatusBar,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
+import { useSettings } from '../src/context/SettingsContext';
+import { Input } from '../src/components/Input';
+import { Button } from '../src/components/Button';
+import { Loading } from '../src/components/Loading';
+import { colors, typography, spacing, shadows, getThemeColors } from '../src/theme';
+import { Ionicons } from '@expo/vector-icons';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [startKM, setStartKM] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login, authState } = useAuth();
+  const { isDarkMode } = useSettings();
   const router = useRouter();
+  const themeColors = getThemeColors(isDarkMode);
+
+  // Animation values
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const slideAnim = React.useRef(new Animated.Value(50)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
 
   useEffect(() => {
+    // Entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     const checkAndRedirect = async () => {
       if (!authState.isLoading && authState.user && authState.token) {
         try {
@@ -24,7 +70,6 @@ export default function LoginScreen() {
           }
         } catch (error) {
           console.error('Error checking driver status:', error);
-          // If error, perhaps token invalid, stay in login
         }
       }
     };
@@ -42,14 +87,10 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    console.log('Attempting login with:', username, startKMNum);
     try {
-      console.log('Calling login function...');
       await login(username, password, startKMNum);
-      console.log('Login successful, navigating to dashboard');
       router.replace('/dashboard');
     } catch (error) {
-      console.log('Login failed:', error);
       Alert.alert('Login Failed', (error as Error).message || 'An error occurred');
     } finally {
       setLoading(false);
@@ -57,144 +98,194 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-        <View style={styles.logoContainer}>
-           <Image
-             source={require('../assets/logo.png')}
-             style={styles.logo}
-             resizeMode="contain"
-           />
-           <Text style={styles.appName}>Driver App</Text>
-         </View>
-        <View style={styles.formContainer}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            placeholderTextColor="#999"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholderTextColor="#999"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Start KM"
-            value={startKM}
-            onChangeText={setStartKM}
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-          />
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.loginButtonText}>Start Shift</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
+      <StatusBar
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        backgroundColor={themeColors.neutral.background}
+      />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Background Gradient Effect */}
+          <View style={styles.backgroundEffect}>
+            <View style={[styles.circle1, { backgroundColor: colors.primary[100] }]} />
+            <View style={[styles.circle2, { backgroundColor: colors.success[100] }]} />
+          </View>
+
+          <Animated.View
+            style={[
+              styles.content,
+              {
+                opacity: fadeAnim,
+                transform: [
+                  { translateY: slideAnim },
+                  { scale: scaleAnim },
+                ],
+              },
+            ]}
+          >
+            {/* Login Form Card with Logo */}
+            <View
+              style={[
+                styles.formCard,
+                {
+                  backgroundColor: themeColors.neutral.surface,
+                  ...shadows.lg,
+                },
+              ]}
+            >
+              {/* Logo overlapping top of card */}
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../assets/logo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+
+
+              <Input
+                placeholder="Enter your username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                icon="person-outline"
+                isDarkMode={isDarkMode}
+              />
+
+              <Input
+                placeholder="Enter your password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                icon="lock-closed-outline"
+                iconRight={showPassword ? 'eye-off' : 'eye'}
+                onIconRightPress={() => setShowPassword(!showPassword)}
+                isDarkMode={isDarkMode}
+              />
+
+              <Input
+                placeholder="Enter vehicle odometer reading"
+                value={startKM}
+                onChangeText={setStartKM}
+                keyboardType="numeric"
+                icon="speedometer-outline"
+                isDarkMode={isDarkMode}
+              />
+
+              <Button
+                title={loading ? 'Signing in...' : 'Start Shift'}
+                onPress={handleLogin}
+                loading={loading}
+                disabled={loading}
+                size="large"
+                fullWidth
+                isDarkMode={isDarkMode}
+                style={{ marginTop: spacing[4] }}
+              />
+            </View>
+
+            {/* Footer */}
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: themeColors.neutral.textSecondary }]}>
+                © 2024 TrafikTaxa. All rights reserved.
+              </Text>
+              <View style={styles.versionContainer}>
+                <Text style={[styles.versionText, { color: themeColors.neutral.textTertiary }]}>
+                  v1.0.0
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[8],
+  },
+  backgroundEffect: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  circle1: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    top: -100,
+    right: -100,
+    opacity: 0.5,
+  },
+  circle2: {
+    position: 'absolute',
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    bottom: 100,
+    left: -80,
+    opacity: 0.3,
+  },
+  content: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoBox: {
-    width: 220,
-    height: 70,
-    borderWidth: 2,
-    borderColor: '#007bff',
-    borderRadius: 8,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-    backgroundColor: '#f8f9fa',
+    marginTop: -50,
+    marginBottom: spacing[2],
+    alignSelf: 'center',
   },
   logo: {
-    width: 220,
-    height: 55,
-    marginBottom: 5,
+    width: 200,
+    height: 100,
   },
-  logoPlaceholder: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 20,
+  formCard: {
+    borderRadius: 24,
+    padding: spacing[8],
+    paddingTop: 60,
+    marginBottom: spacing[6],
   },
-  appName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  formContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 30,
-    color: '#666',
-  },
-  input: {
-    height: 50,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
-  },
-  loginButton: {
-    backgroundColor: '#007bff',
-    height: 50,
-    borderRadius: 8,
-    justifyContent: 'center',
+  footer: {
     alignItems: 'center',
-    marginTop: 10,
   },
-  loginButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+  footerText: {
+    fontSize: typography.sizes.sm,
+    marginBottom: spacing[2],
+  },
+  versionContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+    borderRadius: 12,
+  },
+  versionText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: '500',
   },
 });

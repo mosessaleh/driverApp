@@ -1,14 +1,22 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Image, Alert, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
+import { useSettings } from '../src/context/SettingsContext';
 import { useRouter } from 'expo-router';
 import { getDriverProfile, requestDriverPasswordReset } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
 import { Ionicons } from '@expo/vector-icons';
+import { Card } from '../src/components/Card';
+import { Button } from '../src/components/Button';
+import { Loading } from '../src/components/Loading';
+import { colors, spacing, shadows, getThemeColors } from '../src/theme';
 
 export default function ProfileScreen() {
   const { authState } = useAuth();
+  const { isDarkMode } = useSettings();
   const router = useRouter();
+  const themeColors = getThemeColors(isDarkMode);
+  
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +24,6 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadProfile();
-    // Listen for ride offers to redirect to dashboard
     const handleRideOffer = () => {
       router.replace('/dashboard');
     };
@@ -59,10 +66,8 @@ export default function ProfileScreen() {
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return 'N/A';
-    // Format phone number with spaces for better readability
     return phone.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4');
   };
-
 
   const handleActionPress = async (action: string) => {
     switch (action) {
@@ -90,16 +95,15 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
+        <View style={[styles.header, { backgroundColor: themeColors.neutral.surface }]}>
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
-            <Ionicons name="arrow-back" size={24} color="#007bff" />
+            <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007bff" />
-          <Text style={styles.loadingText}>Loading profile...</Text>
+          <Loading size="large" isDarkMode={isDarkMode} text="Loading profile..." />
         </View>
       </View>
     );
@@ -107,404 +111,370 @@ export default function ProfileScreen() {
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
+        <View style={[styles.header, { backgroundColor: themeColors.neutral.surface }]}>
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
-            <Ionicons name="arrow-back" size={24} color="#007bff" />
+            <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
         </View>
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={48} color="#dc3545" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadProfile(true)}>
-            <Ionicons name="refresh" size={20} color="#fff" />
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+          <Ionicons name="alert-circle" size={48} color={colors.danger[500]} />
+          <Text style={[styles.errorText, { color: colors.danger[500] }]}>{error}</Text>
+          <Button
+            title="Retry"
+            onPress={() => loadProfile(true)}
+            variant="primary"
+            icon="refresh"
+            isDarkMode={isDarkMode}
+          />
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
+      <View style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}>
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
-          <Ionicons name="arrow-back" size={24} color="#007bff" />
+          <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
         <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={isRefreshing}>
-          <Ionicons name={isRefreshing ? "refresh-outline" : "refresh"} size={20} color="#007bff" />
+          <Ionicons name={isRefreshing ? "refresh-outline" : "refresh"} size={20} color={colors.primary[500]} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-      }>
-        {/* Profile Header with Avatar */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={40} color="#fff" />
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {/* Profile Header Card */}
+        <Card variant="elevated" isDarkMode={isDarkMode} style={styles.profileCard}>
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              <View style={[styles.avatar, { backgroundColor: colors.primary[500] }]}>
+                <Ionicons name="person" size={40} color="#fff" />
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: colors.success[100] }]}>
+                <Ionicons name="ellipse" size={10} color={colors.success[500]} />
+                <Text style={[styles.statusText, { color: colors.success[700] }]}>Active</Text>
+              </View>
             </View>
-            <View style={styles.statusBadge}>
-              <Ionicons name="ellipse" size={10} color="#28a745" />
-              <Text style={styles.statusText}>Active</Text>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: themeColors.neutral.text }]}>
+                {profileData?.drFname} {profileData?.drLname}
+              </Text>
+              <Text style={[styles.profileUsername, { color: themeColors.neutral.textSecondary }]}>
+                @{profileData?.drUsername}
+              </Text>
             </View>
           </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>
-              {profileData?.drFname} {profileData?.drLname}
+        </Card>
+
+        {/* Personal Information */}
+        <Card variant="default" isDarkMode={isDarkMode} style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.primary[100] }]}>
+              <Ionicons name="person-circle" size={20} color={colors.primary[500]} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
+              Personal Information
             </Text>
-            <Text style={styles.profileUsername}>@{profileData?.drUsername}</Text>
           </View>
-        </View>
+          
+          <InfoRow
+            icon="person-outline"
+            label="Full Name"
+            value={`${profileData?.drFname} ${profileData?.drLname}`}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="at-outline"
+            label="Username"
+            value={profileData?.drUsername}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="call-outline"
+            label="Phone"
+            value={formatPhoneNumber(profileData?.drPhone)}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="mail-outline"
+            label="Email"
+            value={profileData?.drEmail || 'N/A'}
+            isDarkMode={isDarkMode}
+            isLast
+          />
+        </Card>
 
-        {/* Personal Information Section */}
-        <View style={styles.section}>
+        {/* Company Information */}
+        <Card variant="default" isDarkMode={isDarkMode} style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="person-circle" size={20} color="#007bff" />
-            <Text style={styles.sectionTitle}>Personal Information</Text>
+            <View style={[styles.iconCircle, { backgroundColor: colors.info[100] }]}>
+              <Ionicons name="business" size={20} color={colors.info[500]} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
+              Company Information
+            </Text>
           </View>
-          <View style={styles.infoContainer}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="person-outline" size={18} color="#666" />
-                <Text style={styles.label}>Full Name</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.drFname} {profileData?.drLname}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="at-outline" size={18} color="#666" />
-                <Text style={styles.label}>Username</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.drUsername}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="call-outline" size={18} color="#666" />
-                <Text style={styles.label}>Phone</Text>
-              </View>
-              <Text style={styles.value}>{formatPhoneNumber(profileData?.drPhone)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="mail-outline" size={18} color="#666" />
-                <Text style={styles.label}>Email</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.drEmail || 'N/A'}</Text>
-            </View>
-          </View>
-        </View>
+          
+          <InfoRow
+            icon="business-outline"
+            label="Company Name"
+            value={profileData?.company?.comName || 'N/A'}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="call-outline"
+            label="Company Phone"
+            value={formatPhoneNumber(profileData?.company?.comPhone)}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="mail-outline"
+            label="Company Email"
+            value={profileData?.company?.comEmail || 'N/A'}
+            isDarkMode={isDarkMode}
+            isLast
+          />
+        </Card>
 
-        {/* Company Information Section */}
-        <View style={styles.section}>
+        {/* Vehicle Information */}
+        <Card variant="default" isDarkMode={isDarkMode} style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="business" size={20} color="#007bff" />
-            <Text style={styles.sectionTitle}>Company Information</Text>
+            <View style={[styles.iconCircle, { backgroundColor: colors.success[100] }]}>
+              <Ionicons name="car-sport" size={20} color={colors.success[500]} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
+              Vehicle Information
+            </Text>
           </View>
-          <View style={styles.infoContainer}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="business-outline" size={18} color="#666" />
-                <Text style={styles.label}>Company Name</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.company?.comName || 'N/A'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="call-outline" size={18} color="#666" />
-                <Text style={styles.label}>Company Phone</Text>
-              </View>
-              <Text style={styles.value}>{formatPhoneNumber(profileData?.company?.comPhone)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="mail-outline" size={18} color="#666" />
-                <Text style={styles.label}>Company Email</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.company?.comEmail || 'N/A'}</Text>
-            </View>
-          </View>
-        </View>
+          
+          <InfoRow
+            icon="car-sport-outline"
+            label="License Plate"
+            value={profileData?.car || 'N/A'}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="car-outline"
+            label="Vehicle Type"
+            value={profileData?.vehicle?.vehicleType?.title || 'N/A'}
+            isDarkMode={isDarkMode}
+          />
+          <InfoRow
+            icon="people-outline"
+            label="Capacity"
+            value={profileData?.vehicle?.vehicleType?.capacity || 'N/A'}
+            isDarkMode={isDarkMode}
+            isLast
+          />
+        </Card>
 
-        {/* Vehicle Information Section */}
-        <View style={styles.section}>
+        {/* Actions */}
+        <Card variant="default" isDarkMode={isDarkMode} style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="car-sport" size={20} color="#007bff" />
-            <Text style={styles.sectionTitle}>Vehicle Information</Text>
+            <View style={[styles.iconCircle, { backgroundColor: colors.warning[100] }]}>
+              <Ionicons name="settings" size={20} color={colors.warning[500]} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
+              Actions
+            </Text>
           </View>
-          <View style={styles.infoContainer}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="car-sport-outline" size={18} color="#666" />
-                <Text style={styles.label}>License Plate</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.car || 'N/A'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="car-outline" size={18} color="#666" />
-                <Text style={styles.label}>Vehicle Type</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.vehicle?.vehicleType?.title || 'N/A'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="people-outline" size={18} color="#666" />
-                <Text style={styles.label}>Capacity</Text>
-              </View>
-              <Text style={styles.value}>{profileData?.vehicle?.vehicleType?.capacity || 'N/A'}</Text>
-            </View>
-          </View>
-        </View>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: themeColors.neutral.surfaceVariant }]}
+            onPress={() => handleActionPress('change_password')}
+          >
+            <Ionicons name="key-outline" size={20} color={colors.primary[500]} />
+            <Text style={[styles.actionText, { color: colors.primary[500] }]}>
+              Change Password
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color={themeColors.neutral.textTertiary} />
+          </TouchableOpacity>
+        </Card>
 
-        {/* Additional Actions */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="settings" size={20} color="#007bff" />
-            <Text style={styles.sectionTitle}>Actions</Text>
-          </View>
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => handleActionPress('change_password')}>
-              <Ionicons name="key-outline" size={20} color="#007bff" />
-              <Text style={styles.actionText}>Change Password</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <View style={styles.bottomPadding} />
       </ScrollView>
     </View>
   );
 }
 
+// Helper Component for Info Rows
+interface InfoRowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  isDarkMode: boolean;
+  isLast?: boolean;
+}
+
+const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value, isDarkMode, isLast }) => {
+  const themeColors = getThemeColors(isDarkMode);
+  
+  return (
+    <View style={[styles.infoRow, !isLast && { borderBottomWidth: 1, borderBottomColor: themeColors.neutral.border }]}>
+      <View style={styles.infoLeft}>
+        <Ionicons name={icon} size={18} color={themeColors.neutral.textSecondary} />
+        <Text style={[styles.infoLabel, { color: themeColors.neutral.textSecondary }]}>
+          {label}
+        </Text>
+      </View>
+      <Text style={[styles.infoValue, { color: themeColors.neutral.text }]}>
+        {value}
+      </Text>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f2f5',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    height: 60,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[12],
+    paddingBottom: spacing[4],
+    ...shadows.sm,
   },
   backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    padding: spacing[2],
   },
   headerTitle: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-    marginLeft: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    fontSize: 20,
+    fontWeight: '700',
+    marginLeft: spacing[4],
+    flex: 1,
   },
   refreshButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    marginLeft: 'auto',
+    padding: spacing[2],
   },
   scrollContainer: {
     flex: 1,
-    paddingHorizontal: 20,
-  },
-  profileHeader: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  avatarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#007bff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 20,
-    shadowColor: '#007bff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#d4edda',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    color: '#155724',
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 6,
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
-  },
-  profileUsername: {
-    fontSize: 14,
-    color: '#6c757d',
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#6c757d',
-  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing[8],
+    gap: spacing[4],
   },
   errorText: {
     fontSize: 16,
-    color: '#dc3545',
     textAlign: 'center',
-    marginBottom: 20,
-    marginTop: 10,
   },
-  retryButton: {
+  profileCard: {
+    marginBottom: spacing[5],
+  },
+  profileHeader: {
     flexDirection: 'row',
-    backgroundColor: '#007bff',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
     alignItems: 'center',
   },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
+  avatarContainer: {
+    position: 'relative',
   },
-  section: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.md,
+  },
+  statusBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: 12,
+    ...shadows.sm,
+  },
+  statusText: {
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: '600',
+  },
+  profileInfo: {
+    marginLeft: spacing[5],
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: spacing[1],
+  },
+  profileUsername: {
+    fontSize: 14,
+  },
+  sectionCard: {
+    marginBottom: spacing[5],
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: spacing[4],
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing[3],
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#212529',
-    marginLeft: 10,
-  },
-  infoContainer: {
-    // Container for info rows
+    fontWeight: '700',
   },
   infoRow: {
-    flexDirection: 'column',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f3f4',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing[4],
+  },
+  infoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoLabel: {
+    fontSize: 14,
+    marginLeft: spacing[3],
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(248,249,250,0.9)',
-    borderRadius: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  label: {
-    fontSize: 14,
-    color: '#6c757d',
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  value: {
-    fontSize: 16,
-    color: '#212529',
-    fontWeight: '600',
-    marginTop: 8,
-    marginLeft: 26,
-  },
-  valueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  actionsContainer: {
-    flexDirection: 'column',
+    padding: spacing[4],
+    borderRadius: 12,
   },
   actionText: {
     fontSize: 16,
-    color: '#007bff',
     fontWeight: '600',
-    marginLeft: 12,
+    marginLeft: spacing[3],
+    flex: 1,
+  },
+  bottomPadding: {
+    height: spacing[10],
   },
 });
