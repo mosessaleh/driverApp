@@ -47,6 +47,7 @@ export default function DashboardScreen() {
    const [refreshing, setRefreshing] = useState(false);
    const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
    const [showMenu, setShowMenu] = useState(false);
+   const [menuMounted, setMenuMounted] = useState(false);
    const [showEndKMModal, setShowEndKMModal] = useState(false);
    const [endKM, setEndKM] = useState('');
    const [activeRide, setActiveRide] = useState<any>(null);
@@ -101,6 +102,7 @@ export default function DashboardScreen() {
   const dot1Anim = useRef(new Animated.Value(1)).current;
   const dot2Anim = useRef(new Animated.Value(1)).current;
   const dot3Anim = useRef(new Animated.Value(1)).current;
+  const menuAnim = useRef(new Animated.Value(0)).current;
 
   const searchText = t('searching_trips');
   const searchLetters = useMemo(() => Array.from(searchText), [searchText]);
@@ -208,6 +210,34 @@ export default function DashboardScreen() {
       dot3Anim.setValue(1);
     }
   }, [driverOnline, driverBusy, activeRide, dot1Anim, dot2Anim, dot3Anim]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (showMenu) {
+      setMenuMounted(true);
+      Animated.spring(menuAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 7,
+        tension: 70,
+      }).start();
+    } else {
+      Animated.timing(menuAnim, {
+        toValue: 0,
+        duration: 160,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !isCancelled) {
+          setMenuMounted(false);
+        }
+      });
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [showMenu, menuAnim]);
 
   const isSearching = driverOnline && !driverBusy && !activeRide;
 
@@ -1504,7 +1534,8 @@ export default function DashboardScreen() {
       {/* Header with Hamburger Menu */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.menuButton}
+          style={[styles.menuButton, showMenu && styles.menuButtonActive]}
+          activeOpacity={0.85}
           onPress={() => setShowMenu(!showMenu)}
         >
           <View style={styles.hamburgerLine} />
@@ -1516,90 +1547,148 @@ export default function DashboardScreen() {
 
 
       {/* Hamburger Menu Overlay */}
-      {showMenu && (
-        <View style={styles.menuOverlay}>
-          {!activeRide && (
+      {menuMounted && (
+        <View style={styles.menuLayer} pointerEvents="box-none">
+          <Animated.View style={[styles.menuBackdrop, { opacity: menuAnim }]}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setShowMenu(false)}
+            />
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.menuOverlay,
+              {
+                opacity: menuAnim,
+                transform: [
+                  {
+                    translateY: menuAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-8, 0],
+                    }),
+                  },
+                  {
+                    scale: menuAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.98, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  goToProfile();
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>👤</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('profile')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/history');
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>📋</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('history')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/analytics');
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>📊</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('analytics')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => {
-                setShowMenu(false);
-                goToProfile();
-              }}
-            >
-              <Text style={styles.menuItemIcon}>👤</Text>
-              <Text style={styles.menuItemText}>{t('profile')}</Text>
-            </TouchableOpacity>
-          )}
-          {!activeRide && (
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowMenu(false);
-                router.push('/history');
-              }}
-            >
-              <Text style={styles.menuItemIcon}>📋</Text>
-              <Text style={styles.menuItemText}>{t('history')}</Text>
-            </TouchableOpacity>
-          )}
-          {!activeRide && (
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowMenu(false);
-                router.push('/analytics');
-              }}
-            >
-              <Text style={styles.menuItemIcon}>📊</Text>
-              <Text style={styles.menuItemText}>{t('analytics')}</Text>
-            </TouchableOpacity>
-          )}
-            <TouchableOpacity
-              style={styles.menuItem}
+              activeOpacity={0.85}
               onPress={() => {
                 setShowMenu(false);
                 goToSettings();
               }}
             >
-              <Text style={styles.menuItemIcon}>⚙️</Text>
+              <View style={styles.menuItemIconWrap}>
+                <Text style={styles.menuItemIcon}>⚙️</Text>
+              </View>
               <Text style={styles.menuItemText}>{t('settings')}</Text>
+              <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
             </TouchableOpacity>
             {!driverBusy && driverOnline && !bannedUntil && (
               <TouchableOpacity
-                style={styles.menuItem}
+                style={[styles.menuItem, styles.menuItemWarning]}
+                activeOpacity={0.85}
                 onPress={() => {
                   setShowMenu(false);
                   handleToggleBusy();
                 }}
               >
-                <Text style={styles.menuItemIcon}>⏸️</Text>
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>⏸️</Text>
+                </View>
                 <Text style={styles.menuItemText}>{t('pause')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
               </TouchableOpacity>
             )}
             {driverBusy && driverOnline && !bannedUntil && (
               <TouchableOpacity
-                style={styles.menuItem}
+                style={[styles.menuItem, styles.menuItemWarning]}
+                activeOpacity={0.85}
                 onPress={() => {
                   setShowMenu(false);
                   handleToggleBusy();
                 }}
               >
-                <Text style={styles.menuItemIcon}>▶️</Text>
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>▶️</Text>
+                </View>
                 <Text style={styles.menuItemText}>{t('end_pause')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
               </TouchableOpacity>
             )}
             {!activeRide && (
-             <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowMenu(false);
-                setShowEndKMModal(true);
-              }}
-            >
-              <Text style={styles.menuItemIcon}>🏁</Text>
-              <Text style={styles.menuItemText}>{t('end_shift')}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemDanger]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowEndKMModal(true);
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>🏁</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('end_shift')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
             )}
+          </Animated.View>
         </View>
       )}
 
@@ -2286,63 +2375,107 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
   header: {
     position: 'absolute',
     top: 60,
-    left: 20,
+    left: isRTL ? undefined : 20,
+    right: isRTL ? 20 : undefined,
     zIndex: 1000,
   },
   menuButton: {
-    width: 50,
-    height: 50,
+    width: 52,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
-  },
-  hamburgerLine: {
-    width: 24,
-    height: 3,
-    backgroundColor: isDarkMode ? '#fff' : '#333',
-    marginVertical: 2,
-    borderRadius: 1.5,
-  },
-  menuOverlay: {
-    position: 'absolute',
-    top: 130,
-    left: 20,
-    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)',
-    borderRadius: 15,
+    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.75)' : 'rgba(255,255,255,0.95)',
+    borderRadius: 26,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 10,
-    minWidth: 200,
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : 'rgba(15,23,42,0.08)',
+  },
+  menuButtonActive: {
+    backgroundColor: isDarkMode ? 'rgba(56,189,248,0.22)' : '#e0f2fe',
+    borderColor: isDarkMode ? 'rgba(56,189,248,0.6)' : '#7dd3fc',
+    shadowColor: '#38bdf8',
+    shadowOpacity: 0.4,
+  },
+  hamburgerLine: {
+    width: 22,
+    height: 3,
+    backgroundColor: isDarkMode ? '#e2e8f0' : '#0f172a',
+    marginVertical: 2,
+    borderRadius: 2,
+  },
+  menuLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1500,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: isDarkMode ? 'rgba(2,6,23,0.45)' : 'rgba(15,23,42,0.18)',
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 120,
+    left: isRTL ? undefined : 16,
+    right: isRTL ? 16 : undefined,
+    backgroundColor: isDarkMode ? 'rgba(17,24,39,0.98)' : 'rgba(255,255,255,0.98)',
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    elevation: 14,
+    minWidth: 230,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.08)',
     zIndex: 1000,
+    overflow: 'hidden',
+    paddingVertical: 6,
   },
   menuItem: {
-    flexDirection: 'row',
+    flexDirection: isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 50,
+    gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    borderBottomColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.06)',
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'transparent',
+  },
+  menuItemWarning: {
+    backgroundColor: isDarkMode ? 'rgba(255,193,7,0.16)' : '#fff8e1',
+  },
+  menuItemDanger: {
+    backgroundColor: isDarkMode ? 'rgba(220,53,69,0.16)' : '#fff1f2',
+  },
+  menuItemIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : '#e2e8f0',
   },
   menuItemIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   menuItemText: {
-    fontSize: 16,
-    color: isDarkMode ? '#fff' : '#333',
-    fontWeight: '500',
-    marginLeft: 12,
+    flex: 1,
+    fontSize: 15,
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    fontWeight: '600',
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  menuItemArrow: {
+    fontSize: 18,
+    color: isDarkMode ? 'rgba(226,232,240,0.6)' : '#94a3b8',
+    marginLeft: isRTL ? 0 : 4,
+    marginRight: isRTL ? 4 : 0,
   },
   mapContainer: {
     position: 'absolute',
