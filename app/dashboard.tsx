@@ -929,10 +929,21 @@ export default function DashboardScreen() {
     // Stop background location tracking
     if (Platform.OS !== 'web') {
       try {
-        await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
-        console.log('Background location tracking stopped');
-      } catch (error) {
-        console.error('Failed to stop background location tracking:', error);
+        // Check if location updates are currently running before trying to stop
+        const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+        if (isRunning) {
+          await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+          console.log('Background location tracking stopped');
+        } else {
+          console.log('Background location tracking was not running, skipping stop');
+        }
+      } catch (error: any) {
+        // Check if the error is because the task was not found (never started or already stopped)
+        if (error.message && (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))) {
+          console.log('Background location task was not found, it may have already been stopped or never started');
+        } else {
+          console.error('Failed to stop background location tracking:', error);
+        }
       }
     }
 
