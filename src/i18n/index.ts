@@ -37,6 +37,11 @@ const resources = {
       "end_shift": "End Shift",
       "shift_time": "Shift Time",
       "connection": "Connection",
+      "ride_offer_title": "New Ride Available!",
+      "ride_offer_accept": "Accept",
+      "ride_offer_reject": "Reject",
+      "ride_offer_time_left": "Time left: {{seconds}}s",
+      "ride_offer_eta_to_pickup": "ETA to pickup",
 
       // Menu
       "profile": "Profile",
@@ -94,7 +99,7 @@ const resources = {
 
       // Status messages
       "banned": "Banned",
-      "seconds": "s",
+      "seconds_short": "s",
       "vehicle_required": "Location permission required",
       "getting_location": "Getting location...",
       "cancel_reason": "Cancel Reason",
@@ -197,6 +202,11 @@ const resources = {
       "end_shift": "إنهاء الوردية",
       "shift_time": "وقت الوردية",
       "connection": "الاتصال",
+      "ride_offer_title": "رحلة جديدة متاحة!",
+      "ride_offer_accept": "قبول",
+      "ride_offer_reject": "رفض",
+      "ride_offer_time_left": "الوقت المتبقي: {{seconds}}ث",
+      "ride_offer_eta_to_pickup": "زمن الوصول لنقطة الالتقاط",
 
       // Menu
       "profile": "الملف الشخصي",
@@ -254,7 +264,7 @@ const resources = {
 
       // Status messages
       "banned": "محظور",
-      "seconds": "ث",
+      "seconds_short": "ث",
       "vehicle_required": "مطلوب إذن الموقع",
       "getting_location": "جارٍ الحصول على الموقع...",
       "cancel_reason": "سبب الإلغاء",
@@ -304,6 +314,7 @@ const resources = {
       "shift_timer": "مؤقت الوردية",
       "hours": "ساعات",
       "minutes": "دقائق",
+      "seconds": "ثواني",
       "shift_progress": "تقدم الوردية",
       "remaining": "المتبقي",
       "started_at": "بدأت في",
@@ -356,6 +367,11 @@ const resources = {
       "end_shift": "Afslut vagt",
       "shift_time": "Vagt tid",
       "connection": "Forbindelse",
+      "ride_offer_title": "Ny tur tilgængelig!",
+      "ride_offer_accept": "Accepter",
+      "ride_offer_reject": "Afvis",
+      "ride_offer_time_left": "Tid tilbage: {{seconds}}s",
+      "ride_offer_eta_to_pickup": "Ankomst til afhentning",
 
       // Menu
       "profile": "Profil",
@@ -413,7 +429,7 @@ const resources = {
 
       // Status messages
       "banned": "Udelukket",
-      "seconds": "s",
+      "seconds_short": "s",
       "vehicle_required": "Lokation tilladelse påkrævet",
       "getting_location": "Henter lokation...",
       "cancel_reason": "Aflysningsårsag",
@@ -463,6 +479,7 @@ const resources = {
       "shift_timer": "Vagt Timer",
       "hours": "Timer",
       "minutes": "Minutter",
+      "seconds": "Sekunder",
       "shift_progress": "Vagt Fremgang",
       "remaining": "Tilbageværende",
       "started_at": "Startet kl",

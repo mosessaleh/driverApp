@@ -58,6 +58,7 @@ export default function DashboardScreen() {
    const [isDropoffLoading, setIsDropoffLoading] = useState(false);
    const [rideOffer, setRideOffer] = useState<any>(null);
    const [offerCountdown, setOfferCountdown] = useState(0);
+   const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
    const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
    const [rideOfferSound, setRideOfferSound] = useState<any>(null);
    const [showChat, setShowChat] = useState(false);
@@ -256,8 +257,10 @@ export default function DashboardScreen() {
           playRideOfferSound();
         }
 
+        const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || 30000) / 1000));
+        setOfferTotalSeconds(totalSeconds);
         setRideOffer(data);
-        setOfferCountdown(30); // 30 seconds countdown
+        setOfferCountdown(totalSeconds);
 
         // Start countdown
         const timeout = setInterval(() => {
@@ -1396,7 +1399,7 @@ export default function DashboardScreen() {
   };
 
   const getStatusText = () => {
-    if (bannedUntil && banCountdown > 0) return `${t('banned')} - ${banCountdown}${t('seconds')}`;
+    if (bannedUntil && banCountdown > 0) return `${t('banned')} - ${banCountdown}${t('seconds_short')}`;
     if (!driverOnline) return t('offline');
     if (driverBusy) return `${t('online')} - ${t('busy')}`;
     return `${t('online')} - ${t('available')}`;
@@ -1409,7 +1412,37 @@ export default function DashboardScreen() {
     return '#28a745'; // green
   };
 
-  const styles = getStyles(isDarkMode);
+  const calculateEtaMinutes = (
+    from: { latitude: number; longitude: number },
+    to: { lat: number; lon: number }
+  ) => {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const R = 6371; // km
+    const dLat = toRad(to.lat - from.latitude);
+    const dLon = toRad(to.lon - from.longitude);
+    const lat1 = toRad(from.latitude);
+    const lat2 = toRad(to.lat);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distanceKm = R * c;
+    return Math.max(1, Math.ceil(distanceKm * 2)); // ~30km/h average
+  };
+
+  const getPickupEtaMinutes = () => {
+    if (!currentLocation || !rideOffer?.rideData?.startLatLon) return null;
+    const { lat, lon } = rideOffer.rideData.startLatLon || {};
+    if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+    return calculateEtaMinutes(currentLocation, { lat, lon });
+  };
+
+  const pickupEtaMinutes = getPickupEtaMinutes();
+  const offerProgress = offerTotalSeconds > 0
+    ? Math.max(0, Math.min(1, offerCountdown / offerTotalSeconds))
+    : 0;
+
+  const styles = getStyles(isDarkMode, isRTL);
 
   return (
     <View style={styles.container}>
@@ -1885,19 +1918,57 @@ export default function DashboardScreen() {
       {/* Ride Offer Modal */}
       {rideOffer && (
         <View style={styles.rideOfferModal}>
-          <View style={styles.rideOfferCard}>
-            <Text style={styles.rideOfferTitle}>New Ride Available!</Text>
-            <Text style={styles.rideOfferId}>#{rideOffer.rideId}</Text>
-            <Text style={styles.rideOfferPrice}>{rideOffer.rideData.price} DKK</Text>
-            <Text style={styles.rideOfferDistance}>{rideOffer.rideData.distanceKm} km</Text>
-            <Text style={styles.rideOfferAddress}>From: {rideOffer.rideData.pickupAddress}</Text>
-            <Text style={styles.rideOfferAddress}>To: {rideOffer.rideData.dropoffAddress}</Text>
-            <Text style={styles.rideOfferCountdown}>{offerCountdown}s</Text>
+          <View style={styles.rideOfferSheet}>
+            <View style={styles.rideOfferHeader}>
+              <Text style={styles.rideOfferTitle}>{t('ride_offer_title')}</Text>
+              <View style={styles.rideOfferPill}>
+                <Text style={styles.rideOfferPillText}>#{rideOffer.rideId}</Text>
+              </View>
+            </View>
+
+            <View style={styles.rideOfferMetaRow}>
+              <View style={styles.rideOfferMetaItem}>
+                <Text style={styles.rideOfferMetaLabel}>{t('price')}</Text>
+                <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
+              </View>
+              <View style={styles.rideOfferMetaItem}>
+                <Text style={styles.rideOfferMetaLabel}>{t('distance')}</Text>
+                <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.distanceKm} km</Text>
+              </View>
+              {pickupEtaMinutes !== null && (
+                <View style={styles.rideOfferMetaItem}>
+                  <Text style={styles.rideOfferMetaLabel}>{t('ride_offer_eta_to_pickup')}</Text>
+                  <Text style={styles.rideOfferMetaValue}>{pickupEtaMinutes} {t('minutes_short')}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.rideOfferAddressBlock}>
+              <View style={styles.rideOfferAddressRow}>
+                <Text style={styles.rideOfferAddressLabel}>{t('from')}</Text>
+                <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                  {rideOffer.rideData.pickupAddress}
+                </Text>
+              </View>
+              <View style={styles.rideOfferAddressRow}>
+                <Text style={styles.rideOfferAddressLabel}>{t('to')}</Text>
+                <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                  {rideOffer.rideData.dropoffAddress}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.rideOfferCountdownRow}>
+              <View style={styles.rideOfferCountdownTrack}>
+                <View style={[styles.rideOfferCountdownFill, { width: `${offerProgress * 100}%` }]} />
+              </View>
+              <Text style={styles.rideOfferCountdownText}>{t('ride_offer_time_left', { seconds: offerCountdown })}</Text>
+            </View>
+
             <View style={styles.rideOfferButtons}>
               <TouchableOpacity
-                style={[styles.rideOfferButton, styles.acceptButton]}
+                style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
                 onPress={async () => {
-                  // Accept the ride
                   acceptRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
                   setRideOffer(null);
                   setOfferCountdown(0);
@@ -1908,27 +1979,25 @@ export default function DashboardScreen() {
                     clearInterval(offerTimeout);
                     setOfferTimeout(null);
                   }
-                  // Reload driver status to show pickup modal immediately
                   await loadDriverStatus();
                 }}
               >
-                <Text style={styles.acceptButtonText}>Accept</Text>
+                <Text style={styles.acceptButtonText}>{t('ride_offer_accept')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.rideOfferButton, styles.rejectButton]}
+                style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
                 onPress={async () => {
-                  // Reject the ride
                   rejectRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
                   setRideOffer(null);
                   setOfferCountdown(0);
-                  await stopRideOfferSound(); // Stop the sound
+                  await stopRideOfferSound();
                   if (offerTimeout) {
                     clearInterval(offerTimeout);
                     setOfferTimeout(null);
                   }
                 }}
               >
-                <Text style={styles.rejectButtonText}>Reject</Text>
+                <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>{t('ride_offer_reject')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2048,7 +2117,7 @@ export default function DashboardScreen() {
   );
 }
 
-const getStyles = (isDarkMode: boolean) => StyleSheet.create({
+const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: isDarkMode ? '#0f0f0f' : '#ffffff',
@@ -2489,81 +2558,155 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
   },
-  rideOfferModal: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 3000,
-  },
-  rideOfferCard: {
-    backgroundColor: isDarkMode ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.95)',
-    margin: 20,
-    borderRadius: 20,
-    padding: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 15,
-    alignItems: 'center',
-    minWidth: 320,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-  },
-  rideOfferTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
-    marginBottom: 10,
-  },
-  rideOfferId: {
-    fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
-    marginBottom: 8,
-  },
-  rideOfferPrice: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#28a745',
-    marginBottom: 8,
-  },
-  rideOfferDistance: {
-    fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
-    marginBottom: 4,
-  },
-  rideOfferAddress: {
-    fontSize: 14,
-    color: isDarkMode ? '#ccc' : '#666',
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  rideOfferCountdown: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#dc3545',
-    marginBottom: 15,
-  },
-  rideOfferButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  rideOfferButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    minWidth: 100,
-    alignItems: 'center',
-  },
-  acceptButton: {
-    backgroundColor: '#28a745',
-    shadowColor: '#28a745',
+   rideOfferModal: {
+     position: 'absolute',
+     top: 0,
+     left: 0,
+     right: 0,
+     bottom: 0,
+     backgroundColor: 'rgba(0, 0, 0, 0.55)',
+     justifyContent: 'flex-end',
+     alignItems: 'center',
+     zIndex: 3000,
+   },
+   rideOfferSheet: {
+     backgroundColor: isDarkMode ? '#1f1f1f' : '#ffffff',
+     width: '100%',
+     borderTopLeftRadius: 24,
+     borderTopRightRadius: 24,
+     padding: 20,
+     paddingBottom: 28,
+     shadowColor: '#000',
+     shadowOffset: { width: 0, height: -6 },
+     shadowOpacity: 0.2,
+     shadowRadius: 12,
+     elevation: 20,
+     borderWidth: 1,
+     borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+   },
+   rideOfferHeader: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     marginBottom: 12,
+   },
+   rideOfferTitle: {
+     fontSize: 18,
+     fontWeight: '700',
+     color: isDarkMode ? '#fff' : '#222',
+     flex: 1,
+   },
+   rideOfferPill: {
+     backgroundColor: isDarkMode ? '#2f2f2f' : '#f1f3f5',
+     borderRadius: 20,
+     paddingVertical: 6,
+     paddingHorizontal: 12,
+     marginLeft: 12,
+   },
+   rideOfferPillText: {
+     color: isDarkMode ? '#fff' : '#333',
+     fontSize: 12,
+     fontWeight: '600',
+   },
+   rideOfferMetaRow: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     gap: 10,
+     marginBottom: 14,
+   },
+   rideOfferMetaItem: {
+     flex: 1,
+     backgroundColor: isDarkMode ? '#2a2a2a' : '#f8f9fa',
+     borderRadius: 12,
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderWidth: 1,
+     borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+   },
+   rideOfferMetaLabel: {
+     fontSize: 12,
+     color: isDarkMode ? '#bbb' : '#666',
+     marginBottom: 4,
+   },
+   rideOfferMetaValue: {
+     fontSize: 16,
+     fontWeight: '700',
+     color: isDarkMode ? '#fff' : '#222',
+   },
+   rideOfferAddressBlock: {
+     backgroundColor: isDarkMode ? '#2a2a2a' : '#f8f9fa',
+     borderRadius: 14,
+     padding: 14,
+     marginBottom: 16,
+     borderWidth: 1,
+     borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+   },
+   rideOfferAddressRow: {
+     flexDirection: isRTL ? 'row-reverse' : 'row',
+     alignItems: 'flex-start',
+     marginBottom: 10,
+   },
+   rideOfferAddressLabel: {
+     fontSize: 12,
+     fontWeight: '700',
+     color: isDarkMode ? '#9ad0ff' : '#007bff',
+     width: 50,
+     textAlign: isRTL ? 'right' : 'left',
+   },
+   rideOfferAddressValue: {
+     flex: 1,
+     fontSize: 14,
+     color: isDarkMode ? '#e5e5e5' : '#333',
+     lineHeight: 20,
+     textAlign: isRTL ? 'right' : 'left',
+   },
+   rideOfferCountdownRow: {
+     marginBottom: 16,
+   },
+   rideOfferCountdownTrack: {
+     height: 8,
+     backgroundColor: isDarkMode ? '#3a3a3a' : '#e9ecef',
+     borderRadius: 8,
+     overflow: 'hidden',
+   },
+   rideOfferCountdownFill: {
+     height: '100%',
+     backgroundColor: '#dc3545',
+   },
+   rideOfferCountdownText: {
+     marginTop: 8,
+     fontSize: 13,
+     fontWeight: '600',
+     color: isDarkMode ? '#ffb3b3' : '#b02a37',
+     textAlign: 'center',
+   },
+   rideOfferButtons: {
+     flexDirection: 'column',
+     gap: 10,
+     width: '100%',
+   },
+   rideOfferButton: {
+     paddingVertical: 14,
+     paddingHorizontal: 20,
+     borderRadius: 12,
+     alignItems: 'center',
+   },
+   rideOfferPrimary: {
+     width: '100%',
+   },
+   rideOfferSecondary: {
+     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+     borderWidth: 1,
+     borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#dee2e6',
+     width: '100%',
+   },
+   rideOfferSecondaryText: {
+     color: isDarkMode ? '#f8f9fa' : '#343a40',
+     textShadowColor: 'transparent',
+   },
+   acceptButton: {
+     backgroundColor: '#28a745',
+     shadowColor: '#28a745',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -2571,16 +2714,16 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  rejectButton: {
-    backgroundColor: '#dc3545',
-    shadowColor: '#dc3545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
+   rejectButton: {
+     backgroundColor: '#dc3545',
+     shadowColor: '#dc3545',
+     shadowOffset: { width: 0, height: 4 },
+     shadowOpacity: 0.3,
+     shadowRadius: 8,
+     elevation: 4,
+     borderWidth: 2,
+     borderColor: '#fff',
+   },
   acceptButtonText: {
     color: 'white',
     fontSize: 18,
