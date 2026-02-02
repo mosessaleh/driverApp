@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState, Alert, BackHandler } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
@@ -102,6 +102,13 @@ export default function DashboardScreen() {
   const dot2Anim = useRef(new Animated.Value(1)).current;
   const dot3Anim = useRef(new Animated.Value(1)).current;
 
+  const searchText = t('searching_trips');
+  const searchLetters = useMemo(() => Array.from(searchText), [searchText]);
+  const letterAnimValues = useMemo(
+    () => searchLetters.map(() => new Animated.Value(1)),
+    [searchLetters]
+  );
+
   // Slider refs and state
   const sliderPositionRef = useRef(0);
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -201,6 +208,44 @@ export default function DashboardScreen() {
       dot3Anim.setValue(1);
     }
   }, [driverOnline, driverBusy, activeRide, dot1Anim, dot2Anim, dot3Anim]);
+
+  const isSearching = driverOnline && !driverBusy && !activeRide;
+
+  useEffect(() => {
+    if (!isSearching || letterAnimValues.length === 0) {
+      letterAnimValues.forEach(anim => anim.setValue(1));
+      return;
+    }
+
+    const animations = letterAnimValues.map(anim =>
+      Animated.sequence([
+        Animated.timing(anim, {
+          toValue: 1.28,
+          duration: 160,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 160,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.stagger(70, animations),
+        Animated.delay(200),
+      ])
+    );
+
+    loop.start();
+
+    return () => {
+      loop.stop();
+      letterAnimValues.forEach(anim => anim.setValue(1));
+    };
+  }, [isSearching, letterAnimValues]);
 
   useEffect(() => {
     if (authState.token) {
@@ -2151,7 +2196,19 @@ export default function DashboardScreen() {
             <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot2Anim }] }]} />
             <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot3Anim }] }]} />
           </View>
-          <Text style={styles.searchingText}>{t('searching_trips')}</Text>
+          <Text style={styles.searchingText}>
+            {searchLetters.map((letter, index) => (
+              <Animated.Text
+                key={`search-letter-${index}`}
+                style={[
+                  styles.searchingLetter,
+                  { transform: [{ scale: letterAnimValues[index] }] },
+                ]}
+              >
+                {letter === ' ' ? '\u00A0' : letter}
+              </Animated.Text>
+            ))}
+          </Text>
         </View>
       )}
 
@@ -3417,11 +3474,13 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     elevation: 14,
   },
   searchingText: {
+    textAlign: 'center',
+  },
+  searchingLetter: {
     color: isDarkMode ? '#e5e7eb' : '#0f172a',
     fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 0.2,
-    textAlign: 'center',
+    lineHeight: 22,
   },
   searchingBars: {
     flexDirection: 'row',
