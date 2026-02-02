@@ -79,6 +79,8 @@ export default function DashboardScreen() {
    const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
    const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
    const [showStatusExpanded, setShowStatusExpanded] = useState(false);
+   const [totalRidesToday, setTotalRidesToday] = useState(0);
+   const [earningsToday, setEarningsToday] = useState(0);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
 
@@ -732,6 +734,9 @@ export default function DashboardScreen() {
         setShiftStartTime(null);
         setShowShiftWarning(false);
       }
+
+      setTotalRidesToday(typeof res.totalRidesToday === 'number' ? res.totalRidesToday : 0);
+      setEarningsToday(typeof res.earningsToday === 'number' ? res.earningsToday : 0);
 
       // Check for current active ride
       if (res.currentRideId && !activeRide) {
@@ -2034,8 +2039,8 @@ export default function DashboardScreen() {
         currentLocation={currentLocation}
         locationPermission={locationPermission}
         isTracking={isTracking}
-        totalRidesToday={0}
-        earningsToday={0}
+        totalRidesToday={totalRidesToday}
+        earningsToday={earningsToday}
         rating={authState.user?.rating || 5.0}
       />
 
