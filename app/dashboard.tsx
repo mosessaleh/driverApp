@@ -1678,55 +1678,67 @@ export default function DashboardScreen() {
       {/* Pickup Modal */}
       {showPickupModal && activeRide && (
         <View style={styles.rideModalContainer}>
-          <View style={styles.rideModalCard}>
-            <View style={styles.rideModalHeaderRow}>
-              <View style={styles.rideIdPill}>
-                <Text style={styles.rideIdPillText}>#{activeRide.id}</Text>
+          <View style={styles.pickupModalCard}>
+            <View style={styles.pickupHandle} />
+            <View style={styles.pickupHeaderRow}>
+              <View style={styles.pickupBadge}>
+                <Text style={styles.pickupBadgeText}>{t('pickup')}</Text>
               </View>
-              {activeRide.riderPhone && (
-                <TouchableOpacity
-                  style={styles.callIconInModal}
-                  onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
-                >
-                  <Text style={styles.callIconText}>📞</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.rideMetaRow}>
-              <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
-              <View style={styles.rideMetaPill}>
-                <Text style={styles.rideMetaPillText}>{activeRide.distanceKm} km</Text>
+              <View style={styles.pickupHeaderMeta}>
+                <View style={styles.pickupIdPill}>
+                  <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+                </View>
+                {activeRide.riderPhone && (
+                  <TouchableOpacity
+                    style={styles.callIconInModal}
+                    onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                  >
+                    <Text style={styles.callIconText}>📞</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
-            <View style={styles.ridePickupLabelRow}>
-              <View style={styles.pickupDot} />
-              <Text style={styles.ridePickupLabel}>{t('pickup')}</Text>
+            <View style={styles.pickupInfoRow}>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
+                <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+              </View>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+              </View>
             </View>
-            <Text style={styles.rideModalAddress} numberOfLines={2} ellipsizeMode="tail">
-              {activeRide.pickupAddress}
-            </Text>
+            <View style={styles.pickupAddressCard}>
+              <View style={styles.pickupAddressHeader}>
+                <View style={styles.pickupDot} />
+                <Text style={styles.pickupAddressLabel}>{t('pickup')}</Text>
+              </View>
+              <Text style={styles.pickupAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                {activeRide.pickupAddress}
+              </Text>
+            </View>
             {activeRide.vehicleTypeName ? (
               <View style={styles.rideTypeBadge}>
                 <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
               </View>
             ) : null}
-            <View style={styles.rideModalButtons}>
-              <View style={styles.rideActionRow}>
+            <View style={styles.pickupActions}>
+              <View style={styles.pickupActionRow}>
                 <TouchableOpacity
-                  style={[styles.rideNavButton, styles.rideActionButton]}
+                  style={[styles.pickupNavButton, styles.pickupActionButton]}
                   onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
                 >
-                  <Text style={styles.rideNavButtonText}>{t('nav')}</Text>
+                  <Text style={styles.pickupNavText}>{t('nav')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.chatButton, styles.rideActionButton]}
+                  style={[styles.pickupChatButton, styles.pickupActionButton]}
                   onPress={() => {
                     setShowChat(true);
                     setUnreadMessagesCount(0);
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.chatButtonText}>💬 {t('chat')}</Text>
+                    <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
                     {unreadMessagesCount > 0 && (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
@@ -1908,17 +1920,43 @@ export default function DashboardScreen() {
       {/* Dropoff Modal */}
       {showDropoffModal && activeRide && (
         <View style={styles.rideModalContainer}>
-          <View style={styles.rideModalCard}>
-            <Text style={styles.rideModalId}>#{activeRide.id}</Text>
-            <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
-            <Text style={styles.rideModalDistance}>{activeRide.distanceKm} km</Text>
-            <Text style={styles.rideModalAddress}>{activeRide.dropoffAddress}</Text>
-            <View style={styles.rideModalButtons}>
+          <View style={styles.dropoffModalCard}>
+            <View style={styles.dropoffHandle} />
+            <View style={styles.dropoffHeaderRow}>
+              <View style={styles.dropoffBadge}>
+                <Text style={styles.dropoffBadgeText}>{t('dropoff')}</Text>
+              </View>
+              <View style={styles.dropoffIdPill}>
+                <Text style={styles.dropoffIdText}>#{activeRide.id}</Text>
+              </View>
+            </View>
+            <View style={styles.dropoffInfoRow}>
+              <View style={styles.dropoffInfoCard}>
+                <Text style={styles.dropoffInfoLabel}>{t('price')}</Text>
+                <Text style={[styles.dropoffInfoValue, styles.dropoffInfoValueAccent]}>
+                  {activeRide.price} DKK
+                </Text>
+              </View>
+              <View style={styles.dropoffInfoCard}>
+                <Text style={styles.dropoffInfoLabel}>{t('distance')}</Text>
+                <Text style={styles.dropoffInfoValue}>{activeRide.distanceKm} km</Text>
+              </View>
+            </View>
+            <View style={styles.dropoffAddressCard}>
+              <View style={styles.dropoffAddressHeader}>
+                <View style={styles.dropoffDot} />
+                <Text style={styles.dropoffAddressLabel}>{t('dropoff')}</Text>
+              </View>
+              <Text style={styles.dropoffAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                {activeRide.dropoffAddress}
+              </Text>
+            </View>
+            <View style={styles.dropoffActions}>
               <TouchableOpacity
-                style={styles.rideNavButton}
+                style={styles.dropoffNavButton}
                 onPress={() => handleNav(activeRide.pickupAddress, activeRide.dropoffAddress)}
               >
-                <Text style={styles.rideNavButtonText}>NAV</Text>
+                <Text style={styles.dropoffNavText}>{t('nav')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.dropoffButton} onLongPress={handleDropoffConfirm} delayLongPress={1500} disabled={isDropoffLoading}>
                 {isDropoffLoading ? (
@@ -2108,10 +2146,10 @@ export default function DashboardScreen() {
       {/* Searching for Trips Bar */}
       {driverOnline && !driverBusy && !activeRide && (
         <View style={styles.searchingBar}>
-          <View style={styles.dotsContainer}>
-            <Animated.View style={[styles.dot, { transform: [{ scale: dot1Anim }] }]} />
-            <Animated.View style={[styles.dot, { transform: [{ scale: dot2Anim }] }]} />
-            <Animated.View style={[styles.dot, { transform: [{ scale: dot3Anim }] }]} />
+          <View style={styles.searchingBars}>
+            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot1Anim }] }]} />
+            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot2Anim }] }]} />
+            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot3Anim }] }]} />
           </View>
           <Text style={styles.searchingText}>{t('searching_trips')}</Text>
         </View>
@@ -2336,6 +2374,303 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
   },
+  pickupModalCard: {
+    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.98)',
+    margin: 20,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 18,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    borderTopWidth: 4,
+    borderTopColor: '#28a745',
+  },
+  pickupHandle: {
+    alignSelf: 'center',
+    width: 50,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    marginBottom: 12,
+  },
+  pickupHeaderRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  pickupBadge: {
+    backgroundColor: isDarkMode ? 'rgba(34,197,94,0.18)' : '#dcfce7',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(34,197,94,0.45)' : '#bbf7d0',
+  },
+  pickupBadgeText: {
+    color: isDarkMode ? '#86efac' : '#15803d',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  pickupHeaderMeta: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pickupIdPill: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#e2e8f0',
+  },
+  pickupIdText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#e2e8f0' : '#334155',
+  },
+  pickupInfoRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  pickupInfoCard: {
+    flex: 1,
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  pickupInfoLabel: {
+    fontSize: 12,
+    color: isDarkMode ? '#aaa' : '#6b7280',
+    marginBottom: 4,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  pickupInfoValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: isDarkMode ? '#fff' : '#111827',
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  pickupInfoValueAccent: {
+    color: '#22c55e',
+  },
+  pickupAddressCard: {
+    backgroundColor: isDarkMode ? '#1f2d1f' : '#f0fdf4',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(34,197,94,0.25)' : '#bbf7d0',
+    marginBottom: 14,
+  },
+  pickupAddressHeader: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pickupAddressLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#86efac' : '#15803d',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  pickupAddressValue: {
+    fontSize: 16,
+    color: isDarkMode ? '#e2e8f0' : '#1f2937',
+    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  pickupActions: {
+    gap: 10,
+  },
+  pickupActionRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    gap: 10,
+  },
+  pickupActionButton: {
+    flex: 1,
+  },
+  pickupNavButton: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+  },
+  pickupNavText: {
+    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  pickupChatButton: {
+    backgroundColor: isDarkMode ? 'rgba(56,189,248,0.18)' : '#e0f2fe',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(56,189,248,0.45)' : '#bae6fd',
+  },
+  pickupChatButtonText: {
+    color: isDarkMode ? '#bae6fd' : '#0369a1',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  dropoffModalCard: {
+    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.98)',
+    margin: 20,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 18,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    borderTopWidth: 4,
+    borderTopColor: '#dc3545',
+  },
+  dropoffHandle: {
+    alignSelf: 'center',
+    width: 50,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    marginBottom: 12,
+  },
+  dropoffHeaderRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  dropoffBadge: {
+    backgroundColor: isDarkMode ? 'rgba(220,53,69,0.18)' : '#fee2e2',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(220,53,69,0.4)' : '#fecaca',
+  },
+  dropoffBadgeText: {
+    color: isDarkMode ? '#fecaca' : '#b91c1c',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  dropoffIdPill: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#e2e8f0',
+  },
+  dropoffIdText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#e2e8f0' : '#334155',
+  },
+  dropoffInfoRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  dropoffInfoCard: {
+    flex: 1,
+    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  dropoffInfoLabel: {
+    fontSize: 12,
+    color: isDarkMode ? '#aaa' : '#6b7280',
+    marginBottom: 4,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  dropoffInfoValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: isDarkMode ? '#fff' : '#111827',
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  dropoffInfoValueAccent: {
+    color: '#22c55e',
+  },
+  dropoffAddressCard: {
+    backgroundColor: isDarkMode ? '#1f2937' : '#f8fafc',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
+    marginBottom: 14,
+  },
+  dropoffAddressHeader: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dropoffDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#dc3545',
+    marginRight: isRTL ? 0 : 8,
+    marginLeft: isRTL ? 8 : 0,
+  },
+  dropoffAddressLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#fecaca' : '#b91c1c',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  dropoffAddressValue: {
+    fontSize: 16,
+    color: isDarkMode ? '#e2e8f0' : '#1f2937',
+    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  dropoffActions: {
+    gap: 10,
+  },
+  dropoffNavButton: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+  },
+  dropoffNavText: {
+    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   rideModalHeaderRow: {
     flexDirection: isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
@@ -2474,47 +2809,49 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
   },
   pickupButton: {
     backgroundColor: '#28a745',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#28a745',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#fff',
   },
   pickupButtonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   dropoffButton: {
     backgroundColor: '#dc3545',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
     width: '100%',
     alignItems: 'center',
     shadowColor: '#dc3545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#fff',
   },
   dropoffButtonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -3059,44 +3396,54 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
   },
   searchingBar: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 80,
-    backgroundColor: isDarkMode ? 'rgba(30,30,30,0.9)' : 'rgba(255,255,255,0.9)',
+    bottom: 22,
+    left: 16,
+    right: 16,
+    minHeight: 64,
+    backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc',
     flexDirection: 'column',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     zIndex: 1000,
-    borderTopWidth: 1,
-    borderTopColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(148,163,184,0.35)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  dotsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#007bff',
-    marginHorizontal: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    elevation: 14,
   },
   searchingText: {
-    color: isDarkMode ? '#fff' : '#333',
-    fontSize: 18,
-    fontWeight: '600',
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    color: isDarkMode ? '#e5e7eb' : '#0f172a',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  searchingBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    width: 48,
+    height: 24,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: isDarkMode ? 'rgba(23,162,184,0.12)' : 'rgba(23,162,184,0.08)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(23,162,184,0.3)' : 'rgba(23,162,184,0.25)',
+    marginBottom: 8,
+    flexShrink: 0,
+  },
+  searchingBarItem: {
+    width: 4,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: '#17a2b8',
+    marginHorizontal: 2,
   },
   cancelRideButton: {
     backgroundColor: '#dc3545',
