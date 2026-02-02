@@ -1679,42 +1679,62 @@ export default function DashboardScreen() {
       {showPickupModal && activeRide && (
         <View style={styles.rideModalContainer}>
           <View style={styles.rideModalCard}>
-            <Text style={styles.rideModalId}>#{activeRide.id}</Text>
-            {activeRide.riderPhone && (
-              <TouchableOpacity
-                style={styles.callIconInModal}
-                onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
-              >
-                <Text style={styles.callIconText}>📞</Text>
-              </TouchableOpacity>
-            )}
-            <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
-            <Text style={styles.rideModalDistance}>{activeRide.distanceKm} km</Text>
-            <Text style={styles.rideModalAddress}>{activeRide.pickupAddress}</Text>
-            <Text style={styles.rideModalType}>{activeRide.vehicleTypeName}</Text>
+            <View style={styles.rideModalHeaderRow}>
+              <View style={styles.rideIdPill}>
+                <Text style={styles.rideIdPillText}>#{activeRide.id}</Text>
+              </View>
+              {activeRide.riderPhone && (
+                <TouchableOpacity
+                  style={styles.callIconInModal}
+                  onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                >
+                  <Text style={styles.callIconText}>📞</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.rideMetaRow}>
+              <Text style={styles.rideModalPrice}>{activeRide.price} DKK</Text>
+              <View style={styles.rideMetaPill}>
+                <Text style={styles.rideMetaPillText}>{activeRide.distanceKm} km</Text>
+              </View>
+            </View>
+            <View style={styles.ridePickupLabelRow}>
+              <View style={styles.pickupDot} />
+              <Text style={styles.ridePickupLabel}>{t('pickup')}</Text>
+            </View>
+            <Text style={styles.rideModalAddress} numberOfLines={2} ellipsizeMode="tail">
+              {activeRide.pickupAddress}
+            </Text>
+            {activeRide.vehicleTypeName ? (
+              <View style={styles.rideTypeBadge}>
+                <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
+              </View>
+            ) : null}
             <View style={styles.rideModalButtons}>
-              <TouchableOpacity
-                style={styles.rideNavButton}
-                onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
-              >
-                <Text style={styles.rideNavButtonText}>{t('nav')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.chatButton}
-                onPress={() => {
-                  setShowChat(true);
-                  setUnreadMessagesCount(0);
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.chatButtonText}>💬 {t('chat')}</Text>
-                  {unreadMessagesCount > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+              <View style={styles.rideActionRow}>
+                <TouchableOpacity
+                  style={[styles.rideNavButton, styles.rideActionButton]}
+                  onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
+                >
+                  <Text style={styles.rideNavButtonText}>{t('nav')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chatButton, styles.rideActionButton]}
+                  onPress={() => {
+                    setShowChat(true);
+                    setUnreadMessagesCount(0);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.chatButtonText}>💬 {t('chat')}</Text>
+                    {unreadMessagesCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={1500} disabled={isPickupLoading}>
                 {isPickupLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -2311,34 +2331,111 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 15,
     elevation: 15,
-    alignItems: 'center',
+    alignItems: 'stretch',
     position: 'relative',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+  },
+  rideModalHeaderRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  rideIdPill: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#e2e8f0',
+  },
+  rideIdPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#e2e8f0' : '#334155',
+  },
+  rideMetaRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  rideMetaPill: {
+    backgroundColor: isDarkMode ? 'rgba(34,197,94,0.12)' : '#dcfce7',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(34,197,94,0.3)' : '#bbf7d0',
+  },
+  rideMetaPillText: {
+    color: isDarkMode ? '#86efac' : '#15803d',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  ridePickupLabelRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pickupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#28a745',
+    marginRight: isRTL ? 0 : 8,
+    marginLeft: isRTL ? 8 : 0,
+  },
+  ridePickupLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#9ae6b4' : '#15803d',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   rideModalPrice: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#28a745',
-    marginBottom: 10,
     textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+    textAlign: isRTL ? 'right' : 'left',
   },
   rideModalDistance: {
     fontSize: 16,
     color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 4,
+    textAlign: isRTL ? 'right' : 'left',
   },
   rideModalAddress: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
-    marginBottom: 4,
+    color: isDarkMode ? '#e2e8f0' : '#1f2937',
+    marginBottom: 6,
+    lineHeight: 22,
+    fontWeight: '600',
+    textAlign: isRTL ? 'right' : 'left',
   },
   rideModalType: {
     fontSize: 16,
     color: isDarkMode ? '#ccc' : '#666',
     marginBottom: 8,
+  },
+  rideTypeBadge: {
+    alignSelf: isRTL ? 'flex-end' : 'flex-start',
+    backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : '#e0f2fe',
+    borderColor: isDarkMode ? 'rgba(59,130,246,0.3)' : '#bae6fd',
+    borderWidth: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  rideTypeBadgeText: {
+    color: isDarkMode ? '#93c5fd' : '#0369a1',
+    fontSize: 12,
+    fontWeight: '700',
   },
   rideModalId: {
     position: 'absolute',
@@ -2352,6 +2449,15 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     flexDirection: 'column',
     width: '100%',
     gap: 10,
+    alignItems: 'stretch',
+  },
+  rideActionRow: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    gap: 10,
+  },
+  rideActionButton: {
+    flex: 1,
+    width: 'auto',
   },
   rideNavButton: {
     backgroundColor: '#007bff',
@@ -2741,14 +2847,18 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     textShadowRadius: 2,
   },
   callIconInModal: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 1000,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f8fafc',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   callIconText: {
     color: '#28a745',
-    fontSize: 24,
+    fontSize: 18,
   },
   chatButton: {
     backgroundColor: '#17a2b8',
