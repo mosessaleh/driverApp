@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useRouter } from 'expo-router';
@@ -10,11 +10,13 @@ import { Card } from '../src/components/Card';
 import { Button } from '../src/components/Button';
 import { Loading } from '../src/components/Loading';
 import { colors, spacing, shadows, getThemeColors } from '../src/theme';
+import { useTranslation } from '../src/hooks/useTranslation';
 
 export default function ProfileScreen() {
   const { authState } = useAuth();
   const { isDarkMode } = useSettings();
   const router = useRouter();
+  const { t, isRTL } = useTranslation();
   const themeColors = getThemeColors(isDarkMode);
   
   const [profileData, setProfileData] = useState<any>(null);
@@ -45,11 +47,11 @@ export default function ProfileScreen() {
         setProfileData(response.driver);
         setError(null);
       } else {
-        setError('Failed to load profile data');
+        setError(t('profile_load_failed'));
       }
     } catch (err) {
       console.error('Error loading profile:', err);
-      setError('Failed to load profile data');
+      setError(t('profile_load_failed'));
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -65,7 +67,7 @@ export default function ProfileScreen() {
   };
 
   const formatPhoneNumber = (phone: string) => {
-    if (!phone) return 'N/A';
+    if (!phone) return t('not_available');
     return phone.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4');
   };
 
@@ -73,19 +75,19 @@ export default function ProfileScreen() {
     switch (action) {
       case 'change_password':
         if (!profileData?.drEmail) {
-          Alert.alert('Error', 'Email not found in profile.');
+          Alert.alert(t('error'), t('profile_email_missing'));
           return;
         }
         try {
           const response = await requestDriverPasswordReset(profileData.drEmail);
           if (response.ok) {
-            Alert.alert('Success', 'Password reset link has been sent to your email.');
+            Alert.alert(t('success'), t('password_reset_success'));
           } else {
-            Alert.alert('Error', response.error || 'Failed to send reset link.');
+            Alert.alert(t('error'), response.error || t('password_reset_failed'));
           }
         } catch (error) {
           console.error('Password reset error:', error);
-          Alert.alert('Error', 'Failed to send reset link. Please try again.');
+          Alert.alert(t('error'), t('password_reset_failed_generic'));
         }
         break;
       default:
@@ -100,10 +102,10 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <Loading size="large" isDarkMode={isDarkMode} text="Loading profile..." />
+          <Loading size="large" isDarkMode={isDarkMode} text={t('profile_loading')} />
         </View>
       </View>
     );
@@ -116,13 +118,13 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
         </View>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color={colors.danger[500]} />
           <Text style={[styles.errorText, { color: colors.danger[500] }]}>{error}</Text>
           <Button
-            title="Retry"
+            title={t('retry')}
             onPress={() => loadProfile(true)}
             variant="primary"
             icon="refresh"
@@ -133,13 +135,25 @@ export default function ProfileScreen() {
     );
   }
 
+  const isDriverActive = profileData?.isActive === 1 || profileData?.isActive === true || profileData?.isActive === '1';
+  const statusLabel = isDriverActive ? t('driver_active') : t('driver_inactive');
+  const statusColors = isDriverActive
+    ? { background: colors.success[100], text: colors.success[700], dot: colors.success[500] }
+    : { background: colors.warning[100], text: colors.warning[700], dot: colors.warning[500] };
+  const hasPhoto = Boolean(profileData?.drPhoto);
+  const fullName = [profileData?.drFname, profileData?.drLname].filter(Boolean).join(' ').trim();
+  const displayName = fullName || t('not_available');
+  const usernameLabel = profileData?.drUsername ? `@${profileData.drUsername}` : t('not_available');
+  const driverInitialSource = profileData?.drFname || profileData?.drUsername || '';
+  const driverInitial = driverInitialSource ? driverInitialSource.charAt(0).toUpperCase() : '?';
+
   return (
     <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
       <View style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}>
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>Profile</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
         <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={isRefreshing}>
           <Ionicons name={isRefreshing ? "refresh-outline" : "refresh"} size={20} color={colors.primary[500]} />
         </TouchableOpacity>
@@ -157,19 +171,23 @@ export default function ProfileScreen() {
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
               <View style={[styles.avatar, { backgroundColor: colors.primary[500] }]}>
-                <Ionicons name="person" size={40} color="#fff" />
+                {hasPhoto ? (
+                  <Image source={{ uri: profileData.drPhoto }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarInitial}>{driverInitial}</Text>
+                )}
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: colors.success[100] }]}>
-                <Ionicons name="ellipse" size={10} color={colors.success[500]} />
-                <Text style={[styles.statusText, { color: colors.success[700] }]}>Active</Text>
+              <View style={[styles.statusBadge, { backgroundColor: statusColors.background }]}>
+                <Ionicons name="ellipse" size={10} color={statusColors.dot} />
+                <Text style={[styles.statusText, { color: statusColors.text }]}>{statusLabel}</Text>
               </View>
             </View>
-            <View style={styles.profileInfo}>
+            <View style={[styles.profileInfo, isRTL && styles.profileInfoRtl]}>
               <Text style={[styles.profileName, { color: themeColors.neutral.text }]}>
-                {profileData?.drFname} {profileData?.drLname}
+                {displayName}
               </Text>
               <Text style={[styles.profileUsername, { color: themeColors.neutral.textSecondary }]}>
-                @{profileData?.drUsername}
+                {usernameLabel}
               </Text>
             </View>
           </View>
@@ -182,33 +200,37 @@ export default function ProfileScreen() {
               <Ionicons name="person-circle" size={20} color={colors.primary[500]} />
             </View>
             <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
-              Personal Information
+              {t('personal_info')}
             </Text>
           </View>
           
           <InfoRow
             icon="person-outline"
-            label="Full Name"
-            value={`${profileData?.drFname} ${profileData?.drLname}`}
+            label={t('full_name')}
+            value={displayName}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="at-outline"
-            label="Username"
-            value={profileData?.drUsername}
+            label={t('username')}
+            value={profileData?.drUsername || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="call-outline"
-            label="Phone"
+            label={t('phone')}
             value={formatPhoneNumber(profileData?.drPhone)}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="mail-outline"
-            label="Email"
-            value={profileData?.drEmail || 'N/A'}
+            label={t('email')}
+            value={profileData?.drEmail || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
             isLast
           />
         </Card>
@@ -220,27 +242,30 @@ export default function ProfileScreen() {
               <Ionicons name="business" size={20} color={colors.info[500]} />
             </View>
             <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
-              Company Information
+              {t('company_info')}
             </Text>
           </View>
           
           <InfoRow
             icon="business-outline"
-            label="Company Name"
-            value={profileData?.company?.comName || 'N/A'}
+            label={t('company_name')}
+            value={profileData?.company?.comName || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="call-outline"
-            label="Company Phone"
+            label={t('company_phone')}
             value={formatPhoneNumber(profileData?.company?.comPhone)}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="mail-outline"
-            label="Company Email"
-            value={profileData?.company?.comEmail || 'N/A'}
+            label={t('company_email')}
+            value={profileData?.company?.comEmail || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
             isLast
           />
         </Card>
@@ -252,27 +277,37 @@ export default function ProfileScreen() {
               <Ionicons name="car-sport" size={20} color={colors.success[500]} />
             </View>
             <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
-              Vehicle Information
+              {t('vehicle_info')}
             </Text>
           </View>
           
           <InfoRow
             icon="car-sport-outline"
-            label="License Plate"
-            value={profileData?.car || 'N/A'}
+            label={t('license_plate')}
+            value={profileData?.car || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
+            renderValue={() => (
+              <LicensePlate
+                value={profileData?.car}
+                isDarkMode={isDarkMode}
+                notAvailableLabel={t('not_available')}
+              />
+            )}
           />
           <InfoRow
             icon="car-outline"
-            label="Vehicle Type"
-            value={profileData?.vehicle?.vehicleType?.title || 'N/A'}
+            label={t('vehicle_type')}
+            value={profileData?.vehicle?.vehicleType?.title || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
           />
           <InfoRow
             icon="people-outline"
-            label="Capacity"
-            value={profileData?.vehicle?.vehicleType?.capacity || 'N/A'}
+            label={t('capacity')}
+            value={profileData?.vehicle?.vehicleType?.capacity || t('not_available')}
             isDarkMode={isDarkMode}
+            isRTL={isRTL}
             isLast
           />
         </Card>
@@ -284,7 +319,7 @@ export default function ProfileScreen() {
               <Ionicons name="settings" size={20} color={colors.warning[500]} />
             </View>
             <Text style={[styles.sectionTitle, { color: themeColors.neutral.text }]}>
-              Actions
+              {t('actions')}
             </Text>
           </View>
           
@@ -294,7 +329,7 @@ export default function ProfileScreen() {
           >
             <Ionicons name="key-outline" size={20} color={colors.primary[500]} />
             <Text style={[styles.actionText, { color: colors.primary[500] }]}>
-              Change Password
+              {t('change_password')}
             </Text>
             <Ionicons name="chevron-forward" size={20} color={themeColors.neutral.textTertiary} />
           </TouchableOpacity>
@@ -313,21 +348,54 @@ interface InfoRowProps {
   value: string;
   isDarkMode: boolean;
   isLast?: boolean;
+  renderValue?: () => React.ReactNode;
+  isRTL?: boolean;
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value, isDarkMode, isLast }) => {
+const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value, isDarkMode, isLast, renderValue, isRTL }) => {
   const themeColors = getThemeColors(isDarkMode);
   
   return (
-    <View style={[styles.infoRow, !isLast && { borderBottomWidth: 1, borderBottomColor: themeColors.neutral.border }]}>
-      <View style={styles.infoLeft}>
+    <View
+      style={[
+        styles.infoRow,
+        isRTL && styles.infoRowRtl,
+        !isLast && { borderBottomWidth: 1, borderBottomColor: themeColors.neutral.border },
+      ]}
+    >
+      <View style={[styles.infoLeft, isRTL && styles.infoLeftRtl]}>
         <Ionicons name={icon} size={18} color={themeColors.neutral.textSecondary} />
-        <Text style={[styles.infoLabel, { color: themeColors.neutral.textSecondary }]}>
+        <Text style={[styles.infoLabel, isRTL && styles.infoLabelRtl, { color: themeColors.neutral.textSecondary }]}>
           {label}
         </Text>
       </View>
-      <Text style={[styles.infoValue, { color: themeColors.neutral.text }]}>
+      {renderValue ? (
+        renderValue()
+      ) : (
+      <Text style={[styles.infoValue, isRTL && styles.infoValueRtl, { color: themeColors.neutral.text }]} numberOfLines={2}>
         {value}
+      </Text>
+      )}
+    </View>
+  );
+};
+
+interface LicensePlateProps {
+  value?: string;
+  isDarkMode: boolean;
+  notAvailableLabel: string;
+}
+
+const LicensePlate: React.FC<LicensePlateProps> = ({ value, isDarkMode, notAvailableLabel }) => {
+  const plateValue = value && value.trim().length > 0 ? value.toUpperCase() : notAvailableLabel;
+
+  return (
+    <View style={[styles.plateContainer, { backgroundColor: isDarkMode ? '#f8fafc' : '#ffffff' }]}> 
+      <View style={styles.plateCountry}>
+        <Text style={styles.plateCountryText}>DK</Text>
+      </View>
+      <Text style={styles.plateText} numberOfLines={1} ellipsizeMode="tail">
+        {plateValue}
       </Text>
     </View>
   );
@@ -394,7 +462,19 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     ...shadows.md,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    resizeMode: 'cover',
+  },
+  avatarInitial: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '700',
   },
   statusBadge: {
     position: 'absolute',
@@ -415,6 +495,11 @@ const styles = StyleSheet.create({
   profileInfo: {
     marginLeft: spacing[5],
     flex: 1,
+  },
+  profileInfoRtl: {
+    marginLeft: 0,
+    marginRight: spacing[5],
+    alignItems: 'flex-end',
   },
   profileName: {
     fontSize: 24,
@@ -450,17 +535,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing[4],
   },
+  infoRowRtl: {
+    flexDirection: 'row-reverse',
+  },
   infoLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  infoLeftRtl: {
+    flexDirection: 'row-reverse',
   },
   infoLabel: {
     fontSize: 14,
     marginLeft: spacing[3],
   },
+  infoLabelRtl: {
+    marginLeft: 0,
+    marginRight: spacing[3],
+    textAlign: 'right',
+  },
   infoValue: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  infoValueRtl: {
+    textAlign: 'left',
+  },
+  plateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    minWidth: 110,
+    ...shadows.sm,
+  },
+  plateCountry: {
+    backgroundColor: '#1d4ed8',
+    borderRadius: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    marginRight: 8,
+  },
+  plateCountryText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  plateText: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 2,
   },
   actionButton: {
     flexDirection: 'row',

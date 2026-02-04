@@ -9,12 +9,14 @@ const resources = {
       "back": "Back",
       "loading": "Loading...",
       "error": "Error",
+      "success": "Success",
       "retry": "Retry",
       "save": "Save",
       "cancel": "Cancel",
       "ok": "OK",
       "yes": "Yes",
       "no": "No",
+      "not_available": "N/A",
 
       // Dashboard
       "dashboard": "Dashboard",
@@ -79,6 +81,14 @@ const resources = {
       "license_plate": "License Plate",
       "vehicle_type": "Vehicle Type",
       "capacity": "Capacity",
+      "profile_loading": "Loading profile...",
+      "profile_load_failed": "Failed to load profile data",
+      "profile_email_missing": "Email not found in profile.",
+      "password_reset_success": "Password reset link has been sent to your email.",
+      "password_reset_failed": "Failed to send reset link.",
+      "password_reset_failed_generic": "Failed to send reset link. Please try again.",
+      "driver_active": "Activated",
+      "driver_inactive": "Not ready for work",
 
       // Settings
       "notification_settings": "Notification Settings",
@@ -175,12 +185,14 @@ const resources = {
       "back": "رجوع",
       "loading": "جارٍ التحميل...",
       "error": "خطأ",
+      "success": "نجاح",
       "retry": "إعادة المحاولة",
       "save": "حفظ",
       "cancel": "إلغاء",
       "ok": "موافق",
       "yes": "نعم",
       "no": "لا",
+      "not_available": "غير متوفر",
 
       // Dashboard
       "dashboard": "لوحة التحكم",
@@ -245,6 +257,14 @@ const resources = {
       "license_plate": "رقم اللوحة",
       "vehicle_type": "نوع السيارة",
       "capacity": "السعة",
+      "profile_loading": "جارٍ تحميل الملف الشخصي...",
+      "profile_load_failed": "فشل تحميل بيانات الملف الشخصي",
+      "profile_email_missing": "البريد الإلكتروني غير موجود في الملف الشخصي.",
+      "password_reset_success": "تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.",
+      "password_reset_failed": "فشل إرسال رابط إعادة التعيين.",
+      "password_reset_failed_generic": "تعذر إرسال رابط إعادة التعيين. حاول مرة أخرى.",
+      "driver_active": "مفعل",
+      "driver_inactive": "غير جاهز للعمل",
 
       // Settings
       "notification_settings": "إعدادات الإشعارات",
@@ -341,12 +361,14 @@ const resources = {
       "back": "Tilbage",
       "loading": "Indlæser...",
       "error": "Fejl",
+      "success": "Succes",
       "retry": "Prøv igen",
       "save": "Gem",
       "cancel": "Annuller",
       "ok": "OK",
       "yes": "Ja",
       "no": "Nej",
+      "not_available": "Ikke tilgængelig",
 
       // Dashboard
       "dashboard": "Dashboard",
@@ -411,6 +433,14 @@ const resources = {
       "license_plate": "Nummerplade",
       "vehicle_type": "Køretøjstype",
       "capacity": "Kapacitet",
+      "profile_loading": "Indlæser profil...",
+      "profile_load_failed": "Kunne ikke indlæse profildata",
+      "profile_email_missing": "Email blev ikke fundet i profilen.",
+      "password_reset_success": "Link til nulstilling af adgangskode er sendt til din email.",
+      "password_reset_failed": "Kunne ikke sende nulstillingslink.",
+      "password_reset_failed_generic": "Kunne ikke sende nulstillingslink. Prøv igen.",
+      "driver_active": "Aktiveret",
+      "driver_inactive": "Ikke klar til arbejde",
 
       // Settings
       "notification_settings": "Notifikationsindstillinger",
