@@ -54,8 +54,10 @@ export default function DashboardScreen() {
    const [currentRideId, setCurrentRideId] = useState<number | null>(null);
    const [showPickupModal, setShowPickupModal] = useState(false);
    const [showDropoffModal, setShowDropoffModal] = useState(false);
+   const [showStopModal, setShowStopModal] = useState(false);
    const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
    const [isPickupLoading, setIsPickupLoading] = useState(false);
+   const [isContinueLoading, setIsContinueLoading] = useState(false);
    const [isDropoffLoading, setIsDropoffLoading] = useState(false);
    const [rideOffer, setRideOffer] = useState<any>(null);
    const [offerCountdown, setOfferCountdown] = useState(0);
@@ -719,22 +721,43 @@ export default function DashboardScreen() {
     }
   }, [shiftStartTime, showShiftWarning, suppressShiftWarning]);
 
-  // Fit map to show pickup and dropoff when pickup or dropoff modal is shown
+  // Fit map to show pickup, stop, and dropoff when ride modals are shown
   useEffect(() => {
-    if ((showPickupModal || showDropoffModal) && activeRide && mapRef.current) {
-      const coordinates = showPickupModal ? [
-        { latitude: currentLocation?.latitude || 0, longitude: currentLocation?.longitude || 0 },
-        { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon }
-      ] : [
-        { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
-        { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
-      ];
+    if ((showPickupModal || showDropoffModal || showStopModal) && activeRide && mapRef.current) {
+      const stopCoordinate = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
+        ? { latitude: activeRide.stopLatLon.lat, longitude: activeRide.stopLatLon.lon }
+        : null;
+      let coordinates: { latitude: number; longitude: number }[] = [];
+      if (showPickupModal) {
+        coordinates = [
+          { latitude: currentLocation?.latitude || 0, longitude: currentLocation?.longitude || 0 },
+          { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon }
+        ];
+      } else if (showStopModal) {
+        if (stopCoordinate) {
+          const originCoordinate = currentLocation
+            ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
+            : { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon };
+          coordinates = [originCoordinate, stopCoordinate];
+        } else {
+          coordinates = [
+            { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
+            { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
+          ];
+        }
+      } else {
+        coordinates = [
+          { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
+          ...(stopCoordinate ? [stopCoordinate] : []),
+          { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
+        ];
+      }
       mapRef.current.fitToCoordinates(coordinates, {
         edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
         animated: true,
       });
     }
-  }, [showPickupModal, showDropoffModal, activeRide, currentLocation]);
+  }, [showPickupModal, showDropoffModal, showStopModal, activeRide, currentLocation]);
 
   // Join chat room when active ride is available
   useEffect(() => {
@@ -826,6 +849,8 @@ export default function DashboardScreen() {
             // Accepted, show pickup modal
             setActiveRide(ride);
             setShowPickupModal(true);
+            setShowStopModal(false);
+            setShowDropoffModal(false);
             sliderPositionRef.current = sliderWidth * 0.05;
             setSliderPosition(sliderWidth * 0.05); // Reset slider
             // Fetch directions from driver to pickup point (since not picked up yet)
@@ -879,22 +904,67 @@ export default function DashboardScreen() {
               console.error('Error loading pickup countdown from AsyncStorage:', error);
             }
           } else if (ride.status === 'PICKED_UP') {
-            // Picked up, show dropoff modal
+            // Picked up, show stop modal first if needed
             setActiveRide(ride);
-            setShowDropoffModal(true);
-            // Fetch directions after a short delay to ensure map is ready
-            setTimeout(() => {
-              fetchDirections(
-                { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-                { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
-              );
-            }, 1000);
+            setShowPickupModal(false);
+            const hasStop = !!ride.stopAddress;
+            let stopCompleted = false;
+
+            if (hasStop) {
+              try {
+                const storedStopCompleted = await AsyncStorage.getItem(`stopCompleted_${ride.id}`);
+                stopCompleted = storedStopCompleted === 'true';
+              } catch (error) {
+                console.error('Error loading stop completion from AsyncStorage:', error);
+              }
+            }
+
+            const stopWaypoint = ride?.stopLatLon && typeof ride.stopLatLon.lat === 'number' && typeof ride.stopLatLon.lon === 'number'
+              ? { lat: ride.stopLatLon.lat, lng: ride.stopLatLon.lon }
+              : null;
+
+            if (hasStop && !stopCompleted) {
+              setShowStopModal(true);
+              setShowDropoffModal(false);
+              setTimeout(() => {
+                if (stopWaypoint) {
+                  fetchDirections(
+                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng }
+                  );
+                } else {
+                  fetchDirections(
+                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
+                    stopWaypoint
+                  );
+                }
+              }, 1000);
+            } else {
+              setShowStopModal(false);
+              setShowDropoffModal(true);
+              setTimeout(() => {
+                if (stopWaypoint && hasStop && stopCompleted) {
+                  fetchDirections(
+                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
+                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
+                  );
+                } else {
+                  fetchDirections(
+                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
+                    stopWaypoint
+                  );
+                }
+              }, 1000);
+            }
           }
         }
       } else if (!res.currentRideId) {
         // Clear any existing ride displays
         setActiveRide(null);
         setShowPickupModal(false);
+        setShowStopModal(false);
         setShowDropoffModal(false);
         setShowCancelText(false);
         setCancelCountdown(0);
@@ -903,7 +973,8 @@ export default function DashboardScreen() {
         try {
           const keys = await AsyncStorage.getAllKeys();
           const countdownKeys = keys.filter(key => key.startsWith('pickupCountdown_'));
-          await AsyncStorage.multiRemove(countdownKeys);
+          const stopKeys = keys.filter(key => key.startsWith('stopCompleted_'));
+          await AsyncStorage.multiRemove([...countdownKeys, ...stopKeys]);
         } catch (error) {
           console.error('Error cleaning up countdown data:', error);
         }
@@ -1102,8 +1173,9 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleNav = (origin: string, destination: string) => {
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+  const handleNav = (origin: string, destination: string, waypoint?: string | null) => {
+    const waypointParam = waypoint ? `&waypoints=${encodeURIComponent(waypoint)}` : '';
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointParam}&travelmode=driving`;
     Linking.openURL(url);
   };
 
@@ -1113,6 +1185,7 @@ export default function DashboardScreen() {
     if (!rideId) {
       return;
     }
+    const hasStop = !!activeRide?.stopAddress;
     // Play pickup beep sound if enabled
     if (settings.sound.pickupDropoffSound) {
       playPickupBeep();
@@ -1121,7 +1194,13 @@ export default function DashboardScreen() {
     // Update ride status locally for immediate UI update
     setActiveRide((prev: any) => prev ? { ...prev, status: 'PICKED_UP' } : null);
     setShowPickupModal(false);
-    setShowDropoffModal(true);
+    if (hasStop) {
+      setShowStopModal(true);
+      setShowDropoffModal(false);
+    } else {
+      setShowStopModal(false);
+      setShowDropoffModal(true);
+    }
     // Clear cancel countdown
     setShowCancelText(false);
     setCancelCountdown(0);
@@ -1132,12 +1211,28 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('Error removing pickup countdown from AsyncStorage:', error);
     }
+    try {
+      await AsyncStorage.removeItem(`stopCompleted_${rideId}`);
+    } catch (error) {
+      console.error('Error removing stop completion from AsyncStorage:', error);
+    }
     // Clear previous route and fetch new route from pickup to dropoff
     setRouteCoordinates([]);
-    fetchDirections(
-      { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
-      { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
-    );
+    const stopWaypoint = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
+      ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
+      : null;
+    if (hasStop && stopWaypoint) {
+      fetchDirections(
+        { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+        { lat: stopWaypoint.lat, lng: stopWaypoint.lng }
+      );
+    } else {
+      fetchDirections(
+        { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+        { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
+        stopWaypoint
+      );
+    }
     try {
       // Update ride status to PICKED_UP and set pickedAt timestamp
       const res = await api.put(`/api/driver/rides/${rideId}/status`, {
@@ -1148,6 +1243,7 @@ export default function DashboardScreen() {
         // If API fails, revert the local changes
         setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
         setShowPickupModal(true);
+        setShowStopModal(false);
         setShowDropoffModal(false);
         setRouteCoordinates([]);
         alert('Failed to update ride status');
@@ -1157,6 +1253,7 @@ export default function DashboardScreen() {
       // Revert on error
       setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
       setShowPickupModal(true);
+      setShowStopModal(false);
       setShowDropoffModal(false);
       setRouteCoordinates([]);
       alert('Error picking up ride');
@@ -1165,9 +1262,42 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleContinueTrip = async () => {
+    const rideId = activeRide?.id;
+    if (!rideId) return;
+    setIsContinueLoading(true);
+    try {
+      await AsyncStorage.setItem(`stopCompleted_${rideId}`, 'true');
+      setShowPickupModal(false);
+      setShowStopModal(false);
+      setShowDropoffModal(true);
+      setRouteCoordinates([]);
+      const stopWaypoint = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
+        ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
+        : null;
+      if (stopWaypoint) {
+        await fetchDirections(
+          { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
+          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
+        );
+      } else {
+        await fetchDirections(
+          { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
+          stopWaypoint
+        );
+      }
+    } catch (error) {
+      console.error('Error continuing trip:', error);
+    } finally {
+      setIsContinueLoading(false);
+    }
+  };
+
   const handleDropoffConfirm = async () => {
     const rideId = activeRide?.id;
     if (!rideId) return;
+    setShowStopModal(false);
     // Play dropoff beep sound if enabled
     if (settings.sound.pickupDropoffSound) {
       playDropoffBeep();
@@ -1183,6 +1313,11 @@ export default function DashboardScreen() {
         setActiveRide(null);
         setCurrentRideId(null);
         setRouteCoordinates([]);
+        try {
+          await AsyncStorage.removeItem(`stopCompleted_${rideId}`);
+        } catch (error) {
+          console.error('Error removing stop completion from AsyncStorage:', error);
+        }
         // Reload driver status to update busy state after ride completion
         await loadDriverStatus();
         // Animate map back to driver's current location
@@ -1254,6 +1389,8 @@ export default function DashboardScreen() {
           setCancelStep('reason');
           setSelectedCancelReason(null);
           setShowPickupModal(false);
+          setShowStopModal(false);
+          setShowDropoffModal(false);
           setActiveRide(null);
           setCurrentRideId(null);
           setRouteCoordinates([]);
@@ -1266,6 +1403,11 @@ export default function DashboardScreen() {
             await AsyncStorage.removeItem(`pickupCountdown_${rideId}`);
           } catch (error) {
             console.error('Error removing pickup countdown from AsyncStorage:', error);
+          }
+          try {
+            await AsyncStorage.removeItem(`stopCompleted_${rideId}`);
+          } catch (error) {
+            console.error('Error removing stop completion from AsyncStorage:', error);
           }
           
           // Reload driver status to update busy state
@@ -1319,10 +1461,15 @@ export default function DashboardScreen() {
     }
   };
 
-  const fetchDirections = async (origin: { lat: number; lng: number }, destination: { lat: number; lng: number }) => {
+  const fetchDirections = async (
+    origin: { lat: number; lng: number },
+    destination: { lat: number; lng: number },
+    waypoint?: { lat: number; lng: number } | null
+  ) => {
     try {
       const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
+      const waypointParam = waypoint ? `&waypoints=${waypoint.lat},${waypoint.lng}` : '';
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}${waypointParam}&mode=driving&key=${apiKey}`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.routes && data.routes.length > 0) {
@@ -1330,14 +1477,23 @@ export default function DashboardScreen() {
         // Decode polyline
         const coordinates = decodePolyline(points);
         setRouteCoordinates(coordinates);
+      } else {
+        const fallbackCoordinates = [
+          { latitude: origin.lat, longitude: origin.lng },
+          ...(waypoint ? [{ latitude: waypoint.lat, longitude: waypoint.lng }] : []),
+          { latitude: destination.lat, longitude: destination.lng },
+        ];
+        setRouteCoordinates(fallbackCoordinates);
       }
     } catch (error) {
       console.error('Error fetching directions:', error);
       // Fallback to straight line
-      setRouteCoordinates([
+      const fallbackCoordinates = [
         { latitude: origin.lat, longitude: origin.lng },
+        ...(waypoint ? [{ latitude: waypoint.lat, longitude: waypoint.lng }] : []),
         { latitude: destination.lat, longitude: destination.lng },
-      ]);
+      ];
+      setRouteCoordinates(fallbackCoordinates);
     }
   };
 
@@ -1725,6 +1881,53 @@ export default function DashboardScreen() {
                     strokeWidth={3}
                   />
                 )}
+                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.stopLatLon.lat,
+                      longitude: activeRide.stopLatLon.lon,
+                    }}
+                    title={t('stop')}
+                    pinColor="#f59e0b"
+                  />
+                )}
+                <Marker
+                  coordinate={{
+                    latitude: activeRide.endLatLon.lat,
+                    longitude: activeRide.endLatLon.lon,
+                  }}
+                  title="Dropoff"
+                  pinColor="red"
+                />
+              </>
+            )}
+            {activeRide && showStopModal && (
+              <>
+                <Marker
+                  coordinate={{
+                    latitude: activeRide.startLatLon.lat,
+                    longitude: activeRide.startLatLon.lon,
+                  }}
+                  title="Pickup"
+                  pinColor="green"
+                />
+                {routeCoordinates.length > 0 && (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor="#007bff"
+                    strokeWidth={3}
+                  />
+                )}
+                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.stopLatLon.lat,
+                      longitude: activeRide.stopLatLon.lon,
+                    }}
+                    title={t('stop')}
+                    pinColor="#f59e0b"
+                  />
+                )}
                 <Marker
                   coordinate={{
                     latitude: activeRide.endLatLon.lat,
@@ -1750,6 +1953,16 @@ export default function DashboardScreen() {
                     coordinates={routeCoordinates}
                     strokeColor="#007bff"
                     strokeWidth={3}
+                  />
+                )}
+                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.stopLatLon.lat,
+                      longitude: activeRide.stopLatLon.lon,
+                    }}
+                    title={t('stop')}
+                    pinColor="#f59e0b"
                   />
                 )}
                 <Marker
@@ -1851,6 +2064,17 @@ export default function DashboardScreen() {
                 {activeRide.pickupAddress}
               </Text>
             </View>
+            {!!activeRide.stopAddress && (
+              <View style={styles.stopAddressCard}>
+                <View style={styles.stopAddressHeader}>
+                  <View style={styles.stopDot} />
+                  <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+                </View>
+                <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                  {activeRide.stopAddress}
+                </Text>
+              </View>
+            )}
             {activeRide.vehicleTypeName ? (
               <View style={styles.rideTypeBadge}>
                 <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
@@ -1901,6 +2125,95 @@ export default function DashboardScreen() {
                   <Text style={styles.cancelRideButtonText}>{t('cancel_ride')}</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Stop Modal */}
+      {showStopModal && activeRide && (
+        <View style={styles.rideModalContainer}>
+          <View style={styles.pickupModalCard}>
+            <View style={styles.pickupHandle} />
+            <View style={styles.pickupHeaderRow}>
+              <View style={styles.pickupBadge}>
+                <Text style={styles.pickupBadgeText}>{t('stop')}</Text>
+              </View>
+              <View style={styles.pickupHeaderMeta}>
+                <View style={styles.pickupIdPill}>
+                  <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+                </View>
+                {activeRide.riderPhone && (
+                  <TouchableOpacity
+                    style={styles.callIconInModal}
+                    onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                  >
+                    <Text style={styles.callIconText}>📞</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            <View style={styles.pickupInfoRow}>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
+                <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+              </View>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+              </View>
+            </View>
+            <View style={styles.stopAddressCard}>
+              <View style={styles.stopAddressHeader}>
+                <View style={styles.stopDot} />
+                <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+              </View>
+              <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                {activeRide.stopAddress}
+              </Text>
+            </View>
+            {activeRide.vehicleTypeName ? (
+              <View style={styles.rideTypeBadge}>
+                <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
+              </View>
+            ) : null}
+            <View style={styles.pickupActions}>
+              <View style={styles.pickupActionRow}>
+                <TouchableOpacity
+                  style={[styles.pickupNavButton, styles.pickupActionButton]}
+                  onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.stopAddress)}
+                >
+                  <Text style={styles.pickupNavText} numberOfLines={1} ellipsizeMode="tail">
+                    {activeRide.stopAddress || t('nav')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pickupChatButton, styles.pickupActionButton]}
+                  onPress={() => {
+                    setShowChat(true);
+                    setUnreadMessagesCount(0);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
+                    {unreadMessagesCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.pickupButton} onLongPress={handleContinueTrip} delayLongPress={1500} disabled={isContinueLoading}>
+                {isContinueLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>{t('continuing_trip')}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pickupButtonText}>{t('hold_to_continue_trip')}</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -2076,6 +2389,17 @@ export default function DashboardScreen() {
                 <Text style={styles.dropoffInfoValue}>{activeRide.distanceKm} km</Text>
               </View>
             </View>
+            {!!activeRide.stopAddress && (
+              <View style={styles.stopAddressCard}>
+                <View style={styles.stopAddressHeader}>
+                  <View style={styles.stopDot} />
+                  <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+                </View>
+                <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                  {activeRide.stopAddress}
+                </Text>
+              </View>
+            )}
             <View style={styles.dropoffAddressCard}>
               <View style={styles.dropoffAddressHeader}>
                 <View style={styles.dropoffDot} />
@@ -2088,7 +2412,7 @@ export default function DashboardScreen() {
             <View style={styles.dropoffActions}>
               <TouchableOpacity
                 style={styles.dropoffNavButton}
-                onPress={() => handleNav(activeRide.pickupAddress, activeRide.dropoffAddress)}
+                onPress={() => handleNav(activeRide.pickupAddress, activeRide.dropoffAddress, activeRide.stopAddress)}
               >
                 <Text style={styles.dropoffNavText}>{t('nav')}</Text>
               </TouchableOpacity>
@@ -2142,6 +2466,14 @@ export default function DashboardScreen() {
                   {rideOffer.rideData.pickupAddress}
                 </Text>
               </View>
+              {rideOffer.rideData.stopAddress && (
+                <View style={styles.rideOfferAddressRow}>
+                  <Text style={styles.rideOfferAddressLabel}>{t('stop')}</Text>
+                  <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                    {rideOffer.rideData.stopAddress}
+                  </Text>
+                </View>
+              )}
               <View style={styles.rideOfferAddressRow}>
                 <Text style={styles.rideOfferAddressLabel}>{t('to')}</Text>
                 <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
@@ -2678,6 +3010,41 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
   pickupAddressValue: {
     fontSize: 16,
     color: isDarkMode ? '#e2e8f0' : '#1f2937',
+    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  stopAddressCard: {
+    backgroundColor: isDarkMode ? '#2b2115' : '#fffbeb',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(245,158,11,0.35)' : '#fcd34d',
+    marginBottom: 14,
+  },
+  stopAddressHeader: {
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  stopDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f59e0b',
+    marginRight: isRTL ? 0 : 8,
+    marginLeft: isRTL ? 8 : 0,
+  },
+  stopAddressLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDarkMode ? '#fbbf24' : '#b45309',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  stopAddressValue: {
+    fontSize: 16,
+    color: isDarkMode ? '#fde68a' : '#7c2d12',
     fontWeight: '600',
     lineHeight: 22,
     textAlign: isRTL ? 'right' : 'left',

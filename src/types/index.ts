@@ -29,6 +29,7 @@ export interface Booking {
   id: string;
   riderName: string;
   pickupAddress: string;
+  stopAddress?: string | null;
   dropoffAddress: string;
   pickupTime: string;
   price: number;
@@ -37,6 +38,9 @@ export interface Booking {
     title: string;
     capacity: number;
   };
+  startLatLon?: { lat: number; lon: number };
+  stopLatLon?: { lat: number; lon: number };
+  endLatLon?: { lat: number; lon: number };
 }
 
 export interface Ride extends Booking {
@@ -48,6 +52,8 @@ export interface Ride extends Booking {
   scheduled: boolean;
   explanation?: string;
   startLatLon?: { lat: number; lon: number };
+  stopLatLon?: { lat: number; lon: number };
+  endLatLon?: { lat: number; lon: number };
   riderPhone?: string;
 }
 

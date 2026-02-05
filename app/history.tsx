@@ -260,6 +260,9 @@ export default function HistoryScreen() {
                 <Text style={styles.rideId}>#{ride.id}</Text>
                 <Text style={styles.rideDate}>{formatDate(ride.createdAt)} • {formatTime(ride.createdAt)}</Text>
                 <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
+                {!!ride.stopAddress && (
+                  <Text style={styles.rideAddress}>{ride.stopAddress}</Text>
+                )}
                 <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
               </View>
               <View style={styles.rideAmount}>

@@ -167,33 +167,47 @@ export default function RideDetailsScreen() {
         </View>
 
         {/* Route Information */}
-        <View style={styles.routeCard}>
-          <Text style={styles.sectionTitle}>Route Information</Text>
-          
-          <View style={styles.routeItem}>
-            <View style={styles.routeIconContainer}>
-              <View style={styles.pickupIcon} />
+          <View style={styles.routeCard}>
+            <Text style={styles.sectionTitle}>Route Information</Text>
+            
+            <View style={styles.routeItem}>
+              <View style={styles.routeIconContainer}>
+                <View style={styles.pickupIcon} />
+              </View>
+              <View style={styles.routeTextContainer}>
+                <Text style={styles.routeLabel}>Pickup</Text>
+                <Text style={styles.routeAddress}>{ride.pickupAddress}</Text>
+              </View>
             </View>
-            <View style={styles.routeTextContainer}>
-              <Text style={styles.routeLabel}>Pickup</Text>
-              <Text style={styles.routeAddress}>{ride.pickupAddress}</Text>
+
+            {ride.stopAddress && (
+              <>
+                <View style={styles.routeDivider} />
+                <View style={styles.routeItem}>
+                  <View style={styles.routeIconContainer}>
+                    <View style={styles.stopIcon} />
+                  </View>
+                  <View style={styles.routeTextContainer}>
+                    <Text style={styles.routeLabel}>Stop</Text>
+                    <Text style={styles.routeAddress}>{ride.stopAddress}</Text>
+                  </View>
+                </View>
+              </>
+            )}
+
+            <View style={styles.routeDivider} />
+            
+            <View style={styles.routeItem}>
+              <View style={styles.routeIconContainer}>
+                <View style={styles.dropoffIcon} />
+              </View>
+              <View style={styles.routeTextContainer}>
+                <Text style={styles.routeLabel}>Dropoff</Text>
+                <Text style={styles.routeAddress}>{ride.dropoffAddress}</Text>
+              </View>
             </View>
           </View>
-
-          <View style={styles.routeDivider} />
-          
-          <View style={styles.routeItem}>
-            <View style={styles.routeIconContainer}>
-              <View style={styles.dropoffIcon} />
-            </View>
-            <View style={styles.routeTextContainer}>
-              <Text style={styles.routeLabel}>Dropoff</Text>
-              <Text style={styles.routeAddress}>{ride.dropoffAddress}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Vehicle & Payment Info */}
+{/* Vehicle & Payment Info */}
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
@@ -414,6 +428,12 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: '#28a745',
+  },
+  stopIcon: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#f59e0b',
   },
   routeTextContainer: {
     flex: 1,
