@@ -4,11 +4,13 @@ import { useAuth } from '../src/context/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getDriverHistory } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { useTranslation } from '../src/hooks/useTranslation';
 
 export default function RideDetailsScreen() {
   const { authState } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const { t } = useTranslation();
   const [ride, setRide] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -42,16 +44,16 @@ export default function RideDetailsScreen() {
         if (foundRide) {
           setRide(foundRide);
         } else {
-          Alert.alert('Error', 'Ride not found');
+          Alert.alert(t('error'), t('ride_not_found'));
           router.back();
         }
       } else {
-        Alert.alert('Error', 'Failed to load ride details');
+        Alert.alert(t('error'), t('ride_details_load_failed'));
         router.back();
       }
     } catch (error) {
       console.error('Error loading ride details:', error);
-      Alert.alert('Error', 'Failed to load ride details');
+      Alert.alert(t('error'), t('ride_details_load_failed'));
       router.back();
     } finally {
       setLoading(false);
@@ -99,10 +101,10 @@ export default function RideDetailsScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Text style={styles.backButtonText}>❮</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ride Details</Text>
+          <Text style={styles.headerTitle}>{t('ride_details')}</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading ride details...</Text>
+          <Text style={styles.loadingText}>{t('ride_details_loading')}</Text>
         </View>
       </View>
     );
@@ -115,10 +117,10 @@ export default function RideDetailsScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Text style={styles.backButtonText}>❮</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ride Details</Text>
+          <Text style={styles.headerTitle}>{t('ride_details')}</Text>
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Ride not found</Text>
+          <Text style={styles.errorText}>{t('ride_not_found')}</Text>
         </View>
       </View>
     );
@@ -131,7 +133,7 @@ export default function RideDetailsScreen() {
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Text style={styles.backButtonText}>❮</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Ride Details</Text>
+        <Text style={styles.headerTitle}>{t('ride_details')}</Text>
       </View>
 
       {/* Main Ride Card */}
@@ -145,22 +147,22 @@ export default function RideDetailsScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Ride ID</Text>
+              <Text style={styles.summaryLabel}>{t('ride_id_label')}</Text>
               <Text style={styles.summaryValue}>#{ride.id}</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Date</Text>
+              <Text style={styles.summaryLabel}>{t('date')}</Text>
               <Text style={styles.summaryValue}>{formatDate(ride.createdAt)}</Text>
             </View>
           </View>
           
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Time</Text>
+              <Text style={styles.summaryLabel}>{t('time')}</Text>
               <Text style={styles.summaryValue}>{formatTime(ride.createdAt)}</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Distance</Text>
+              <Text style={styles.summaryLabel}>{t('distance')}</Text>
               <Text style={styles.summaryValue}>{ride.distanceKm} km</Text>
             </View>
           </View>
@@ -168,14 +170,14 @@ export default function RideDetailsScreen() {
 
         {/* Route Information */}
           <View style={styles.routeCard}>
-            <Text style={styles.sectionTitle}>Route Information</Text>
+            <Text style={styles.sectionTitle}>{t('route_information')}</Text>
             
             <View style={styles.routeItem}>
               <View style={styles.routeIconContainer}>
                 <View style={styles.pickupIcon} />
               </View>
               <View style={styles.routeTextContainer}>
-                <Text style={styles.routeLabel}>Pickup</Text>
+                <Text style={styles.routeLabel}>{t('pickup')}</Text>
                 <Text style={styles.routeAddress}>{ride.pickupAddress}</Text>
               </View>
             </View>
@@ -188,7 +190,7 @@ export default function RideDetailsScreen() {
                     <View style={styles.stopIcon} />
                   </View>
                   <View style={styles.routeTextContainer}>
-                    <Text style={styles.routeLabel}>Stop</Text>
+                    <Text style={styles.routeLabel}>{t('stop')}</Text>
                     <Text style={styles.routeAddress}>{ride.stopAddress}</Text>
                   </View>
                 </View>
@@ -202,7 +204,7 @@ export default function RideDetailsScreen() {
                 <View style={styles.dropoffIcon} />
               </View>
               <View style={styles.routeTextContainer}>
-                <Text style={styles.routeLabel}>Dropoff</Text>
+                <Text style={styles.routeLabel}>{t('dropoff')}</Text>
                 <Text style={styles.routeAddress}>{ride.dropoffAddress}</Text>
               </View>
             </View>
@@ -211,17 +213,17 @@ export default function RideDetailsScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Vehicle Type</Text>
-              <Text style={styles.infoValue}>{ride.vehicleTypeName || 'Not specified'}</Text>
+              <Text style={styles.infoLabel}>{t('vehicle_type')}</Text>
+              <Text style={styles.infoValue}>{ride.vehicleTypeName || t('not_available')}</Text>
             </View>
             <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Payment</Text>
-              <Text style={styles.infoValue}>{ride.paymentMethod || 'Cash'}</Text>
+              <Text style={styles.infoLabel}>{t('payment')}</Text>
+              <Text style={styles.infoValue}>{ride.paymentMethod || t('cash')}</Text>
             </View>
           </View>
           
           <View style={styles.amountContainer}>
-            <Text style={styles.amountLabel}>Total Amount</Text>
+            <Text style={styles.amountLabel}>{t('total_amount')}</Text>
             <Text style={styles.amountValue}>{ride.price} DKK</Text>
           </View>
         </View>
@@ -229,7 +231,7 @@ export default function RideDetailsScreen() {
         {/* Customer Information */}
         {ride.user && (
           <View style={styles.customerCard}>
-            <Text style={styles.sectionTitle}>Customer Information</Text>
+            <Text style={styles.sectionTitle}>{t('customer_information')}</Text>
             
             <View style={styles.customerInfo}>
               <View style={styles.customerAvatar}>
@@ -247,40 +249,52 @@ export default function RideDetailsScreen() {
 
         {/* Additional Details */}
         <View style={styles.detailsCard}>
-          <Text style={styles.sectionTitle}>Additional Details</Text>
+          <Text style={styles.sectionTitle}>{t('additional_details')}</Text>
           
           {ride.acceptedAt && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Accepted Time</Text>
+              <Text style={styles.detailLabel}>{t('accepted_time')}</Text>
               <Text style={styles.detailValue}>{formatDate(ride.acceptedAt)} • {formatTime(ride.acceptedAt)}</Text>
             </View>
           )}
           
           {ride.pickedAt && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Pickup Time</Text>
+              <Text style={styles.detailLabel}>{t('pickup_time')}</Text>
               <Text style={styles.detailValue}>{formatDate(ride.pickedAt)} • {formatTime(ride.pickedAt)}</Text>
             </View>
           )}
           
           {ride.droppedAt && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Dropoff Time</Text>
+              <Text style={styles.detailLabel}>{t('dropoff_time')}</Text>
               <Text style={styles.detailValue}>{formatDate(ride.droppedAt)} • {formatTime(ride.droppedAt)}</Text>
             </View>
           )}
           
           {ride.estimatedTime && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Estimated Time</Text>
+              <Text style={styles.detailLabel}>{t('estimated_time')}</Text>
               <Text style={styles.detailValue}>{ride.estimatedTime} minutes</Text>
             </View>
           )}
           
           {ride.notes && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Notes</Text>
+              <Text style={styles.detailLabel}>{t('notes')}</Text>
               <Text style={styles.detailValue}>{ride.notes}</Text>
+            </View>
+          )}
+
+          {ride.status?.toLowerCase() === 'canceled' && (ride.cancellationReason || ride.canceledBy) && (
+            <View style={styles.cancellationDetails}>
+              <Text style={styles.cancellationTitle}>{t('cancellation_details')}</Text>
+              {ride.cancellationReason ? (
+              <Text style={styles.cancellationText}>{t('cancellation_reason')}: {t(ride.cancellationReason)}</Text>
+              ) : null}
+              {ride.canceledBy ? (
+              <Text style={styles.cancellationText}>{t('canceled_by')}: {t(`canceled_by_${ride.canceledBy}`)}</Text>
+              ) : null}
             </View>
           )}
         </View>
@@ -582,6 +596,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+  },
+  cancellationDetails: {
+    marginTop: 12,
+    backgroundColor: '#fff5f5',
+    borderColor: '#f5c6cb',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  cancellationTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#a61b1b',
+    marginBottom: 6,
+  },
+  cancellationText: {
+    fontSize: 13,
+    color: '#a61b1b',
   },
   loadingContainer: {
     flex: 1,

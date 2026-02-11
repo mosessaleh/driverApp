@@ -6,10 +6,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDriverHistory } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { useTranslation } from '../src/hooks/useTranslation';
 
 export default function HistoryScreen() {
   const { authState } = useAuth();
   const router = useRouter();
+  const { t } = useTranslation();
   const [rides, setRides] = useState<any[]>([]);
   const [summary, setSummary] = useState({ totalRides: 0, totalAmount: 0 });
   const [loading, setLoading] = useState(false);
@@ -111,12 +113,12 @@ export default function HistoryScreen() {
     let startDateStr: string | undefined;
     let endDateStr: string | undefined;
 
-    if (filter === 'Today') {
+    if (filter === t('filter_today')) {
       // Get today's date in local time as YYYY-MM-DD
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       startDateStr = formatLocalDate(today);
       endDateStr = startDateStr; // Same day
-    } else if (filter === 'This week') {
+    } else if (filter === t('filter_this_week')) {
       const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
@@ -126,7 +128,7 @@ export default function HistoryScreen() {
       endOfWeek.setHours(23, 59, 59, 999);
       startDateStr = formatLocalDate(startOfWeek);
       endDateStr = formatLocalDate(endOfWeek);
-    } else if (filter === 'All time') {
+    } else if (filter === t('filter_all_time')) {
       startDateStr = undefined;
       endDateStr = undefined;
     }
@@ -170,57 +172,57 @@ export default function HistoryScreen() {
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Text style={styles.backButtonText}>❮</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>History</Text>
+        <Text style={styles.headerTitle}>{t('history')}</Text>
         <TouchableOpacity style={styles.filterToggleButton} onPress={() => setFilterVisible(!filterVisible)}>
-          <Text style={styles.filterToggleButtonText}>Filter</Text>
+          <Text style={styles.filterToggleButtonText}>{t('filter')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Summary Box */}
       <View style={styles.summaryContainer}>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Total Rides</Text>
-          <Text style={styles.summaryValue}>{summary.totalRides}</Text>
-        </View>
+            <Text style={styles.summaryLabel}>{t('total_rides')}</Text>
+            <Text style={styles.summaryValue}>{summary.totalRides}</Text>
+          </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Total Amount</Text>
-          <Text style={styles.summaryValue}>{summary.totalAmount} DKK</Text>
+            <Text style={styles.summaryLabel}>{t('total_amount')}</Text>
+            <Text style={styles.summaryValue}>{summary.totalAmount} DKK</Text>
+          </View>
         </View>
-      </View>
 
       {/* Filter Box */}
       {filterVisible && (
         <View style={styles.filterContainer}>
-        <Text style={styles.filterTitle}>Filter by Date</Text>
+        <Text style={styles.filterTitle}>{t('filter_by_date')}</Text>
         <View style={styles.quickFilterButtons}>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('Today')}>
-            <Text style={styles.quickFilterButtonText}>Today</Text>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_today'))}>
+            <Text style={styles.quickFilterButtonText}>{t('filter_today')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('This week')}>
-            <Text style={styles.quickFilterButtonText}>This week</Text>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_this_week'))}>
+            <Text style={styles.quickFilterButtonText}>{t('filter_this_week')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter('All time')}>
-            <Text style={styles.quickFilterButtonText}>All time</Text>
+          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_all_time'))}>
+            <Text style={styles.quickFilterButtonText}>{t('filter_all_time')}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.orText}>Or</Text>
+        <Text style={styles.orText}>{t('or')}</Text>
         <View style={styles.filterRow}>
           <View style={styles.filterInputContainer}>
-            <Text style={styles.filterLabel}>From</Text>
+            <Text style={styles.filterLabel}>{t('from')}</Text>
             <TextInput
               style={styles.filterInput}
-              placeholder="DD/MM/YYYY"
+              placeholder={t('date_placeholder')}
               value={startDate}
               onChangeText={setStartDate}
               placeholderTextColor="#999"
             />
           </View>
           <View style={[styles.filterInputContainer, styles.filterInputContainerLast]}>
-            <Text style={styles.filterLabel}>To</Text>
+            <Text style={styles.filterLabel}>{t('to')}</Text>
             <TextInput
               style={styles.filterInput}
-              placeholder="DD/MM/YYYY"
+              placeholder={t('date_placeholder')}
               value={endDate}
               onChangeText={setEndDate}
               placeholderTextColor="#999"
@@ -229,10 +231,10 @@ export default function HistoryScreen() {
         </View>
         <View style={styles.filterButtons}>
           <TouchableOpacity style={styles.filterButton} onPress={handleFilter}>
-            <Text style={styles.filterButtonText}>Filter</Text>
+            <Text style={styles.filterButtonText}>{t('filter')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.clearButton} onPress={handleClearFilter}>
-            <Text style={styles.clearButtonText}>Clear</Text>
+            <Text style={styles.clearButtonText}>{t('clear')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -246,9 +248,9 @@ export default function HistoryScreen() {
         }
       >
         {loading && rides.length === 0 ? (
-          <Text style={styles.loadingText}>Loading history...</Text>
+          <Text style={styles.loadingText}>{t('history_loading')}</Text>
         ) : rides.length === 0 ? (
-          <Text style={styles.noDataText}>No rides found for this period</Text>
+          <Text style={styles.noDataText}>{t('history_no_rides')}</Text>
         ) : (
           rides.map((ride) => (
             <TouchableOpacity 
@@ -264,6 +266,20 @@ export default function HistoryScreen() {
                   <Text style={styles.rideAddress}>{ride.stopAddress}</Text>
                 )}
                 <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
+                {ride.status === 'CANCELED' && (ride.cancellationReason || ride.canceledBy) && (
+                  <View style={styles.cancellationBox}>
+                    {ride.cancellationReason ? (
+                      <Text style={styles.cancellationText}>
+                        {`${t('cancellation_reason')}: ${t(ride.cancellationReason)}`}
+                      </Text>
+                    ) : null}
+                    {ride.canceledBy ? (
+                      <Text style={styles.cancellationText}>
+                        {`${t('canceled_by')}: ${t(`canceled_by_${ride.canceledBy}`)}`}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
               </View>
               <View style={styles.rideAmount}>
                 <Text style={styles.amountValue}>{ride.price} DKK</Text>
@@ -477,6 +493,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#28a745',
+  },
+  cancellationBox: {
+    backgroundColor: '#fff5f5',
+    borderColor: '#f5c6cb',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+  },
+  cancellationText: {
+    fontSize: 12,
+    color: '#a61b1b',
   },
   quickFilterButtons: {
     flexDirection: 'row',
