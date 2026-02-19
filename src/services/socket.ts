@@ -90,17 +90,6 @@ export const disconnectSocket = () => {
   }
 };
 
-export const onNewRide = (callback: (data: { ride: any }) => void) => {
-  if (socket) {
-    socket.on('newRide', callback);
-  }
-};
-
-export const offNewRide = () => {
-  if (socket) {
-    socket.off('newRide');
-  }
-};
 
 export const acceptRide = (rideId: number, driverId: number) => {
   if (socket) {
@@ -132,17 +121,6 @@ export const onRideAcceptFailed = (callback: (data: { rideId: number; reason: st
   }
 };
 
-export const onRideAssigned = (callback: (data: { rideId: number; rideData: any; timestamp: number }) => void) => {
-  if (socket) {
-    socket.on('rideAssigned', callback);
-  }
-};
-
-export const offRideAssigned = () => {
-  if (socket) {
-    socket.off('rideAssigned');
-  }
-};
 
 export const onRideOffer = (callback: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void) => {
   if (socket) {
