@@ -4,7 +4,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming } from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
 import type { DriverStatus } from '../src/components/StatusBar';
@@ -14,9 +14,9 @@ import * as Linking from 'expo-linking';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired } from '../src/services/socket';
-import { sendLocalNotification } from '../src/services/notifications';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning } from '../src/services/socket';
 import * as Notifications from 'expo-notifications';
+import { sendLocalNotification } from '../src/services/notifications';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
@@ -64,6 +64,19 @@ export default function DashboardScreen() {
    const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
    const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
    const [rideOfferSound, setRideOfferSound] = useState<any>(null);
+   const [lateWarningSound, setLateWarningSound] = useState<any>(null);
+   const [scheduledBanner, setScheduledBanner] = useState<{
+     rideId: number;
+     message: string;
+     pickupTime?: string | null;
+     selected?: boolean | null;
+   } | null>(null);
+   const scheduledBannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+   const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
+   const [scheduledNow, setScheduledNow] = useState(Date.now());
+   const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
+   const latestLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
+   const nextScheduledRideRef = useRef<any>(null);
    const [showChat, setShowChat] = useState(false);
    const [chatMessages, setChatMessages] = useState<any[]>([]);
    const [chatInput, setChatInput] = useState('');
@@ -95,6 +108,39 @@ export default function DashboardScreen() {
      if (!driverOnline) return 'offline';
      if (driverBusy) return 'busy';
      return 'online';
+   };
+
+   const formatScheduledDateTime = (value?: string | null) => {
+     if (!value) return null;
+     const date = new Date(value);
+     if (Number.isNaN(date.getTime())) return null;
+     return date.toLocaleString();
+   };
+
+   const formatCountdown = (totalSeconds: number) => {
+     const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+     const hours = Math.floor(safeSeconds / 3600);
+     const minutes = Math.floor((safeSeconds % 3600) / 60);
+     const seconds = safeSeconds % 60;
+     return `${hours.toString().padStart(2, '0')}:${minutes
+       .toString()
+       .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+   };
+
+  const showScheduledBanner = (payload: {
+     rideId: number;
+     message: string;
+     pickupTime?: string | null;
+     selected?: boolean | null;
+   }) => {
+     setScheduledBanner(payload);
+     if (scheduledBannerTimeoutRef.current) {
+       clearTimeout(scheduledBannerTimeoutRef.current);
+     }
+      scheduledBannerTimeoutRef.current = setTimeout(() => {
+        setScheduledBanner(null);
+        scheduledBannerTimeoutRef.current = null;
+      }, 5000);
    };
 
   // Animation for GO button text
@@ -241,7 +287,52 @@ export default function DashboardScreen() {
     };
   }, [showMenu, menuAnim]);
 
+  useEffect(() => {
+    return () => {
+      if (scheduledBannerTimeoutRef.current) {
+        clearTimeout(scheduledBannerTimeoutRef.current);
+        scheduledBannerTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    latestLocationRef.current = currentLocation;
+  }, [currentLocation]);
+
+  useEffect(() => {
+    if (!upcomingRides.length) {
+      return;
+    }
+    setScheduledNow(Date.now());
+    const interval = setInterval(() => {
+      setScheduledNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [upcomingRides.length]);
+
   const isSearching = driverOnline && !driverBusy && !activeRide;
+
+  const nextScheduledRide = useMemo(() => {
+    if (!upcomingRides.length) return null;
+    const now = scheduledNow;
+    const futureRides = upcomingRides.filter((ride) => {
+      const pickupMs = new Date(ride.pickupTime).getTime();
+      return !Number.isNaN(pickupMs) && pickupMs >= now;
+    });
+    return futureRides.length > 0 ? futureRides[0] : null;
+  }, [upcomingRides, scheduledNow]);
+
+  useEffect(() => {
+    nextScheduledRideRef.current = nextScheduledRide;
+  }, [nextScheduledRide]);
+
+  const scheduledCountdownSeconds = useMemo(() => {
+    if (!nextScheduledRide?.pickupTime) return 0;
+    const pickupMs = new Date(nextScheduledRide.pickupTime).getTime();
+    if (Number.isNaN(pickupMs)) return 0;
+    return Math.max(0, Math.ceil((pickupMs - scheduledNow) / 1000));
+  }, [nextScheduledRide?.pickupTime, scheduledNow]);
 
   useEffect(() => {
     if (!isSearching || letterAnimValues.length === 0) {
@@ -293,6 +384,7 @@ export default function DashboardScreen() {
         // Wait for socket connection
         await new Promise(resolve => setTimeout(resolve, 1000));
         await loadDriverStatus();
+        await loadUpcomingRides();
       };
       loadInitialStatus();
 
@@ -326,15 +418,22 @@ export default function DashboardScreen() {
         console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
         console.log('Current ride offer in state:', rideOffer);
 
+        const isScheduledOffer = !!(data?.scheduled || data?.offerType === 'scheduled' || data?.type === 'scheduled');
+
         // Stop any existing sound first
         stopRideOfferSound();
 
         // Play ride offer sound if enabled
         if (settings.sound.rideOfferSound) {
-          playRideOfferSound();
+          if (isScheduledOffer) {
+            playRideOfferSoundOnce();
+          } else {
+            playRideOfferSound();
+          }
         }
 
-        const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || 30000) / 1000));
+        const defaultTimeoutMs = isScheduledOffer ? 15000 : 30000;
+        const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || defaultTimeoutMs) / 1000));
         setOfferTotalSeconds(totalSeconds);
         setRideOffer(data);
         setOfferCountdown(totalSeconds);
@@ -342,13 +441,15 @@ export default function DashboardScreen() {
         // Start countdown
         const timeout = setInterval(() => {
           setOfferCountdown(prev => {
-            if (prev <= 1) {
-              // Timeout - automatically reject the ride like clicking reject button
-              console.log('Ride offer timed out, automatically rejecting ride');
-              if (authState.token) {
-                // Automatically reject the ride
-                rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
-              }
+              if (prev <= 1) {
+                // Timeout - automatically reject the ride like clicking reject button
+                console.log('Ride offer timed out, automatically rejecting ride');
+                if (!isScheduledOffer && authState.token) {
+                  // Automatically reject the ride
+                  rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
+                } else if (isScheduledOffer && authState.token) {
+                  rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
+                }
               setRideOffer(null);
               setOfferCountdown(0);
               stopRideOfferSound().then(() => {
@@ -413,6 +514,20 @@ export default function DashboardScreen() {
       };
 
       onRideOfferRejected(handleRideOfferRejected);
+
+      const handleScheduledOfferResult = (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => {
+        console.log('=== RECEIVED SCHEDULED OFFER RESULT ===');
+        console.log('Scheduled offer result data:', data);
+        const fallbackMessage = data.selected ? t('scheduled_ride_selected') : t('scheduled_ride_not_selected');
+        showScheduledBanner({
+          rideId: data.rideId,
+          message: fallbackMessage,
+          pickupTime: data.pickupTime || data?.rideData?.pickupTime || null,
+          selected: data.selected
+        });
+      };
+
+      onScheduledOfferResult(handleScheduledOfferResult);
 
       // Listen for ride cancellation
       const handleRideCancelled = async (data: { rideId: number }) => {
@@ -532,10 +647,37 @@ export default function DashboardScreen() {
       // Listen for pickup countdown expired from server
       onPickupCountdownExpired(handlePickupCountdownExpired);
 
+      // Listen for scheduled late warnings
+      const handleScheduledLateWarning = async (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => {
+        try {
+          console.log('Received scheduled late warning:', data);
+          if (settings.sound.rideOfferSound) {
+            await playLateWarningSoundOnce();
+          }
+
+          const lateMinutes = data?.lateMinutes || 1;
+          const remainingMinutes = Math.max(0, data?.remainingMinutes ?? 0);
+          await sendLocalNotification(
+            t('scheduled_late_warning_title'),
+            t('scheduled_late_warning_body', {
+              lateMinutes,
+              remainingMinutes
+            })
+          );
+        } catch (error) {
+          console.error('Error handling scheduled late warning:', error);
+        }
+      };
+
+      onScheduledLateWarning(handleScheduledLateWarning);
+
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
-        if (authState.token && driverOnline) {
-          loadDriverStatus();
+        if (authState.token) {
+          if (driverOnline) {
+            loadDriverStatus();
+          }
+          loadUpcomingRides();
         }
       }, 30000); // Check every 30 seconds
 
@@ -545,18 +687,25 @@ export default function DashboardScreen() {
         offRideOffer();
         offRideOfferTimeout();
         offRideOfferRejected();
+        offScheduledOfferResult();
         offRideCancelled();
         offNewMessage();
         offPickupProximity();
         offPickupCountdownExpired();
+        offScheduledLateWarning();
         if (offerTimeout) {
           clearInterval(offerTimeout);
+        }
+        if (scheduledBannerTimeoutRef.current) {
+          clearTimeout(scheduledBannerTimeoutRef.current);
+          scheduledBannerTimeoutRef.current = null;
         }
         if (statusCheckInterval) {
           clearInterval(statusCheckInterval);
         }
         // Stop any playing sound when component unmounts
         stopRideOfferSound();
+        stopLateWarningSound();
       };
     }
     return () => {
@@ -1028,6 +1177,38 @@ export default function DashboardScreen() {
         const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
         console.log(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadDriverStatus(retryCount + 1), delay);
+      }
+    }
+  };
+
+   const stopLateWarningSound = async () => {
+     if (lateWarningSound) {
+       try {
+         await lateWarningSound.unloadAsync();
+       } catch (error) {
+         console.error('Error unloading late warning sound:', error);
+       } finally {
+         setLateWarningSound(null);
+       }
+     }
+   };
+
+  const loadUpcomingRides = async (retryCount = 0) => {
+    if (!authState.token) {
+      return;
+    }
+    try {
+      const response = await getDriverUpcoming(authState.token);
+      if (response.ok && response.rides) {
+        setUpcomingRides(response.rides);
+      } else {
+        setUpcomingRides([]);
+      }
+    } catch (error) {
+      console.error('Error loading upcoming rides:', error);
+      if (retryCount < 2) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => loadUpcomingRides(retryCount + 1), delay);
       }
     }
   };
@@ -1647,6 +1828,22 @@ export default function DashboardScreen() {
     playNext();
   };
 
+  const playRideOfferSoundOnce = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'));
+      setRideOfferSound(sound);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+          setRideOfferSound(null);
+        }
+      });
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Error playing ride offer sound once:', error);
+    }
+  };
+
   const stopRideOfferSound = async () => {
     console.log('Stopping ride offer sound, current sound object:', rideOfferSound);
     if (rideOfferSound) {
@@ -1662,6 +1859,23 @@ export default function DashboardScreen() {
       }
     } else {
       console.log('No sound object to stop');
+    }
+  };
+
+  const playLateWarningSoundOnce = async () => {
+    try {
+      await stopLateWarningSound();
+      const { sound } = await Audio.Sound.createAsync(require('../assets/lateNoti.mp3'));
+      setLateWarningSound(sound);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync().catch(() => null);
+          setLateWarningSound(null);
+        }
+      });
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Error playing late warning sound:', error);
     }
   };
 
@@ -1732,6 +1946,44 @@ export default function DashboardScreen() {
     return Math.max(1, Math.ceil(distanceKm * 2)); // ~30km/h average
   };
 
+  useEffect(() => {
+    if (!nextScheduledRide) {
+      setScheduledEtaMinutes(null);
+      return;
+    }
+
+    const updateScheduledEta = () => {
+      const ride = nextScheduledRideRef.current;
+      const location = latestLocationRef.current;
+      if (!ride || !location || !ride.startLatLon) {
+        setScheduledEtaMinutes(null);
+        return;
+      }
+      const { lat, lon } = ride.startLatLon || {};
+      if (typeof lat !== 'number' || typeof lon !== 'number') {
+        setScheduledEtaMinutes(null);
+        return;
+      }
+      setScheduledEtaMinutes(calculateEtaMinutes(location, { lat, lon }));
+    };
+
+    updateScheduledEta();
+    const interval = setInterval(updateScheduledEta, 30000);
+    return () => clearInterval(interval);
+  }, [nextScheduledRide?.id]);
+
+  const scheduledDepartureTime = useMemo(() => {
+    if (!nextScheduledRide?.pickupTime || scheduledEtaMinutes === null) return null;
+    const pickupMs = new Date(nextScheduledRide.pickupTime).getTime();
+    if (Number.isNaN(pickupMs)) return null;
+    const departMs = pickupMs - scheduledEtaMinutes * 60 * 1000;
+    if (Number.isNaN(departMs)) return null;
+    return new Date(departMs).toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, [nextScheduledRide?.pickupTime, scheduledEtaMinutes]);
+
   const getPickupEtaMinutes = () => {
     if (!currentLocation || !rideOffer?.rideData?.startLatLon) return null;
     const { lat, lon } = rideOffer.rideData.startLatLon || {};
@@ -1740,11 +1992,26 @@ export default function DashboardScreen() {
   };
 
   const pickupEtaMinutes = getPickupEtaMinutes();
+  const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
+  const scheduledDepartureText = scheduledDepartureTime || t('not_available');
+  const showScheduledInfoBar = !!nextScheduledRide;
+  const isScheduledOffer = !!(rideOffer?.scheduled || rideOffer?.offerType === 'scheduled' || rideOffer?.type === 'scheduled');
+  const scheduledOfferTime = isScheduledOffer
+    ? formatScheduledDateTime(rideOffer?.rideData?.pickupTime || rideOffer?.pickupTime)
+    : null;
+  const scheduledBannerTime = scheduledBanner?.pickupTime
+    ? formatScheduledDateTime(scheduledBanner.pickupTime)
+    : null;
+  const scheduledBannerAccent = scheduledBanner?.selected === true
+    ? '#22c55e'
+    : scheduledBanner?.selected === false
+      ? '#dc3545'
+      : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#e2e8f0');
   const offerProgress = offerTotalSeconds > 0
     ? Math.max(0, Math.min(1, offerCountdown / offerTotalSeconds))
     : 0;
 
-  const styles = getStyles(isDarkMode, isRTL);
+  const styles = getStyles(isDarkMode, isRTL, isScheduledOffer);
 
   return (
     <View style={styles.container}>
@@ -1757,6 +2024,33 @@ export default function DashboardScreen() {
         unreadMessages={unreadMessagesCount}
         onPress={() => setShowStatusExpanded(true)}
       />
+
+      {showScheduledInfoBar && (
+        <View style={styles.scheduledInfoBar} pointerEvents="none">
+          <View style={styles.scheduledInfoColumn}>
+            <Text style={[styles.scheduledInfoText, styles.scheduledInfoTextLeft]} numberOfLines={1}>
+              {t('scheduled_countdown_label')}: {scheduledCountdownText}
+            </Text>
+          </View>
+          <View style={styles.scheduledInfoColumn}>
+            <Text style={[styles.scheduledInfoText, styles.scheduledInfoTextRight]} numberOfLines={1}>
+              {t('driver_departure_time_label')}: {scheduledDepartureText}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {scheduledBanner && (
+        <View style={[styles.scheduledBannerContainer, showScheduledInfoBar && styles.scheduledBannerContainerWithInfoBar]} pointerEvents="none">
+          <View style={[styles.scheduledBannerCard, { borderColor: scheduledBannerAccent }]}> 
+            <Text style={styles.scheduledBannerTitle}>{t('scheduled_ride_title')}</Text>
+            <Text style={styles.scheduledBannerMessage}>{scheduledBanner.message || (scheduledBanner.selected ? t('scheduled_ride_selected') : t('scheduled_ride_not_selected'))}</Text>
+            {scheduledBannerTime && (
+              <Text style={styles.scheduledBannerTime}>{scheduledBannerTime}</Text>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Header with Hamburger Menu */}
       <View style={styles.header}>
@@ -1834,6 +2128,22 @@ export default function DashboardScreen() {
                   <Text style={styles.menuItemIcon}>📋</Text>
                 </View>
                 <Text style={styles.menuItemText}>{t('history')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/upcoming');
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>⏰</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('upcoming_bookings')}</Text>
                 <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
               </TouchableOpacity>
             )}
@@ -2513,11 +2823,20 @@ export default function DashboardScreen() {
         <View style={styles.rideOfferModal}>
           <View style={styles.rideOfferSheet}>
             <View style={styles.rideOfferHeader}>
-              <Text style={styles.rideOfferTitle}>{t('ride_offer_title')}</Text>
+              <Text style={[styles.rideOfferTitle, isScheduledOffer && styles.scheduledOfferTitle]}>
+                {isScheduledOffer ? t('scheduled_ride_title') : t('ride_offer_title')}
+              </Text>
               <View style={styles.rideOfferPill}>
                 <Text style={styles.rideOfferPillText}>#{rideOffer.rideId}</Text>
               </View>
             </View>
+
+            {isScheduledOffer && scheduledOfferTime && (
+              <View style={styles.scheduledOfferTimeRow}>
+                <Text style={styles.scheduledOfferTimeLabel}>{t('scheduled_ride_time_label')}</Text>
+                <Text style={styles.scheduledOfferTimeValue}>{scheduledOfferTime}</Text>
+              </View>
+            )}
 
             <View style={styles.rideOfferMetaRow}>
               <View style={styles.rideOfferMetaItem}>
@@ -2583,7 +2902,7 @@ export default function DashboardScreen() {
                   await loadDriverStatus();
                 }}
               >
-                <Text style={styles.acceptButtonText}>{t('ride_offer_accept')}</Text>
+                <Text style={styles.acceptButtonText}>{isScheduledOffer ? t('yes') : t('ride_offer_accept')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
@@ -2598,7 +2917,7 @@ export default function DashboardScreen() {
                   }
                 }}
               >
-                <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>{t('ride_offer_reject')}</Text>
+                <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>{isScheduledOffer ? t('no') : t('ride_offer_reject')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2730,7 +3049,7 @@ export default function DashboardScreen() {
   );
 }
 
-const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
+const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: isDarkMode ? '#0f0f0f' : '#ffffff',
@@ -3673,6 +3992,11 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
      color: isDarkMode ? '#fff' : '#222',
      flex: 1,
    },
+   scheduledOfferTitle: {
+     fontSize: 22,
+     fontWeight: '800',
+     color: isDarkMode ? '#fff' : '#111827',
+   },
    rideOfferPill: {
      backgroundColor: isDarkMode ? '#2f2f2f' : '#f1f3f5',
      borderRadius: 20,
@@ -3718,6 +4042,27 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
      borderWidth: 1,
      borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
    },
+   scheduledOfferTimeRow: {
+     backgroundColor: isDarkMode ? '#2a2a2a' : '#f8f9fa',
+     borderRadius: 14,
+     padding: 12,
+     marginBottom: 14,
+     borderWidth: 1,
+     borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+   },
+   scheduledOfferTimeLabel: {
+     fontSize: 12,
+     fontWeight: '700',
+     color: isDarkMode ? '#a3a3a3' : '#6b7280',
+     marginBottom: 4,
+     textAlign: isRTL ? 'right' : 'left',
+   },
+   scheduledOfferTimeValue: {
+     fontSize: 16,
+     fontWeight: '700',
+     color: isDarkMode ? '#fff' : '#111827',
+     textAlign: isRTL ? 'right' : 'left',
+   },
    rideOfferAddressRow: {
      flexDirection: isRTL ? 'row-reverse' : 'row',
      alignItems: 'flex-start',
@@ -3746,10 +4091,10 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
      borderRadius: 8,
      overflow: 'hidden',
    },
-   rideOfferCountdownFill: {
-     height: '100%',
-     backgroundColor: '#dc3545',
-   },
+    rideOfferCountdownFill: {
+      height: '100%',
+      backgroundColor: isScheduledOffer ? '#f59e0b' : '#dc3545',
+    },
    rideOfferCountdownText: {
      marginTop: 8,
      fontSize: 13,
@@ -4093,6 +4438,77 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  scheduledInfoBar: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
+    height: 20,
+    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.95)',
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? 'rgba(148,163,184,0.25)' : '#e2e8f0',
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    zIndex: 900,
+    gap: 8,
+  },
+  scheduledInfoColumn: {
+    flex: 1,
+  },
+  scheduledInfoText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+  },
+  scheduledInfoTextLeft: {
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  scheduledInfoTextRight: {
+    textAlign: isRTL ? 'left' : 'right',
+  },
+  scheduledBannerContainer: {
+    position: 'absolute',
+    top: 46,
+    left: 16,
+    right: 16,
+    zIndex: 1200,
+  },
+  scheduledBannerContainerWithInfoBar: {
+    top: 66,
+  },
+  scheduledBannerCard: {
+    backgroundColor: isDarkMode ? 'rgba(17,24,39,0.95)' : '#ffffff',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  scheduledBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    textAlign: 'center',
+  },
+  scheduledBannerMessage: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: isDarkMode ? '#e2e8f0' : '#111827',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  scheduledBannerTime: {
+    fontSize: 12,
+    color: isDarkMode ? '#cbd5f5' : '#475569',
+    marginTop: 2,
+    textAlign: 'center',
   },
   // Cancel Modal - New Styles
   cancelModalCard: {

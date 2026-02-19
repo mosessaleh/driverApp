@@ -49,6 +49,15 @@ const resources = {
       "ride_offer_reject": "Reject",
       "ride_offer_time_left": "Time left: {{seconds}}s",
       "ride_offer_eta_to_pickup": "ETA to pickup",
+      "upcoming_bookings": "Upcoming bookings",
+      "upcoming_loading": "Loading upcoming rides...",
+      "upcoming_no_rides": "No upcoming scheduled rides",
+      "scheduled_ride_title": "Scheduled Ride",
+      "scheduled_ride_time_label": "Scheduled time",
+      "scheduled_countdown_label": "Time left",
+      "driver_departure_time_label": "Departure time",
+      "scheduled_ride_selected": "You were selected for this ride",
+      "scheduled_ride_not_selected": "Ride was not assigned to you",
 
       // Menu
       "profile": "Profile",
@@ -214,6 +223,8 @@ const resources = {
       "latitude": "Latitude",
       "longitude": "Longitude",
       "shift_warning_message": "Approaching 11-hour limit!",
+      "scheduled_late_warning_title": "Scheduled Ride Late Warning",
+      "scheduled_late_warning_body": "You are {{lateMinutes}} min late. If you are {{remainingMinutes}} min more late, the ride will be removed from you.",
     }
   },
   ar: {
@@ -262,6 +273,15 @@ const resources = {
       "ride_offer_reject": "رفض",
       "ride_offer_time_left": "الوقت المتبقي: {{seconds}}ث",
       "ride_offer_eta_to_pickup": "زمن الوصول لنقطة الالتقاط",
+      "upcoming_bookings": "الحجوزات القادمة",
+      "upcoming_loading": "جارٍ تحميل الحجوزات القادمة...",
+      "upcoming_no_rides": "لا توجد رحلات مؤجلة قادمة",
+      "scheduled_ride_title": "رحلة مؤجلة",
+      "scheduled_ride_time_label": "موعد الرحلة",
+      "scheduled_countdown_label": "الوقت المتبقي",
+      "driver_departure_time_label": "وقت الانطلاق",
+      "scheduled_ride_selected": "تم اختيارك للرحلة",
+      "scheduled_ride_not_selected": "لم تُسند لك الرحلة",
 
       // Menu
       "profile": "الملف الشخصي",
@@ -427,6 +447,8 @@ const resources = {
       "latitude": "خط العرض",
       "longitude": "خط الطول",
       "shift_warning_message": "الاقتراب من حد 11 ساعة!",
+      "scheduled_late_warning_title": "تحذير تأخر رحلة مؤجلة",
+      "scheduled_late_warning_body": "أنت متأخر {{lateMinutes}} دقيقة. إذا تأخرت {{remainingMinutes}} دقيقة إضافية فسيتم حذف الرحلة منك.",
     }
   },
   da: {
@@ -475,6 +497,15 @@ const resources = {
       "ride_offer_reject": "Afvis",
       "ride_offer_time_left": "Tid tilbage: {{seconds}}s",
       "ride_offer_eta_to_pickup": "Ankomst til afhentning",
+      "upcoming_bookings": "Kommende bookinger",
+      "upcoming_loading": "Indlæser kommende ture...",
+      "upcoming_no_rides": "Ingen kommende planlagte ture",
+      "scheduled_ride_title": "Planlagt tur",
+      "scheduled_ride_time_label": "Planlagt tidspunkt",
+      "scheduled_countdown_label": "Tid tilbage",
+      "driver_departure_time_label": "Afgangstid",
+      "scheduled_ride_selected": "Du blev valgt til turen",
+      "scheduled_ride_not_selected": "Turen blev ikke tildelt dig",
 
       // Menu
       "profile": "Profil",
@@ -640,6 +671,8 @@ const resources = {
       "latitude": "Breddegrad",
       "longitude": "Længdegrad",
       "shift_warning_message": "Nærmer sig 11-timers grænsen!",
+      "scheduled_late_warning_title": "Advarsel om forsinket planlagt tur",
+      "scheduled_late_warning_body": "Du er {{lateMinutes}} min forsinket. Hvis du bliver {{remainingMinutes}} min mere forsinket, bliver turen fjernet fra dig.",
     }
   }
 };

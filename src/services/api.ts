@@ -156,6 +156,10 @@ export const getDriverHistory = async (token: string, startDate?: string, endDat
   return api.get(`/api/driver/history${query}`, token);
 };
 
+export const getDriverUpcoming = async (token: string) => {
+  return api.get('/api/driver/upcoming', token);
+};
+
 export const endShift = async (endKM: number, token: string) => {
   return api.post('/api/driver/end-shift', { endKM }, token);
 };

@@ -144,7 +144,7 @@ export const offRideAssigned = () => {
   }
 };
 
-export const onRideOffer = (callback: (data: { type: string; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void) => {
+export const onRideOffer = (callback: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void) => {
   if (socket) {
     socket.on('rideOffer', callback);
   }
@@ -177,6 +177,30 @@ export const onRideOfferRejected = (callback: (data: { rideId: number }) => void
 export const offRideOfferRejected = () => {
   if (socket) {
     socket.off('rideOfferRejected');
+  }
+};
+
+export const onScheduledOfferResult = (callback: (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => void) => {
+  if (socket) {
+    socket.on('scheduledOfferResult', callback);
+  }
+};
+
+export const offScheduledOfferResult = () => {
+  if (socket) {
+    socket.off('scheduledOfferResult');
+  }
+};
+
+export const onScheduledOfferAcknowledged = (callback: (data: { rideId: number }) => void) => {
+  if (socket) {
+    socket.on('scheduledOfferAcknowledged', callback);
+  }
+};
+
+export const offScheduledOfferAcknowledged = () => {
+  if (socket) {
+    socket.off('scheduledOfferAcknowledged');
   }
 };
 
@@ -248,6 +272,18 @@ export const onPickupCountdownExpired = (callback: (data: { rideId: number }) =>
 export const offPickupCountdownExpired = () => {
   if (socket) {
     socket.off('pickupCountdownExpired');
+  }
+};
+
+export const onScheduledLateWarning = (callback: (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => void) => {
+  if (socket) {
+    socket.on('scheduledLateWarning', callback);
+  }
+};
+
+export const offScheduledLateWarning = () => {
+  if (socket) {
+    socket.off('scheduledLateWarning');
   }
 };
 

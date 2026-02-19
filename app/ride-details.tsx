@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { getDriverHistory } from '../src/services/api';
+import { getRide } from '../src/services/api';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
 
@@ -38,15 +38,9 @@ export default function RideDetailsScreen() {
     
     setLoading(true);
     try {
-      const response = await getDriverHistory(authState.token, undefined, undefined);
-      if (response.ok && response.rides) {
-        const foundRide = response.rides.find((r: any) => r.id.toString() === rideId);
-        if (foundRide) {
-          setRide(foundRide);
-        } else {
-          Alert.alert(t('error'), t('ride_not_found'));
-          router.back();
-        }
+      const response = await getRide(rideId, authState.token);
+      if (response.ok && response.data) {
+        setRide(response.data);
       } else {
         Alert.alert(t('error'), t('ride_details_load_failed'));
         router.back();
@@ -60,8 +54,10 @@ export default function RideDetailsScreen() {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return t('not_available');
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return t('not_available');
     return date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
@@ -69,8 +65,10 @@ export default function RideDetailsScreen() {
     });
   };
 
-  const formatTime = (dateString: string) => {
+  const formatTime = (dateString?: string | null) => {
+    if (!dateString) return t('not_available');
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return t('not_available');
     return date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit'
@@ -88,6 +86,7 @@ export default function RideDetailsScreen() {
       case 'pending':
         return styles.status_pending;
       case 'cancelled':
+      case 'canceled':
         return styles.status_cancelled;
       default:
         return styles.status_pending;
@@ -152,14 +151,14 @@ export default function RideDetailsScreen() {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>{t('date')}</Text>
-              <Text style={styles.summaryValue}>{formatDate(ride.createdAt)}</Text>
+              <Text style={styles.summaryValue}>{formatDate(ride.pickupTime || ride.createdAt)}</Text>
             </View>
           </View>
           
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>{t('time')}</Text>
-              <Text style={styles.summaryValue}>{formatTime(ride.createdAt)}</Text>
+              <Text style={styles.summaryValue}>{formatTime(ride.pickupTime || ride.createdAt)}</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>{t('distance')}</Text>
@@ -214,7 +213,7 @@ export default function RideDetailsScreen() {
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>{t('vehicle_type')}</Text>
-              <Text style={styles.infoValue}>{ride.vehicleTypeName || t('not_available')}</Text>
+              <Text style={styles.infoValue}>{ride.vehicleTypeName || ride.vehicleType?.title || t('not_available')}</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>{t('payment')}</Text>
