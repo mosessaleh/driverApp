@@ -11,6 +11,10 @@ let heartbeatInterval: NodeJS.Timeout | null = null;
 let reconnectTimeout: NodeJS.Timeout | null = null;
 let isReconnecting = false;
 
+const RECONNECT_BASE_DELAY = 1000;
+const RECONNECT_MAX_DELAY = 10000;
+let reconnectAttempts = 0;
+
 export const connectSocket = (token: string, vehicleTypeId: number = 1, location?: { lat: number; lng: number }): Socket => {
   if (socket) {
     socket.disconnect();
@@ -21,6 +25,12 @@ export const connectSocket = (token: string, vehicleTypeId: number = 1, location
   });
   socket.on('connect', () => {
     console.log('Socket connected successfully');
+    reconnectAttempts = 0;
+    isReconnecting = false;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
     // Decode token to get driverId
     try {
       const decoded: any = jwtDecode(token);
@@ -34,11 +44,29 @@ export const connectSocket = (token: string, vehicleTypeId: number = 1, location
       console.error('Error decoding token for socket join:', error);
     }
   });
+  socket.on('connect_error', (err) => {
+    console.error('Socket connect_error:', err?.message || err);
+    scheduleReconnect(token, vehicleTypeId, location);
+  });
   socket.on('disconnect', () => {
     console.log('Disconnected from socket');
     stopLocationUpdates();
+    scheduleReconnect(token, vehicleTypeId, location);
   });
   return socket;
+};
+
+const scheduleReconnect = (token: string, vehicleTypeId: number, location?: { lat: number; lng: number }) => {
+  if (isReconnecting) return;
+  isReconnecting = true;
+  reconnectAttempts += 1;
+  const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempts, RECONNECT_MAX_DELAY);
+  if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  reconnectTimeout = setTimeout(() => {
+    console.log(`Reconnecting socket (attempt ${reconnectAttempts})...`);
+    isReconnecting = false;
+    connectSocket(token, vehicleTypeId, location);
+  }, delay);
 };
 
 const startLocationUpdates = (driverId: number) => {
