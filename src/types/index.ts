@@ -2,6 +2,7 @@ export interface User {
   id: string;
   name: string;
   car: string;
+  vehicleTypeId?: number;
   shiftId?: number;
   shiftStartTime?: string;
   rating?: number;

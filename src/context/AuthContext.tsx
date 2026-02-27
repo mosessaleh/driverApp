@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (authState.token) {
-      connectSocket(authState.token);
+      connectSocket(authState.token, authState.user?.vehicleTypeId || 1);
     } else {
       disconnectSocket();
     }
@@ -89,12 +89,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         // Dynamically import expo-notifications only when not in Expo Go
-        const { getExpoPushTokenAsync, requestPermissionsAsync } = await import('expo-notifications');
+        const { getExpoPushTokenAsync, getPermissionsAsync } = await import('expo-notifications');
 
-        // Request permissions first
-        console.log('Requesting notification permissions...');
-        const { status: permissionStatus } = await requestPermissionsAsync();
-        console.log('Notification permission status:', permissionStatus);
+        // Permissions are requested in app layout; only check status here
+        const { status: permissionStatus } = await getPermissionsAsync();
 
         if (permissionStatus !== 'granted') {
           console.warn('Notification permissions not granted');
@@ -106,13 +104,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Send push token to server
         await updatePushToken(pushToken, authState.token);
-        console.log('Push token registered:', pushToken);
-        console.log('Push token length:', pushToken.length);
-        console.log('Push token starts with:', pushToken.substring(0, 20));
+        console.log('Push token registered successfully');
       } catch (error) {
         // Push notifications may not be available
         console.warn('Push notifications not available:', error instanceof Error ? error.message : String(error));
-        console.log('Error type:', typeof error, 'Error value:', error);
         // Don't fail the login process due to push notification issues
       }
     };
@@ -128,12 +123,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: response.driver.id,
           name: response.driver.name,
           car: response.driver.car,
+          vehicleTypeId: response.driver?.vehicleTypeId || 1,
           shiftId: response.shiftId,
           shiftStartTime: response.shiftStartTime,
           rating: response.driver.rating || 5.0
         };
         await AsyncStorage.setItem('token', response.token);
         await AsyncStorage.setItem('user', JSON.stringify(userData));
+        await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
         setAuthState({ user: userData, token: response.token, isLoading: false });
       } else {
         throw new Error('Invalid login response');
@@ -154,6 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
+    await AsyncStorage.removeItem('vehicleTypeId');
     setAuthState({ user: null, token: null, isLoading: false });
   };
 

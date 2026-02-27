@@ -15,7 +15,6 @@ import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning } from '../src/services/socket';
-import * as Notifications from 'expo-notifications';
 import { sendLocalNotification } from '../src/services/notifications';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
@@ -758,6 +757,9 @@ export default function DashboardScreen() {
       const handleScheduledLateWarning = async (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => {
         try {
           console.log('Received scheduled late warning:', data);
+          if (!settings.notifications.rideUpdates) {
+            return;
+          }
           if (settings.sound.rideOfferSound) {
             await playLateWarningSoundOnce();
           }
@@ -894,31 +896,6 @@ export default function DashboardScreen() {
 
     return () => backHandler?.remove();
   }, [t]);
-
-  // Handle push notifications
-  useEffect(() => {
-    // Handle notification when app is in foreground
-    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received in foreground:', notification);
-      // Handle foreground notification (e.g., show local notification or update UI)
-    });
-
-    // Handle notification response (when user taps on notification)
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response received:', response);
-      const data = response.notification.request.content.data;
-      if (data && data.type === 'newRide') {
-        // Navigate to dashboard or handle ride offer
-        console.log('User tapped on ride notification');
-        // You can add navigation logic here
-      }
-    });
-
-    return () => {
-      foregroundSubscription.remove();
-      responseSubscription.remove();
-    };
-  }, []);
 
   // Monitor socket connection status
   useEffect(() => {

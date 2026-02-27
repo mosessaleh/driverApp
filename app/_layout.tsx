@@ -4,6 +4,7 @@ import { SettingsProvider } from '../src/context/SettingsContext';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
+import { Platform } from 'react-native';
 import '../src/i18n';
 
 // Configure notifications
@@ -19,6 +20,18 @@ Notifications.setNotificationHandler({
 
 export default function Layout() {
   useEffect(() => {
+    const setupAndroidChannel = async () => {
+      if (Platform.OS !== 'android') return;
+
+      await Notifications.setNotificationChannelAsync('batch', {
+        name: 'Ride Notifications',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    };
+
     // Request permissions for notifications
     const requestPermissions = async () => {
       const { status } = await Notifications.requestPermissionsAsync();
@@ -27,6 +40,9 @@ export default function Layout() {
       }
     };
 
+    setupAndroidChannel().catch((error) => {
+      console.warn('Failed to configure Android notification channel:', error);
+    });
     requestPermissions();
 
     // Handle notification received while app is foreground
