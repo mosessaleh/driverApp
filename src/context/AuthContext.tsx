@@ -126,7 +126,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           vehicleTypeId: response.driver?.vehicleTypeId || 1,
           shiftId: response.shiftId,
           shiftStartTime: response.shiftStartTime,
-          rating: response.driver.rating || 5.0
+          rating: response.driver.rating || 5.0,
+          schedule: response.schedule || null
         };
         await AsyncStorage.setItem('token', response.token);
         await AsyncStorage.setItem('user', JSON.stringify(userData));

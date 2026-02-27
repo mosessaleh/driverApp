@@ -136,6 +136,77 @@ export const getDriverStatus = async (token: string) => {
   return api.get('/api/driver/status', token);
 };
 
+export const getDriverSchedule = async (token: string) => {
+  return api.get('/api/driver/schedule', token);
+};
+
+export const updateDriverScheduleTemplate = async (
+  token: string,
+  days: Array<{
+    dayOfWeek: number;
+    windows: Array<{
+      start?: string;
+      end?: string;
+      startMinute?: number;
+      endMinute?: number;
+      isActive?: boolean;
+    }>;
+  }>
+) => {
+  return api.post('/api/driver/schedule', {
+    action: 'setTemplate',
+    days,
+  }, token);
+};
+
+export const updateDriverSchedulePreferences = async (
+  token: string,
+  payload: {
+    maxDailyMinutes?: number;
+    maxWeeklyMinutes?: number;
+    minRestMinutes?: number;
+    lockMinutesBeforeStart?: number;
+    allowEmergencyOverride?: boolean;
+  }
+) => {
+  return api.post('/api/driver/schedule', {
+    action: 'setPreferences',
+    ...payload,
+  }, token);
+};
+
+export const upsertDriverScheduleException = async (
+  token: string,
+  payload: {
+    date: string;
+    type: 'OFF' | 'LEAVE' | 'SICK' | 'CUSTOM' | 'EMERGENCY';
+    start?: string;
+    end?: string;
+    startMinute?: number;
+    endMinute?: number;
+    note?: string;
+  }
+) => {
+  return api.post('/api/driver/schedule', {
+    action: 'setException',
+    ...payload,
+  }, token);
+};
+
+export const deleteDriverScheduleException = async (token: string, date: string) => {
+  return api.post('/api/driver/schedule', {
+    action: 'deleteException',
+    date,
+  }, token);
+};
+
+export const applyDriverScheduleSuggestions = async (token: string, daysBack: number = 42) => {
+  return api.post('/api/driver/schedule', {
+    action: 'applySuggestions',
+    daysBack,
+  }, token);
+};
+
 export const updateDriverLocation = async (latitude: number, longitude: number, token: string, timestamp?: string) => {
   return api.post('/api/driver/location-update', { latitude, longitude, timestamp }, token);
 };

@@ -6,7 +6,58 @@ export interface User {
   shiftId?: number;
   shiftStartTime?: string;
   rating?: number;
+  schedule?: DriverScheduleSnapshot;
   // Add other user properties as needed
+}
+
+export interface DriverScheduleWindow {
+  startMinute: number;
+  endMinute: number;
+  start: string;
+  end: string;
+  isActive?: boolean;
+  confidence?: number;
+}
+
+export interface DriverScheduleDayTemplate {
+  dayOfWeek: number;
+  dayName: string;
+  windows: DriverScheduleWindow[];
+}
+
+export interface DriverSchedulePreferences {
+  maxDailyMinutes: number;
+  maxWeeklyMinutes: number;
+  minRestMinutes: number;
+  lockMinutesBeforeStart: number;
+  allowEmergencyOverride: boolean;
+}
+
+export interface DriverScheduleSnapshot {
+  eligible: boolean;
+  reason: string;
+  reasonMessage: string;
+  checkedAt?: string;
+  preferences?: DriverSchedulePreferences;
+  todayWindows?: DriverScheduleWindow[];
+  activeException?: {
+    id: number;
+    date: string;
+    type: string;
+    note?: string | null;
+    startMinute?: number | null;
+    endMinute?: number | null;
+    start?: string | null;
+    end?: string | null;
+  } | null;
+  metrics?: {
+    dailyWorkedMinutes?: number;
+    weeklyWorkedMinutes?: number;
+    restSinceLastShiftMinutes?: number;
+    dailyRemainingMinutes?: number;
+    weeklyRemainingMinutes?: number;
+    restRemainingMinutes?: number;
+  } | null;
 }
 
 export interface AuthState {

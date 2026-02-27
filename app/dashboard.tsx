@@ -4,7 +4,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule } from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
 import type { DriverStatus } from '../src/components/StatusBar';
@@ -101,6 +101,8 @@ export default function DashboardScreen() {
    const [showStatusExpanded, setShowStatusExpanded] = useState(false);
    const [totalRidesToday, setTotalRidesToday] = useState(0);
    const [earningsToday, setEarningsToday] = useState(0);
+   const [scheduleEligibility, setScheduleEligibility] = useState<any>(null);
+   const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
 
    const quickReplies = useMemo(
      () => [
@@ -1094,6 +1096,11 @@ export default function DashboardScreen() {
       setTotalRidesToday(typeof res.totalRidesToday === 'number' ? res.totalRidesToday : 0);
       setEarningsToday(typeof res.earningsToday === 'number' ? res.earningsToday : 0);
 
+      if (res.schedule) {
+        setScheduleEligibility(res.schedule);
+        setScheduleReasonMessage(res.schedule?.reasonMessage || '');
+      }
+
       // Check for current active ride
       if (res.currentRideId && !activeRide) {
         const rideRes = await getRide(res.currentRideId.toString(), authState.token);
@@ -1460,6 +1467,10 @@ export default function DashboardScreen() {
       const res = await toggleDriverOnline(!driverOnline, authState.token);
       if (res.success) {
         setDriverOnline(!driverOnline);
+        if (res.schedule) {
+          setScheduleEligibility(res.schedule);
+          setScheduleReasonMessage(res.schedule?.reasonMessage || '');
+        }
         // If going online, start location tracking automatically
         if (!driverOnline) {
           startLocationTracking();
@@ -1470,6 +1481,10 @@ export default function DashboardScreen() {
       }
     } catch (e) {
       console.error('Error toggling online status:', e);
+      Alert.alert(
+        t('schedule_locked_title') as any,
+        (e as any)?.message || t('schedule_locked_default')
+      );
     }
   };
 
@@ -2021,6 +2036,10 @@ export default function DashboardScreen() {
     router.push('/settings');
   };
 
+  const goToSchedule = () => {
+    router.push('/schedule');
+  };
+
   const goToProfile = () => {
     router.push('/profile');
   };
@@ -2058,6 +2077,22 @@ export default function DashboardScreen() {
     if (driverBusy) return `${t('online')} - ${t('busy')}`;
     return `${t('online')} - ${t('available')}`;
   };
+
+  useEffect(() => {
+    if (!authState.token) return;
+    const syncSchedule = async () => {
+      try {
+        const response = await getDriverSchedule(authState.token!);
+        if (response?.ok) {
+          setScheduleEligibility(response?.eligibility || null);
+          setScheduleReasonMessage(response?.eligibility?.reasonMessage || '');
+        }
+      } catch (error) {
+        console.error('Error loading schedule snapshot on dashboard:', error);
+      }
+    };
+    syncSchedule();
+  }, [authState.token]);
 
   const getStatusColor = () => {
     if (bannedUntil && banCountdown > 0) return '#dc3545'; // red
@@ -2315,6 +2350,22 @@ export default function DashboardScreen() {
               <Text style={styles.menuItemText}>{t('settings')}</Text>
               <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
             </TouchableOpacity>
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
+                  goToSchedule();
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>🗓️</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('work_schedule')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
             {!driverBusy && driverOnline && !bannedUntil && (
               <TouchableOpacity
                 style={[styles.menuItem, styles.menuItemWarning]}
@@ -3146,6 +3197,12 @@ export default function DashboardScreen() {
         <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
           <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>{t('go')}</Animated.Text>
         </TouchableOpacity>
+      )}
+
+      {!driverOnline && scheduleEligibility && scheduleEligibility.eligible === false && !!scheduleReasonMessage && (
+        <View style={styles.scheduleHintBar}>
+          <Text style={styles.scheduleHintText}>{scheduleReasonMessage}</Text>
+        </View>
       )}
 
       {/* Searching for Trips Card */}
@@ -4566,6 +4623,25 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
     borderRadius: 3,
     marginHorizontal: 4,
     backgroundColor: isDarkMode ? '#67e8f9' : '#0284c7',
+  },
+  scheduleHintBar: {
+    position: 'absolute',
+    bottom: 138,
+    left: 20,
+    right: 20,
+    backgroundColor: isDarkMode ? 'rgba(220,53,69,0.2)' : '#fff1f2',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(254,202,202,0.4)' : '#fecdd3',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    zIndex: 1001,
+  },
+  scheduleHintText: {
+    color: isDarkMode ? '#fecaca' : '#9f1239',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
   },
   cancelRideButton: {
     backgroundColor: '#dc3545',
