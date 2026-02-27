@@ -2,93 +2,75 @@ import io, { Socket } from 'socket.io-client';
 import { jwtDecode } from 'jwt-decode';
 import * as Location from 'expo-location';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.146:3000';
 
 let socket: Socket | null = null;
 
-let locationInterval: NodeJS.Timeout | null = null;
-let heartbeatInterval: NodeJS.Timeout | null = null;
-let reconnectTimeout: NodeJS.Timeout | null = null;
+let locationInterval: ReturnType<typeof setInterval> | null = null;
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let isReconnecting = false;
+let shouldReconnect = true;
 
 const RECONNECT_BASE_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 10000;
 let reconnectAttempts = 0;
 
-export const connectSocket = (token: string, vehicleTypeId: number = 1, location?: { lat: number; lng: number }): Socket => {
-  if (socket) {
-    socket.disconnect();
+let currentToken: string | null = null;
+let currentVehicleTypeId = 1;
+let currentJoinLocation: { lat: number; lng: number } | undefined;
+
+type SocketListener = (...args: any[]) => void;
+const persistentListeners = new Map<string, Set<SocketListener>>();
+
+const addPersistentListener = (event: string, callback: SocketListener) => {
+  let listeners = persistentListeners.get(event);
+  if (!listeners) {
+    listeners = new Set<SocketListener>();
+    persistentListeners.set(event, listeners);
   }
-  socket = io(API_BASE_URL, {
-    auth: { token },
-    transports: ['websocket'],
-  });
-  socket.on('connect', () => {
-    console.log('Socket connected successfully');
-    reconnectAttempts = 0;
-    isReconnecting = false;
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = null;
-    }
-    // Decode token to get driverId
-    try {
-      const decoded: any = jwtDecode(token);
-      const driverId = decoded.driverId;
-      socket?.emit('join', { driverId, vehicleTypeId, location });
-      console.log('Joined driver room:', driverId, 'with vehicle type:', vehicleTypeId);
 
-      // Start sending location updates every 30 seconds
-      startLocationUpdates(driverId);
-    } catch (error) {
-      console.error('Error decoding token for socket join:', error);
+  if (!listeners.has(callback)) {
+    listeners.add(callback);
+    if (socket) {
+      socket.on(event, callback as any);
     }
-  });
-  socket.on('connect_error', (err) => {
-    console.error('Socket connect_error:', err?.message || err);
-    scheduleReconnect(token, vehicleTypeId, location);
-  });
-  socket.on('disconnect', () => {
-    console.log('Disconnected from socket');
-    stopLocationUpdates();
-    scheduleReconnect(token, vehicleTypeId, location);
-  });
-  return socket;
+  }
 };
 
-const scheduleReconnect = (token: string, vehicleTypeId: number, location?: { lat: number; lng: number }) => {
-  if (isReconnecting) return;
-  isReconnecting = true;
-  reconnectAttempts += 1;
-  const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempts, RECONNECT_MAX_DELAY);
-  if (reconnectTimeout) clearTimeout(reconnectTimeout);
-  reconnectTimeout = setTimeout(() => {
-    console.log(`Reconnecting socket (attempt ${reconnectAttempts})...`);
-    isReconnecting = false;
-    connectSocket(token, vehicleTypeId, location);
-  }, delay);
+const removePersistentListener = (event: string, callback?: SocketListener) => {
+  const listeners = persistentListeners.get(event);
+
+  if (!listeners) {
+    if (socket) {
+      socket.off(event);
+    }
+    return;
+  }
+
+  if (callback) {
+    listeners.delete(callback);
+    if (socket) {
+      socket.off(event, callback as any);
+    }
+    if (listeners.size === 0) {
+      persistentListeners.delete(event);
+    }
+    return;
+  }
+
+  if (socket) {
+    listeners.forEach((cb) => socket?.off(event, cb as any));
+    socket.off(event);
+  }
+  persistentListeners.delete(event);
 };
 
-const startLocationUpdates = (driverId: number) => {
-  stopLocationUpdates(); // Clear any existing interval
-  locationInterval = setInterval(async () => {
-    try {
-      // Get current location
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const locationData = {
-        lat: location.coords.latitude,
-        lng: location.coords.longitude
-      };
-
-      // Send via socket
-      if (socket && socket.connected) {
-        socket.emit('updateLocation', { driverId, location: locationData });
-        console.log('Location updated via socket:', locationData);
-      }
-    } catch (error) {
-      console.error('Error updating location via socket:', error);
-    }
-  }, 30000); // 30 seconds
+const attachPersistentListeners = (targetSocket: Socket) => {
+  persistentListeners.forEach((listeners, event) => {
+    listeners.forEach((callback) => {
+      targetSocket.on(event, callback as any);
+    });
+  });
 };
 
 const stopLocationUpdates = () => {
@@ -98,26 +80,191 @@ const stopLocationUpdates = () => {
   }
 };
 
-export const onDriverStatusUpdate = (callback: (data: { isOnline?: boolean; currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void) => {
-  if (socket) {
-    socket.on('driverStatusUpdate', callback);
+const startLocationUpdates = (driverId: number) => {
+  stopLocationUpdates();
+
+  locationInterval = setInterval(async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const locationData = {
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+      };
+
+      if (socket && socket.connected) {
+        socket.emit('updateLocation', { driverId, location: locationData });
+        console.log('Location updated via socket:', locationData);
+      }
+    } catch (error) {
+      console.error('Error updating location via socket:', error);
+    }
+  }, 30000);
+};
+
+const joinDriverRoom = () => {
+  if (!socket || !currentToken) return;
+
+  try {
+    const decoded: any = jwtDecode(currentToken);
+    const driverId = decoded.driverId;
+
+    if (!driverId) {
+      console.error('driverId not found in token payload');
+      return;
+    }
+
+    socket.emit('join', {
+      driverId,
+      vehicleTypeId: currentVehicleTypeId,
+      location: currentJoinLocation,
+    });
+
+    console.log('Joined driver room:', driverId, 'with vehicle type:', currentVehicleTypeId);
+    startLocationUpdates(driverId);
+  } catch (error) {
+    console.error('Error decoding token for socket join:', error);
   }
+};
+
+const scheduleReconnect = () => {
+  if (!shouldReconnect || !currentToken) return;
+  if (isReconnecting) return;
+
+  isReconnecting = true;
+  reconnectAttempts += 1;
+
+  const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempts, RECONNECT_MAX_DELAY);
+
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+  }
+
+  reconnectTimeout = setTimeout(() => {
+    isReconnecting = false;
+
+    if (!shouldReconnect || !currentToken) return;
+
+    console.log(`Reconnecting socket (attempt ${reconnectAttempts})...`);
+
+    if (!socket) {
+      // سيتم إنشاء السوكيت من connectSocket لاحقاً
+      connectSocket(currentToken, currentVehicleTypeId, currentJoinLocation);
+      return;
+    }
+
+    socket.auth = { token: currentToken } as any;
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }, delay);
+};
+
+const createSocket = () => {
+  if (!currentToken) {
+    throw new Error('Cannot create socket without token');
+  }
+
+  const newSocket = io(API_BASE_URL, {
+    auth: { token: currentToken },
+    transports: ['websocket'],
+    reconnection: false,
+  });
+
+  attachPersistentListeners(newSocket);
+
+  newSocket.on('connect', () => {
+    console.log('Socket connected successfully');
+    reconnectAttempts = 0;
+    isReconnecting = false;
+
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+
+    joinDriverRoom();
+  });
+
+  newSocket.on('connect_error', (err) => {
+    console.error('Socket connect_error:', err?.message || err);
+    scheduleReconnect();
+  });
+
+  newSocket.on('disconnect', (reason) => {
+    console.log('Disconnected from socket:', reason);
+    stopLocationUpdates();
+
+    if (shouldReconnect && reason !== 'io client disconnect') {
+      scheduleReconnect();
+    }
+  });
+
+  socket = newSocket;
+  return newSocket;
+};
+
+export const connectSocket = (
+  token: string,
+  vehicleTypeId: number = 1,
+  location?: { lat: number; lng: number }
+): Socket => {
+  currentToken = token;
+  currentVehicleTypeId = vehicleTypeId;
+  currentJoinLocation = location;
+  shouldReconnect = true;
+
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+
+  if (!socket) {
+    return createSocket();
+  }
+
+  socket.auth = { token } as any;
+
+  if (socket.connected) {
+    joinDriverRoom();
+  } else {
+    socket.connect();
+  }
+
+  return socket;
+};
+
+export const onDriverStatusUpdate = (
+  callback: (data: { isOnline?: boolean; currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void
+) => {
+  addPersistentListener('driverStatusUpdate', callback as SocketListener);
 };
 
 export const offDriverStatusUpdate = () => {
-  if (socket) {
-    socket.off('driverStatusUpdate');
-  }
+  removePersistentListener('driverStatusUpdate');
 };
 
 export const disconnectSocket = () => {
+  shouldReconnect = false;
+  isReconnecting = false;
+  reconnectAttempts = 0;
+  currentToken = null;
+  currentJoinLocation = undefined;
+
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+
   stopLocationUpdates();
+
   if (socket) {
+    socket.removeAllListeners();
     socket.disconnect();
     socket = null;
   }
-};
 
+  persistentListeners.clear();
+};
 
 export const acceptRide = (rideId: number, driverId: number) => {
   if (socket) {
@@ -138,88 +285,63 @@ export const updateLocation = (driverId: number, location: { lat: number; lng: n
 };
 
 export const onRideAccepted = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('rideAccepted', callback);
-  }
+  addPersistentListener('rideAccepted', callback as SocketListener);
 };
 
 export const onRideAcceptFailed = (callback: (data: { rideId: number; reason: string }) => void) => {
-  if (socket) {
-    socket.on('rideAcceptFailed', callback);
-  }
+  addPersistentListener('rideAcceptFailed', callback as SocketListener);
 };
 
-
-export const onRideOffer = (callback: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void) => {
-  if (socket) {
-    socket.on('rideOffer', callback);
-  }
+export const onRideOffer = (
+  callback: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void
+) => {
+  addPersistentListener('rideOffer', callback as SocketListener);
 };
 
 export const offRideOffer = () => {
-  if (socket) {
-    socket.off('rideOffer');
-  }
+  removePersistentListener('rideOffer');
 };
 
 export const onRideOfferTimeout = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('rideOfferTimeout', callback);
-  }
+  addPersistentListener('rideOfferTimeout', callback as SocketListener);
 };
 
 export const offRideOfferTimeout = () => {
-  if (socket) {
-    socket.off('rideOfferTimeout');
-  }
+  removePersistentListener('rideOfferTimeout');
 };
 
 export const onRideOfferRejected = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('rideOfferRejected', callback);
-  }
+  addPersistentListener('rideOfferRejected', callback as SocketListener);
 };
 
 export const offRideOfferRejected = () => {
-  if (socket) {
-    socket.off('rideOfferRejected');
-  }
+  removePersistentListener('rideOfferRejected');
 };
 
-export const onScheduledOfferResult = (callback: (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => void) => {
-  if (socket) {
-    socket.on('scheduledOfferResult', callback);
-  }
+export const onScheduledOfferResult = (
+  callback: (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => void
+) => {
+  addPersistentListener('scheduledOfferResult', callback as SocketListener);
 };
 
 export const offScheduledOfferResult = () => {
-  if (socket) {
-    socket.off('scheduledOfferResult');
-  }
+  removePersistentListener('scheduledOfferResult');
 };
 
 export const onScheduledOfferAcknowledged = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('scheduledOfferAcknowledged', callback);
-  }
+  addPersistentListener('scheduledOfferAcknowledged', callback as SocketListener);
 };
 
 export const offScheduledOfferAcknowledged = () => {
-  if (socket) {
-    socket.off('scheduledOfferAcknowledged');
-  }
+  removePersistentListener('scheduledOfferAcknowledged');
 };
 
 export const onRideCancelled = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('rideCancelled', callback);
-  }
+  addPersistentListener('rideCancelled', callback as SocketListener);
 };
 
 export const offRideCancelled = () => {
-  if (socket) {
-    socket.off('rideCancelled');
-  }
+  removePersistentListener('rideCancelled');
 };
 
 export const sendRideTimeout = (rideId: number, driverId: number) => {
@@ -240,57 +362,45 @@ export const sendMessage = (bookingId: number, message: string, sender: string) 
     socket.emit('sendMessage', {
       bookingId,
       message,
-      sender
+      sender,
     });
   }
 };
 
 export const onNewMessage = (callback: (data: { message: string; sender: string; timestamp: string }) => void) => {
-  if (socket) {
-    socket.on('newMessage', callback);
-  }
+  addPersistentListener('newMessage', callback as SocketListener);
 };
 
 export const offNewMessage = () => {
-  if (socket) {
-    socket.off('newMessage');
-  }
+  removePersistentListener('newMessage');
 };
 
-export const onPickupProximity = (callback: (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => void) => {
-  if (socket) {
-    socket.on('pickupProximity', callback);
-  }
+export const onPickupProximity = (
+  callback: (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => void
+) => {
+  addPersistentListener('pickupProximity', callback as SocketListener);
 };
 
 export const offPickupProximity = () => {
-  if (socket) {
-    socket.off('pickupProximity');
-  }
+  removePersistentListener('pickupProximity');
 };
 
 export const onPickupCountdownExpired = (callback: (data: { rideId: number }) => void) => {
-  if (socket) {
-    socket.on('pickupCountdownExpired', callback);
-  }
+  addPersistentListener('pickupCountdownExpired', callback as SocketListener);
 };
 
 export const offPickupCountdownExpired = () => {
-  if (socket) {
-    socket.off('pickupCountdownExpired');
-  }
+  removePersistentListener('pickupCountdownExpired');
 };
 
-export const onScheduledLateWarning = (callback: (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => void) => {
-  if (socket) {
-    socket.on('scheduledLateWarning', callback);
-  }
+export const onScheduledLateWarning = (
+  callback: (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => void
+) => {
+  addPersistentListener('scheduledLateWarning', callback as SocketListener);
 };
 
 export const offScheduledLateWarning = () => {
-  if (socket) {
-    socket.off('scheduledLateWarning');
-  }
+  removePersistentListener('scheduledLateWarning');
 };
 
 export const getSocket = (): Socket | null => socket;

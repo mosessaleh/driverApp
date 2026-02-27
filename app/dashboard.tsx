@@ -11,7 +11,7 @@ import type { DriverStatus } from '../src/components/StatusBar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning } from '../src/services/socket';
@@ -72,6 +72,10 @@ export default function DashboardScreen() {
      selected?: boolean | null;
    } | null>(null);
    const scheduledBannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+   const rideOfferSoundRef = useRef<any>(null);
+   const lateWarningSoundRef = useRef<any>(null);
+   const beepSoundRef = useRef<any>(null);
+   const isAudioModeReadyRef = useRef(false);
    const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
    const [scheduledNow, setScheduledNow] = useState(Date.now());
    const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
@@ -100,6 +104,96 @@ export default function DashboardScreen() {
    const [earningsToday, setEarningsToday] = useState(0);
 
    const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
+
+   const waitFor = (ms: number) =>
+     new Promise(resolve => setTimeout(resolve, ms));
+
+   const getAudioMode = () => ({
+     allowsRecordingIOS: false,
+     playsInSilentModeIOS: true,
+     staysActiveInBackground: true,
+     interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+     shouldDuckAndroid: true,
+     interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+     playThroughEarpieceAndroid: false,
+   });
+
+   const ensureAudioMode = async () => {
+     try {
+       await Audio.setAudioModeAsync(getAudioMode());
+       isAudioModeReadyRef.current = true;
+       return true;
+     } catch (error) {
+       isAudioModeReadyRef.current = false;
+       console.error('Error setting audio mode:', error);
+       return false;
+     }
+   };
+
+   const isAudioFocusException = (error: any) => {
+     const errorMessage = String(error?.message || error || '');
+     return errorMessage.includes('AudioFocusNotAcquiredException');
+   };
+
+   const runWithAudioFocusRetry = async (
+     operation: () => Promise<any>,
+     context: string,
+     maxAttempts = 3
+   ) => {
+     let lastError: any = null;
+
+     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+       try {
+         if (!isAudioModeReadyRef.current || attempt > 1) {
+           await ensureAudioMode();
+         }
+         return await operation();
+       } catch (error) {
+         lastError = error;
+         if (!isAudioFocusException(error) || attempt === maxAttempts) {
+           throw error;
+         }
+         const retryDelayMs = 140 * attempt;
+         console.warn(
+           `[Audio] ${context} failed to acquire focus (attempt ${attempt}/${maxAttempts}), retrying in ${retryDelayMs}ms`
+         );
+         await waitFor(retryDelayMs);
+       }
+     }
+
+     throw lastError;
+   };
+
+   const safelyUnloadSound = async (sound: any, context: string) => {
+     if (!sound) return;
+     try {
+       await sound.stopAsync();
+     } catch {
+       // noop - sound might already be stopped/unloaded
+     }
+     try {
+       await sound.unloadAsync();
+     } catch (error) {
+       console.warn(`Error unloading ${context}:`, error);
+     }
+   };
+
+   const setRideOfferSoundSafe = (sound: any | null) => {
+     rideOfferSoundRef.current = sound;
+     setRideOfferSound(sound);
+   };
+
+   const setLateWarningSoundSafe = (sound: any | null) => {
+     lateWarningSoundRef.current = sound;
+     setLateWarningSound(sound);
+   };
+
+   const stopBeepSound = async () => {
+     const currentBeep = beepSoundRef.current;
+     if (!currentBeep) return;
+     beepSoundRef.current = null;
+     await safelyUnloadSound(currentBeep, 'beep sound');
+   };
 
    // Helper function to determine driver status
    const getDriverStatusType = (): DriverStatus => {
@@ -190,13 +284,7 @@ export default function DashboardScreen() {
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    // Set audio mode for notifications
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    ensureAudioMode();
   }, []);
 
 
@@ -412,7 +500,7 @@ export default function DashboardScreen() {
       onDriverStatusUpdate(handleDriverStatusUpdate);
 
       // Listen for ride offers
-      const handleRideOffer = (data: any) => {
+      const handleRideOffer = async (data: any) => {
         console.log('=== RECEIVED RIDE OFFER ===');
         console.log('Ride offer data:', data);
         console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
@@ -420,16 +508,20 @@ export default function DashboardScreen() {
 
         const isScheduledOffer = !!(data?.scheduled || data?.offerType === 'scheduled' || data?.type === 'scheduled');
 
-        // Stop any existing sound first
-        stopRideOfferSound();
+        try {
+          // Stop any existing sound first
+          await stopRideOfferSound();
 
-        // Play ride offer sound if enabled
-        if (settings.sound.rideOfferSound) {
-          if (isScheduledOffer) {
-            playRideOfferSoundOnce();
-          } else {
-            playRideOfferSound();
+          // Play ride offer sound if enabled
+          if (settings.sound.rideOfferSound) {
+            if (isScheduledOffer) {
+              await playRideOfferSoundOnce();
+            } else {
+              await playRideOfferSound();
+            }
           }
+        } catch (soundError) {
+          console.error('Error while preparing ride offer sound:', soundError);
         }
 
         const defaultTimeoutMs = isScheduledOffer ? 15000 : 30000;
@@ -706,6 +798,7 @@ export default function DashboardScreen() {
         // Stop any playing sound when component unmounts
         stopRideOfferSound();
         stopLateWarningSound();
+        stopBeepSound();
       };
     }
     return () => {
@@ -1182,15 +1275,13 @@ export default function DashboardScreen() {
   };
 
    const stopLateWarningSound = async () => {
-     if (lateWarningSound) {
-       try {
-         await lateWarningSound.unloadAsync();
-       } catch (error) {
-         console.error('Error unloading late warning sound:', error);
-       } finally {
-         setLateWarningSound(null);
-       }
+     const currentSound = lateWarningSoundRef.current || lateWarningSound;
+     if (!currentSound) return;
+     await safelyUnloadSound(currentSound, 'late warning sound');
+     if (lateWarningSoundRef.current === currentSound) {
+       lateWarningSoundRef.current = null;
      }
+     setLateWarningSound(null);
    };
 
   const loadUpcomingRides = async (retryCount = 0) => {
@@ -1784,14 +1875,33 @@ export default function DashboardScreen() {
 
   const playBeepSound = async (soundFile: any, loop: boolean = false) => {
     try {
-      const { sound } = await Audio.Sound.createAsync(soundFile, { isLooping: loop });
-      await sound.playAsync();
+      if (!loop && beepSoundRef.current) {
+        await stopBeepSound();
+      }
+
+      const sound = await runWithAudioFocusRetry(async () => {
+        const { sound } = await Audio.Sound.createAsync(soundFile, {
+          isLooping: loop,
+          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+        });
+        try {
+          await sound.playAsync();
+          return sound;
+        } catch (error) {
+          await safelyUnloadSound(sound, 'beep sound after failed playAsync');
+          throw error;
+        }
+      }, 'playing beep sound');
 
       if (!loop) {
+        beepSoundRef.current = sound;
         // Unload the sound after playback to free resources
         sound.setOnPlaybackStatusUpdate((status: any) => {
           if (status.didJustFinish) {
-            sound.unloadAsync();
+            if (beepSoundRef.current === sound) {
+              beepSoundRef.current = null;
+            }
+            sound.unloadAsync().catch(() => null);
           }
         });
       }
@@ -1808,55 +1918,70 @@ export default function DashboardScreen() {
   const playMessageSound = () => playBeepSound(require('../assets/music/icq_message.mp3'));
 
   const playRideOfferSound = async () => {
-    let loopCount = 0;
-    const playNext = async () => {
-      if (loopCount >= 12) return;
-      const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'));
-      setRideOfferSound(sound);
-      sound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status.didJustFinish) {
-          loopCount++;
-          sound.unloadAsync();
-          setRideOfferSound(null);
-          if (loopCount < 12) {
-            playNext();
-          }
+    try {
+      await stopRideOfferSound();
+      const sound = await runWithAudioFocusRetry(async () => {
+        const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'), {
+          isLooping: true,
+          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+        });
+        try {
+          await sound.playAsync();
+          return sound;
+        } catch (error) {
+          await safelyUnloadSound(sound, 'ride offer sound after failed playAsync');
+          throw error;
         }
-      });
-      await sound.playAsync();
-    };
-    playNext();
+      }, 'playing ride offer sound');
+
+      setRideOfferSoundSafe(sound);
+    } catch (error) {
+      console.error('Error playing ride offer sound:', error);
+    }
   };
 
   const playRideOfferSoundOnce = async () => {
     try {
-      const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'));
-      setRideOfferSound(sound);
+      await stopRideOfferSound();
+      const sound = await runWithAudioFocusRetry(async () => {
+        const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'), {
+          isLooping: false,
+          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+        });
+        try {
+          await sound.playAsync();
+          return sound;
+        } catch (error) {
+          await safelyUnloadSound(sound, 'ride offer sound once after failed playAsync');
+          throw error;
+        }
+      }, 'playing ride offer sound once');
+
+      setRideOfferSoundSafe(sound);
       sound.setOnPlaybackStatusUpdate((status: any) => {
         if (status.didJustFinish) {
-          sound.unloadAsync();
-          setRideOfferSound(null);
+          if (rideOfferSoundRef.current === sound) {
+            rideOfferSoundRef.current = null;
+            setRideOfferSound(null);
+          }
+          sound.unloadAsync().catch(() => null);
         }
       });
-      await sound.playAsync();
     } catch (error) {
       console.error('Error playing ride offer sound once:', error);
     }
   };
 
   const stopRideOfferSound = async () => {
-    console.log('Stopping ride offer sound, current sound object:', rideOfferSound);
-    if (rideOfferSound) {
-      try {
-        // For looped sounds, the most reliable way is to unload immediately
-        await rideOfferSound.unloadAsync();
-        console.log('Sound unloaded successfully');
-        setRideOfferSound(null);
-      } catch (error: any) {
-        console.error('Error unloading sound:', error);
-        // Force set to null even if unload failed
-        setRideOfferSound(null);
+    const currentSound = rideOfferSoundRef.current || rideOfferSound;
+    console.log('Stopping ride offer sound, current sound object:', currentSound);
+    if (currentSound) {
+      await safelyUnloadSound(currentSound, 'ride offer sound');
+      if (rideOfferSoundRef.current === currentSound) {
+        rideOfferSoundRef.current = null;
       }
+      setRideOfferSound(null);
+      console.log('Sound unloaded successfully');
     } else {
       console.log('No sound object to stop');
     }
@@ -1865,15 +1990,30 @@ export default function DashboardScreen() {
   const playLateWarningSoundOnce = async () => {
     try {
       await stopLateWarningSound();
-      const { sound } = await Audio.Sound.createAsync(require('../assets/lateNoti.mp3'));
-      setLateWarningSound(sound);
+      const sound = await runWithAudioFocusRetry(async () => {
+        const { sound } = await Audio.Sound.createAsync(require('../assets/lateNoti.mp3'), {
+          isLooping: false,
+          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+        });
+        try {
+          await sound.playAsync();
+          return sound;
+        } catch (error) {
+          await safelyUnloadSound(sound, 'late warning sound after failed playAsync');
+          throw error;
+        }
+      }, 'playing late warning sound');
+
+      setLateWarningSoundSafe(sound);
       sound.setOnPlaybackStatusUpdate((status: any) => {
         if (status.didJustFinish) {
+          if (lateWarningSoundRef.current === sound) {
+            lateWarningSoundRef.current = null;
+            setLateWarningSound(null);
+          }
           sound.unloadAsync().catch(() => null);
-          setLateWarningSound(null);
         }
       });
-      await sound.playAsync();
     } catch (error) {
       console.error('Error playing late warning sound:', error);
     }
