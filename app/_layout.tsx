@@ -23,8 +23,16 @@ export default function Layout() {
     const setupAndroidChannel = async () => {
       if (Platform.OS !== 'android') return;
 
-      await Notifications.setNotificationChannelAsync('batch', {
-        name: 'Ride Notifications',
+      await Notifications.setNotificationChannelAsync('driver-rides', {
+        name: 'Ride Offers',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationChannelAsync('user-updates', {
+        name: 'General Updates',
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],

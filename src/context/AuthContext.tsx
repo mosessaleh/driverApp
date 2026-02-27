@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import { AuthState, User } from '../types';
 import { loginDriver, getDriverStatus, logoutDriver, updatePushToken } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
@@ -102,8 +103,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const tokenData = await getExpoPushTokenAsync();
         const pushToken = tokenData.data;
 
+        const storedPushToken = await AsyncStorage.getItem('expoPushToken');
+        if (storedPushToken === pushToken) {
+          return;
+        }
+
         // Send push token to server
         await updatePushToken(pushToken, authState.token);
+        await AsyncStorage.setItem('expoPushToken', pushToken);
         console.log('Push token registered successfully');
       } catch (error) {
         // Push notifications may not be available
@@ -113,6 +120,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     registerForPushNotifications();
+
+    const tokenSubscription = Notifications.addPushTokenListener(async (token) => {
+      if (!authState.token) return;
+      const nextToken = token?.data;
+      if (!nextToken) return;
+
+      try {
+        const currentStored = await AsyncStorage.getItem('expoPushToken');
+        if (currentStored === nextToken) return;
+        await updatePushToken(nextToken, authState.token);
+        await AsyncStorage.setItem('expoPushToken', nextToken);
+      } catch (error) {
+        console.warn('Failed to update rotated push token:', error);
+      }
+    });
+
+    return () => {
+      tokenSubscription.remove();
+    };
   }, [authState.token]);
 
   const login = async (username: string, password: string, startKM: number) => {
@@ -153,6 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
     await AsyncStorage.removeItem('vehicleTypeId');
+    await AsyncStorage.removeItem('expoPushToken');
     setAuthState({ user: null, token: null, isLoading: false });
   };
 

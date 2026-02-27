@@ -106,9 +106,9 @@ const joinDriverRoom = () => {
 
   try {
     const decoded: any = jwtDecode(currentToken);
-    const driverId = decoded.driverId;
+    const driverId = Number(decoded?.driverId ?? decoded?.id);
 
-    if (!driverId) {
+    if (!Number.isFinite(driverId) || driverId <= 0) {
       console.error('driverId not found in token payload');
       return;
     }
@@ -266,21 +266,21 @@ export const disconnectSocket = () => {
   persistentListeners.clear();
 };
 
-export const acceptRide = (rideId: number, driverId: number) => {
+export const acceptRide = (rideId: number) => {
   if (socket) {
-    socket.emit('acceptRide', { rideId, driverId });
+    socket.emit('acceptRide', { rideId });
   }
 };
 
-export const rejectRide = (rideId: number, driverId: number) => {
+export const rejectRide = (rideId: number) => {
   if (socket) {
-    socket.emit('rejectRide', { rideId, driverId });
+    socket.emit('rejectRide', { rideId });
   }
 };
 
-export const updateLocation = (driverId: number, location: { lat: number; lng: number }) => {
+export const updateLocation = (location: { lat: number; lng: number }) => {
   if (socket) {
-    socket.emit('updateLocation', { driverId, location });
+    socket.emit('updateLocation', { location });
   }
 };
 
@@ -344,9 +344,9 @@ export const offRideCancelled = () => {
   removePersistentListener('rideCancelled');
 };
 
-export const sendRideTimeout = (rideId: number, driverId: number) => {
+export const sendRideTimeout = (rideId: number) => {
   if (socket) {
-    socket.emit('rideTimeout', { rideId, driverId });
+    socket.emit('rideTimeout', { rideId });
   }
 };
 

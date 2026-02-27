@@ -561,9 +561,9 @@ export default function DashboardScreen() {
                 console.log('Ride offer timed out, automatically rejecting ride');
                 if (!isScheduledOffer && authState.token) {
                   // Automatically reject the ride
-                  rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
+                  rejectRide(data.rideId);
                 } else if (isScheduledOffer && authState.token) {
-                  rejectRide(data.rideId, parseInt(authState.user?.id || '0'));
+                  rejectRide(data.rideId);
                 }
               setRideOffer(null);
               setOfferCountdown(0);
@@ -3053,7 +3053,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
                 onPress={async () => {
-                  acceptRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
+                  acceptRide(rideOffer.rideId);
                   setRideOffer(null);
                   setOfferCountdown(0);
                   stopRideOfferSound().then(() => {
@@ -3071,7 +3071,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
                 onPress={async () => {
-                  rejectRide(rideOffer.rideId, parseInt(authState.user?.id || '0'));
+                  rejectRide(rideOffer.rideId);
                   setRideOffer(null);
                   setOfferCountdown(0);
                   await stopRideOfferSound();
