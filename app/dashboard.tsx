@@ -2939,7 +2939,12 @@ export default function DashboardScreen() {
             <View style={styles.dropoffActions}>
               <TouchableOpacity
                 style={styles.dropoffNavButton}
-                onPress={() => handleNav(activeRide.pickupAddress, activeRide.dropoffAddress, activeRide.stopAddress)}
+                onPress={() => {
+                  const navOrigin = currentLocation
+                    ? `${currentLocation.latitude},${currentLocation.longitude}`
+                    : (activeRide.stopAddress || activeRide.pickupAddress);
+                  handleNav(navOrigin, activeRide.dropoffAddress);
+                }}
               >
                 <Text style={styles.dropoffNavText}>{t('nav')}</Text>
               </TouchableOpacity>
