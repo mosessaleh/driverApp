@@ -16,9 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
-import * as TaskManager from 'expo-task-manager';
-import * as BackgroundFetch from 'expo-background-fetch';
-import { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
+import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
 
 const { width, height } = Dimensions.get('window');
 
@@ -103,6 +101,8 @@ export default function DashboardScreen() {
    const [earningsToday, setEarningsToday] = useState(0);
    const [scheduleEligibility, setScheduleEligibility] = useState<any>(null);
    const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
+   const driverOnlineRef = useRef(false);
+   const driverBusyRef = useRef(false);
 
    const quickReplies = useMemo(
      () => [
@@ -116,6 +116,11 @@ export default function DashboardScreen() {
 
    const waitFor = (ms: number) =>
      new Promise(resolve => setTimeout(resolve, ms));
+
+   useEffect(() => {
+     driverOnlineRef.current = driverOnline;
+     driverBusyRef.current = driverBusy;
+   }, [driverOnline, driverBusy]);
 
    const getAudioMode = () => ({
      allowsRecordingIOS: false,
@@ -495,10 +500,12 @@ export default function DashboardScreen() {
       // Listen for real-time driver status updates
       const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean; bannedUntil?: string }) => {
         // Update driver status based on WebSocket data
-        if (data.isOnline !== undefined && data.isOnline !== driverOnline) {
+        if (data.isOnline !== undefined && data.isOnline !== driverOnlineRef.current) {
+          driverOnlineRef.current = data.isOnline;
           setDriverOnline(data.isOnline);
         }
-        if (data.isBusy !== driverBusy) {
+        if (data.isBusy !== driverBusyRef.current) {
+          driverBusyRef.current = data.isBusy;
           setDriverBusy(data.isBusy);
         }
         if (data.bannedUntil) {
@@ -785,7 +792,7 @@ export default function DashboardScreen() {
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
         if (authState.token) {
-          if (driverOnline) {
+          if (driverOnlineRef.current) {
             loadDriverStatus();
           }
           loadUpcomingRides();
@@ -828,47 +835,15 @@ export default function DashboardScreen() {
   // Handle app state changes (background/foreground)
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: string) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        Alert.alert(
-          t('app_warning'),
-          t('app_background_warning'),
-          [{ text: t('ok') }]
-        );
+      if (nextAppState !== 'active' || !authState.token) {
+        return;
+      }
 
-        // Register background task for socket reconnection
-        if (Platform.OS !== 'web') {
-          try {
-            await BackgroundFetch.registerTaskAsync(SOCKET_BACKGROUND_TASK, {
-              minimumInterval: 10, // 10 seconds
-              stopOnTerminate: false,
-              startOnBoot: true,
-            });
-            console.log('Background task registered');
-          } catch (error) {
-            console.error('Failed to register background task:', error);
-          }
-        }
-      } else if (nextAppState === 'active') {
-        // Reconnect socket when app becomes active
-        if (authState.token) {
-          console.log('Reconnecting socket on app active');
-          // The socket connection should be handled by the existing logic
-        }
-
-        // Unregister background task
-        if (Platform.OS !== 'web') {
-          try {
-            await BackgroundFetch.unregisterTaskAsync(SOCKET_BACKGROUND_TASK);
-            console.log('Background task unregistered');
-          } catch (error: any) {
-            // Check if the error is because the task is not found (already unregistered or never registered)
-            if (error.message && (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))) {
-              console.log('Background task was not registered, skipping unregister');
-            } else {
-              console.error('Failed to unregister background task:', error);
-            }
-          }
-        }
+      try {
+        await loadDriverStatus();
+        await loadUpcomingRides();
+      } catch (error) {
+        console.error('Failed to refresh dashboard after app became active:', error);
       }
     };
 
@@ -877,7 +852,7 @@ export default function DashboardScreen() {
     return () => {
       subscription?.remove();
     };
-  }, [authState.token, t]);
+  }, [authState.token]);
 
 
   // Handle back button press on Android
@@ -1033,8 +1008,8 @@ export default function DashboardScreen() {
     }
     try {
       const res = await getDriverStatus(authState.token);
-      console.log('Loaded driver status:', res);
-      console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
+      const currentOnline = driverOnlineRef.current;
+      const currentBusy = driverBusyRef.current;
 
       // Ensure driver is marked as online if they have an active shift
       if (res.hasActiveShift && !res.isOnline) {
@@ -1043,17 +1018,16 @@ export default function DashboardScreen() {
         res.isOnline = true;
       }
 
-      if (res.isOnline !== undefined && res.isOnline !== driverOnline) {
-        const wasOnline = driverOnline;
-        console.log(`Updating driver online status: ${wasOnline} -> ${res.isOnline}`);
+      if (res.isOnline !== undefined && res.isOnline !== currentOnline) {
+        driverOnlineRef.current = res.isOnline;
         setDriverOnline(res.isOnline);
         // Auto start tracking if became online
-        if (res.isOnline && !wasOnline) {
+        if (res.isOnline && !currentOnline) {
           startLocationTracking();
         }
       }
-      if (res.isBusy !== undefined && res.isBusy !== driverBusy) {
-        console.log(`Updating driver busy status: ${driverBusy} -> ${res.isBusy}`);
+      if (res.isBusy !== undefined && res.isBusy !== currentBusy) {
+        driverBusyRef.current = res.isBusy;
         setDriverBusy(res.isBusy);
       }
 
@@ -1328,9 +1302,6 @@ export default function DashboardScreen() {
 
         // Request background location permission
         const backgroundStatus = await Location.requestBackgroundPermissionsAsync();
-        if (backgroundStatus.status === 'granted') {
-          console.log('Background location permission granted');
-        }
 
         const subscription = await Location.watchPositionAsync(
           {
@@ -1375,7 +1346,6 @@ export default function DashboardScreen() {
               distanceInterval: 50, // 50 meters
               showsBackgroundLocationIndicator: true,
             });
-            console.log('Background location tracking started');
           } catch (error) {
             console.error('Failed to start background location tracking:', error);
           }
