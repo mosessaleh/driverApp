@@ -81,11 +81,11 @@ export default function AnalyticsScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color="#007bff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Analytics</Text>
+          <Text style={styles.headerTitle}>{t('analytics_title')}</Text>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007bff" />
-          <Text style={styles.loadingText}>Loading analytics...</Text>
+          <Text style={styles.loadingText}>{t('analytics_loading')}</Text>
         </View>
       </View>
     );
@@ -98,14 +98,14 @@ export default function AnalyticsScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color="#007bff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Analytics</Text>
+          <Text style={styles.headerTitle}>{t('analytics_title')}</Text>
         </View>
         <View style={styles.errorContainer}>
           <Ionicons name="analytics" size={48} color="#dc3545" />
-          <Text style={styles.errorText}>Failed to load analytics</Text>
+          <Text style={styles.errorText}>{t('analytics_failed')}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadAnalytics}>
             <Ionicons name="refresh" size={20} color="#fff" />
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -121,14 +121,14 @@ export default function AnalyticsScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color="#007bff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Analytics</Text>
+          <Text style={styles.headerTitle}>{t('analytics_title')}</Text>
         </View>
         <View style={styles.errorContainer}>
           <Ionicons name="analytics" size={48} color="#dc3545" />
-          <Text style={styles.errorText}>Invalid data received</Text>
+          <Text style={styles.errorText}>{t('analytics_invalid_data')}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadAnalytics}>
             <Ionicons name="refresh" size={20} color="#fff" />
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -143,7 +143,7 @@ export default function AnalyticsScreen() {
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color="#007bff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Analytics</Text>
+        <Text style={styles.headerTitle}>{t('analytics_title')}</Text>
       </View>
 
       {/* Period Selector */}
@@ -155,7 +155,7 @@ export default function AnalyticsScreen() {
             onPress={() => setPeriod(p)}
           >
             <Text style={[styles.periodText, period === p && styles.activePeriodText]}>
-              {p.charAt(0).toUpperCase() + p.slice(1)}
+              {p === 'day' ? t('period_day') : p === 'week' ? t('period_week') : t('period_month')}
             </Text>
           </TouchableOpacity>
         ))}

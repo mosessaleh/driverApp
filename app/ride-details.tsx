@@ -10,7 +10,7 @@ export default function RideDetailsScreen() {
   const { authState } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { t } = useTranslation();
+  const { t, getCurrentLanguage } = useTranslation();
   const [ride, setRide] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -58,7 +58,8 @@ export default function RideDetailsScreen() {
     if (!dateString) return t('not_available');
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return t('not_available');
-    return date.toLocaleDateString('en-GB', {
+    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    return date.toLocaleDateString(locale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -69,10 +70,19 @@ export default function RideDetailsScreen() {
     if (!dateString) return t('not_available');
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return t('not_available');
-    return date.toLocaleTimeString('en-GB', {
+    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    return date.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const getRideStatusLabel = (status: string) => {
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === 'completed') return t('ride_status_completed');
+    if (normalizedStatus === 'pending') return t('ride_status_pending');
+    if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled') return t('ride_status_cancelled');
+    return status;
   };
 
   const goBack = () => {
@@ -139,7 +149,7 @@ export default function RideDetailsScreen() {
       <ScrollView style={styles.scrollView}>
         {/* Status Badge */}
         <View style={[styles.statusBadge, getStatusStyle(ride.status)]}>
-          <Text style={styles.statusText}>{ride.status}</Text>
+          <Text style={styles.statusText}>{getRideStatusLabel(ride.status)}</Text>
         </View>
 
         {/* Ride Summary */}
@@ -155,16 +165,16 @@ export default function RideDetailsScreen() {
             </View>
           </View>
           
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>{t('time')}</Text>
-              <Text style={styles.summaryValue}>{formatTime(ride.pickupTime || ride.createdAt)}</Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>{t('time')}</Text>
+                <Text style={styles.summaryValue}>{formatTime(ride.pickupTime || ride.createdAt)}</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>{t('distance')}</Text>
+                <Text style={styles.summaryValue}>{ride.distanceKm} {t('kilometers_short')}</Text>
+              </View>
             </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>{t('distance')}</Text>
-              <Text style={styles.summaryValue}>{ride.distanceKm} km</Text>
-            </View>
-          </View>
         </View>
 
         {/* Route Information */}
@@ -274,7 +284,7 @@ export default function RideDetailsScreen() {
           {ride.estimatedTime && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('estimated_time')}</Text>
-              <Text style={styles.detailValue}>{ride.estimatedTime} minutes</Text>
+              <Text style={styles.detailValue}>{ride.estimatedTime} {t('minutes')}</Text>
             </View>
           )}
           

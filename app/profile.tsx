@@ -387,12 +387,13 @@ interface LicensePlateProps {
 }
 
 const LicensePlate: React.FC<LicensePlateProps> = ({ value, isDarkMode, notAvailableLabel }) => {
+  const { t } = useTranslation();
   const plateValue = value && value.trim().length > 0 ? value.toUpperCase() : notAvailableLabel;
 
   return (
     <View style={[styles.plateContainer, { backgroundColor: isDarkMode ? '#f8fafc' : '#ffffff' }]}> 
       <View style={styles.plateCountry}>
-        <Text style={styles.plateCountryText}>DK</Text>
+        <Text style={styles.plateCountryText}>{t('license_plate_country_code')}</Text>
       </View>
       <Text style={styles.plateText} numberOfLines={1} ellipsizeMode="tail">
         {plateValue}

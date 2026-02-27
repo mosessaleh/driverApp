@@ -9,7 +9,7 @@ import { useTranslation } from '../src/hooks/useTranslation';
 export default function UpcomingScreen() {
   const { authState } = useAuth();
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, getCurrentLanguage } = useTranslation();
   const [rides, setRides] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,7 +66,8 @@ export default function UpcomingScreen() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
+    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    return date.toLocaleDateString(locale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -75,7 +76,8 @@ export default function UpcomingScreen() {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-GB', {
+    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    return date.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit'
     });

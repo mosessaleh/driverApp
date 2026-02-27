@@ -197,7 +197,7 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
                 </View>
                 {remainingMinutes > 0 && (
                   <Text style={styles.remainingTime}>
-                    {t('remaining')}: {Math.floor(remainingMinutes / 60)}h {remainingMinutes % 60}m
+                    {t('remaining')}: {Math.floor(remainingMinutes / 60)}{t('hours_short')} {remainingMinutes % 60}{t('minutes_short')}
                   </Text>
                 )}
               </View>

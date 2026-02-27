@@ -16,6 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
+import { useTranslation } from '../src/hooks/useTranslation';
 import { Input } from '../src/components/Input';
 import { Button } from '../src/components/Button';
 import { Loading } from '../src/components/Loading';
@@ -32,6 +33,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const { login, authState } = useAuth();
   const { isDarkMode } = useSettings();
+  const { t } = useTranslation();
   const router = useRouter();
   const themeColors = getThemeColors(isDarkMode);
 
@@ -78,12 +80,12 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!username || !password || !startKM) {
-      Alert.alert('Error', 'Please enter username, password, and start KM');
+      Alert.alert(t('error'), t('login_required_fields'));
       return;
     }
     const startKMNum = parseFloat(startKM);
     if (isNaN(startKMNum)) {
-      Alert.alert('Error', 'Start KM must be a valid number');
+      Alert.alert(t('error'), t('login_start_km_invalid'));
       return;
     }
     setLoading(true);
@@ -91,7 +93,7 @@ export default function LoginScreen() {
       await login(username, password, startKMNum);
       router.replace('/dashboard');
     } catch (error) {
-      Alert.alert('Login Failed', (error as Error).message || 'An error occurred');
+      Alert.alert(t('login_failed'), (error as Error).message || t('login_generic_error'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +154,7 @@ export default function LoginScreen() {
 
 
               <Input
-                placeholder="Enter your username"
+                placeholder={t('login_placeholder_username')}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
@@ -161,7 +163,7 @@ export default function LoginScreen() {
               />
 
               <Input
-                placeholder="Enter your password"
+                placeholder={t('login_placeholder_password')}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -172,7 +174,7 @@ export default function LoginScreen() {
               />
 
               <Input
-                placeholder="Enter vehicle odometer reading"
+                placeholder={t('login_placeholder_odometer')}
                 value={startKM}
                 onChangeText={setStartKM}
                 keyboardType="numeric"
@@ -181,7 +183,7 @@ export default function LoginScreen() {
               />
 
               <Button
-                title={loading ? 'Signing in...' : 'Start Shift'}
+                title={loading ? t('login_signing_in') : t('login_start_shift')}
                 onPress={handleLogin}
                 loading={loading}
                 disabled={loading}
@@ -195,7 +197,7 @@ export default function LoginScreen() {
             {/* Footer */}
             <View style={styles.footer}>
               <Text style={[styles.footerText, { color: themeColors.neutral.textSecondary }]}>
-                © 2024 TrafikTaxa. All rights reserved.
+                {t('footer_copyright')}
               </Text>
               <View style={styles.versionContainer}>
                 <Text style={[styles.versionText, { color: themeColors.neutral.textTertiary }]}>

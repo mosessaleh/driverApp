@@ -157,9 +157,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
       const hours = parseInt(parts[0]);
       const minutes = parseInt(parts[1]);
       if (hours > 0) {
-        return `${hours}h ${minutes}m`;
+        return `${hours}${t('hours_short')} ${minutes}${t('minutes_short')}`;
       }
-      return `${minutes}m`;
+      return `${minutes}${t('minutes_short')}`;
     }
     return time;
   };

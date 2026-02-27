@@ -125,7 +125,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="notifications-outline"
               title={t('new_ride_notifications')}
-              subtitle="Get notified about new ride requests"
+              subtitle={t('settings_notify_new_ride_subtitle')}
               value={settings.notifications.rideOffers}
               onValueChange={(value) => updateSetting('notifications', 'rideOffers', value)}
               isDarkMode={isDarkMode}
@@ -135,7 +135,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="chatbubble-outline"
               title={t('message_notifications')}
-              subtitle="Notifications for passenger messages"
+              subtitle={t('settings_notify_message_subtitle')}
               value={settings.notifications.chatMessages}
               onValueChange={(value) => updateSetting('notifications', 'chatMessages', value)}
               isDarkMode={isDarkMode}
@@ -145,7 +145,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="refresh-outline"
               title={t('ride_update_notifications')}
-              subtitle="Updates about ride status changes"
+              subtitle={t('settings_notify_update_subtitle')}
               value={settings.notifications.rideUpdates}
               onValueChange={(value) => updateSetting('notifications', 'rideUpdates', value)}
               isDarkMode={isDarkMode}
@@ -155,7 +155,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="phone-portrait-outline"
               title={t('vibration')}
-              subtitle="Vibrate on notifications"
+              subtitle={t('settings_vibration_subtitle')}
               value={settings.notifications.vibration}
               onValueChange={(value) => updateSetting('notifications', 'vibration', value)}
               isDarkMode={isDarkMode}
@@ -175,7 +175,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="musical-note-outline"
               title={t('message_sound')}
-              subtitle="Play sound for new messages"
+              subtitle={t('settings_message_sound_subtitle')}
               value={settings.sound.messageSound}
               onValueChange={(value) => updateSetting('sound', 'messageSound', value)}
               isDarkMode={isDarkMode}
@@ -185,7 +185,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="car-outline"
               title={t('pickup_dropoff_sound')}
-              subtitle="Sounds for pickup and dropoff"
+              subtitle={t('settings_pickup_dropoff_sound_subtitle')}
               value={settings.sound.pickupDropoffSound}
               onValueChange={(value) => updateSetting('sound', 'pickupDropoffSound', value)}
               isDarkMode={isDarkMode}
@@ -205,7 +205,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon={isDarkMode ? "moon" : "sunny"}
               title={t('dark_mode')}
-              subtitle="Use dark theme"
+              subtitle={t('settings_dark_mode_subtitle')}
               value={settings.appearance.darkMode}
               onValueChange={(value) => updateSetting('appearance', 'darkMode', value)}
               isDarkMode={isDarkMode}
@@ -215,7 +215,13 @@ export default function SettingsScreen() {
             <SettingItem
               icon="language-outline"
               title={t('language')}
-              subtitle={settings.appearance.language === 'en' ? 'English' : settings.appearance.language === 'ar' ? 'العربية' : 'Dansk'}
+              subtitle={
+                settings.appearance.language === 'en'
+                  ? t('language_name_en')
+                  : settings.appearance.language === 'ar'
+                    ? t('language_name_ar')
+                    : t('language_name_da')
+              }
               onPress={() => setShowLanguageSelector(!showLanguageSelector)}
               showArrow
               isDarkMode={isDarkMode}
@@ -226,11 +232,11 @@ export default function SettingsScreen() {
             
             {/* Language Selector */}
             {showLanguageSelector && (
-              <View style={[styles.languageSelector, { backgroundColor: themeColors.neutral.surfaceVariant }]}>
+              <View style={[styles.languageSelector, { backgroundColor: themeColors.neutral.surfaceVariant }]}> 
                 {[
-                  { code: 'en', label: 'English', flag: '🇬🇧' },
+                  { code: 'en', label: t('language_name_en'), flag: '🇬🇧' },
                   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
-                  { code: 'da', label: 'Dansk', flag: '🇩🇰' },
+                  { code: 'da', label: t('language_name_da'), flag: '🇩🇰' },
                 ].map((lang) => (
                   <TouchableOpacity
                     key={lang.code}
@@ -263,7 +269,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="trash-outline"
               title={t('clear_cache')}
-              subtitle="Free up storage space"
+              subtitle={t('settings_clear_cache_subtitle')}
               onPress={() => {}}
               showArrow
               isDarkMode={isDarkMode}
@@ -273,7 +279,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="bug-outline"
               title={t('report_issue')}
-              subtitle="Report a bug or problem"
+              subtitle={t('settings_report_issue_subtitle')}
               onPress={() => {}}
               showArrow
               isDarkMode={isDarkMode}
@@ -283,7 +289,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon="help-circle-outline"
               title={t('contact_support')}
-              subtitle="Get help from our team"
+              subtitle={t('settings_contact_support_subtitle')}
               onPress={() => {}}
               showArrow
               isDarkMode={isDarkMode}
@@ -305,7 +311,7 @@ export default function SettingsScreen() {
         {/* Logout Button */}
         <View style={styles.logoutSection}>
           <Button
-            title="Logout"
+            title={t('logout')}
             onPress={handleLogout}
             variant="danger"
             size="large"
@@ -316,8 +322,8 @@ export default function SettingsScreen() {
         </View>
 
         {/* Copyright */}
-        <Text style={[styles.copyright, { color: themeColors.neutral.textTertiary }]}>
-          © 2024 TrafikTaxa. All rights reserved.
+        <Text style={[styles.copyright, { color: themeColors.neutral.textTertiary }]}> 
+          {t('footer_copyright')}
         </Text>
       </ScrollView>
     </View>

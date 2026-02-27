@@ -44,7 +44,7 @@ export default function HistoryScreen() {
         setRides(response.rides);
         setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
       } else {
-        Alert.alert('Error', 'Failed to load history data');
+        Alert.alert(t('error'), t('history_load_failed'));
       }
     } catch (error) {
       console.error('Error loading history:', error);
@@ -53,7 +53,7 @@ export default function HistoryScreen() {
         console.log(`Retrying history load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadHistory(retryCount + 1), delay);
       } else {
-        Alert.alert('Error', 'Failed to load history data after multiple attempts');
+        Alert.alert(t('error'), t('history_load_failed_multiple'));
       }
     } finally {
       setLoading(false);
@@ -143,11 +143,11 @@ export default function HistoryScreen() {
         setRides(response.rides);
         setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
       } else {
-        Alert.alert('Error', 'Failed to load history data');
+        Alert.alert(t('error'), t('history_load_failed'));
       }
     } catch (error) {
       console.error('Error loading history:', error);
-      Alert.alert('Error', 'Failed to load history data');
+      Alert.alert(t('error'), t('history_load_failed'));
     } finally {
       setLoading(false);
       setFilterVisible(false);

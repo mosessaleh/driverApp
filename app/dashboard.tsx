@@ -30,7 +30,7 @@ export const options = {
 export default function DashboardScreen() {
     const { authState, logout } = useAuth();
     const { settings, isDarkMode, isRTL } = useSettings();
-    const { t } = useTranslation();
+    const { t, getCurrentLanguage } = useTranslation();
     const router = useRouter();
    const [driverOnline, setDriverOnline] = useState(false);
    const [driverBusy, setDriverBusy] = useState(false);
@@ -103,7 +103,15 @@ export default function DashboardScreen() {
    const [totalRidesToday, setTotalRidesToday] = useState(0);
    const [earningsToday, setEarningsToday] = useState(0);
 
-   const quickReplies = ["I'm on my way", "I've arrived", "Traffic on the way", "I'm arriving"];
+   const quickReplies = useMemo(
+     () => [
+       t('quick_reply_on_my_way'),
+       t('quick_reply_arrived'),
+       t('quick_reply_traffic'),
+       t('quick_reply_arriving'),
+     ],
+     [t]
+   );
 
    const waitFor = (ms: number) =>
      new Promise(resolve => setTimeout(resolve, ms));
@@ -204,11 +212,18 @@ export default function DashboardScreen() {
      return 'online';
    };
 
+   const getCurrentLocale = () => {
+     const language = getCurrentLanguage();
+     if (language === 'ar') return 'ar';
+     if (language === 'da') return 'da-DK';
+     return 'en-GB';
+   };
+
    const formatScheduledDateTime = (value?: string | null) => {
      if (!value) return null;
      const date = new Date(value);
      if (Number.isNaN(date.getTime())) return null;
-     return date.toLocaleString();
+      return date.toLocaleString(getCurrentLocale());
    };
 
    const formatCountdown = (totalSeconds: number) => {
@@ -811,9 +826,9 @@ export default function DashboardScreen() {
     const handleAppStateChange = async (nextAppState: string) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         Alert.alert(
-          'Warning',
-          'If you close the app or put it in the background, you may face problems receiving new ride requests. It is recommended to keep the app open to ensure notifications are received.',
-          [{ text: 'OK' }]
+          t('app_warning'),
+          t('app_background_warning'),
+          [{ text: t('ok') }]
         );
 
         // Register background task for socket reconnection
@@ -858,18 +873,18 @@ export default function DashboardScreen() {
     return () => {
       subscription?.remove();
     };
-  }, [authState.token]);
+  }, [authState.token, t]);
 
 
   // Handle back button press on Android
   useEffect(() => {
     const backAction = () => {
       Alert.alert(
-        'Warning',
-        'If you close the app, you may face problems receiving new ride requests. Are you sure you want to exit?',
+        t('app_warning'),
+        t('app_exit_warning'),
         [
-          { text: 'Cancel', style: 'cancel', onPress: () => null },
-          { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() }
+          { text: t('app_exit_cancel'), style: 'cancel', onPress: () => null },
+          { text: t('app_exit'), style: 'destructive', onPress: () => BackHandler.exitApp() }
         ]
       );
       return true; // Prevent default back action
@@ -878,7 +893,7 @@ export default function DashboardScreen() {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
     return () => backHandler?.remove();
-  }, []);
+  }, [t]);
 
   // Handle push notifications
   useEffect(() => {
@@ -1429,7 +1444,7 @@ export default function DashboardScreen() {
 
   const handleEndShift = async () => {
     if (!endKM || isNaN(Number(endKM))) {
-      alert('Please enter a valid end KM');
+      alert(t('shift_end_km_invalid'));
       return;
     }
 
@@ -1444,14 +1459,20 @@ export default function DashboardScreen() {
         setDriverOnline(false);
         setShowEndKMModal(false);
         setEndKM('');
-        alert(`Shift ended successfully!\nWork time: ${data.shiftData.workTime.toFixed(2)} hours\nTotal salary: ${data.shiftData.totalSalary} DKK\nHourly salary: ${data.shiftData.hourSalary.toFixed(2)} DKK`);
+        alert(
+          t('end_shift_success_message', {
+            workTime: data.shiftData.workTime.toFixed(2),
+            totalSalary: data.shiftData.totalSalary,
+            hourSalary: data.shiftData.hourSalary.toFixed(2),
+          })
+        );
 
         // Logout after ending shift
         await logout();
         router.push('/login');
       } catch (error) {
         console.error('Error ending shift:', error);
-        alert('Error ending shift: ' + (error as any).message);
+        alert(t('end_shift_error_message', { message: (error as any).message }));
       }
     }
   };
@@ -1560,7 +1581,7 @@ export default function DashboardScreen() {
         setShowStopModal(false);
         setShowDropoffModal(false);
         setRouteCoordinates([]);
-        alert('Failed to update ride status');
+        alert(t('ride_status_update_failed'));
       }
     } catch (e) {
       console.error('Error picking up ride:', e);
@@ -1570,7 +1591,7 @@ export default function DashboardScreen() {
       setShowStopModal(false);
       setShowDropoffModal(false);
       setRouteCoordinates([]);
-      alert('Error picking up ride');
+      alert(t('ride_pickup_error'));
     } finally {
       setIsPickupLoading(false);
     }
@@ -1644,16 +1665,16 @@ export default function DashboardScreen() {
           }, 1000);
         }
         if (res.paymentResult && !res.paymentResult.success) {
-          alert(`Ride completed but payment failed: ${res.paymentResult.error}`);
+          alert(t('ride_completed_payment_failed', { error: res.paymentResult.error }));
         } else {
-          alert('Ride completed successfully');
+          alert(t('ride_completed_success'));
         }
       } else {
-        alert('Failed to complete ride');
+        alert(t('ride_complete_failed'));
       }
     } catch (e) {
       console.error('Error completing ride:', e);
-      alert('Error completing ride');
+      alert(t('ride_complete_error'));
     } finally {
       setIsDropoffLoading(false);
     }
@@ -2118,11 +2139,11 @@ export default function DashboardScreen() {
     if (Number.isNaN(pickupMs)) return null;
     const departMs = pickupMs - scheduledEtaMinutes * 60 * 1000;
     if (Number.isNaN(departMs)) return null;
-    return new Date(departMs).toLocaleTimeString('en-GB', {
+    return new Date(departMs).toLocaleTimeString(getCurrentLocale(), {
       hour: '2-digit',
       minute: '2-digit'
     });
-  }, [nextScheduledRide?.pickupTime, scheduledEtaMinutes]);
+  }, [nextScheduledRide?.pickupTime, scheduledEtaMinutes, getCurrentLanguage]);
 
   const getPickupEtaMinutes = () => {
     if (!currentLocation || !rideOffer?.rideData?.startLatLon) return null;
@@ -2392,7 +2413,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.startLatLon.lat,
                     longitude: activeRide.startLatLon.lon,
                   }}
-                  title="Pickup"
+                  title={t('pickup_marker_title')}
                   pinColor="green"
                 />
                 {routeCoordinates.length > 0 && (
@@ -2417,7 +2438,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.endLatLon.lat,
                     longitude: activeRide.endLatLon.lon,
                   }}
-                  title="Dropoff"
+                  title={t('dropoff_marker_title')}
                   pinColor="red"
                 />
               </>
@@ -2429,7 +2450,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.startLatLon.lat,
                     longitude: activeRide.startLatLon.lon,
                   }}
-                  title="Pickup"
+                  title={t('pickup_marker_title')}
                   pinColor="green"
                 />
                 {routeCoordinates.length > 0 && (
@@ -2454,7 +2475,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.endLatLon.lat,
                     longitude: activeRide.endLatLon.lon,
                   }}
-                  title="Dropoff"
+                  title={t('dropoff_marker_title')}
                   pinColor="red"
                 />
               </>
@@ -2466,7 +2487,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.startLatLon.lat,
                     longitude: activeRide.startLatLon.lon,
                   }}
-                  title="Pickup"
+                  title={t('pickup_marker_title')}
                   pinColor="green"
                 />
                 {routeCoordinates.length > 0 && (
@@ -2491,7 +2512,7 @@ export default function DashboardScreen() {
                     latitude: activeRide.endLatLon.lat,
                     longitude: activeRide.endLatLon.lon,
                   }}
-                  title="Dropoff"
+                  title={t('dropoff_marker_title')}
                   pinColor="red"
                 />
               </>
@@ -2499,7 +2520,7 @@ export default function DashboardScreen() {
           </MapView>
         ) : (
           <Text style={styles.mapPlaceholderText}>
-            {locationPermission ? 'Getting location...' : 'Location permission required'}
+            {locationPermission ? t('getting_location') : t('vehicle_required')}
           </Text>
         )}
 
@@ -2509,13 +2530,13 @@ export default function DashboardScreen() {
       {showEndKMModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.endShiftMenu}>
-            <Text style={styles.endShiftTitle}>End Shift</Text>
+            <Text style={styles.endShiftTitle}>{t('end_shift_title')}</Text>
             <Text style={styles.endShiftMessage}>
-              Please enter the final odometer reading (KM) for the vehicle:
+              {t('end_shift_message')}
             </Text>
             <TextInput
               style={styles.kmInput}
-              placeholder="Enter end KM"
+              placeholder={t('end_shift_placeholder')}
               value={endKM}
               onChangeText={setEndKM}
               keyboardType="numeric"
@@ -2530,13 +2551,13 @@ export default function DashboardScreen() {
                   setEndKM('');
                 }}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.endShiftButton, styles.confirmButton]}
                 onPress={handleEndShift}
               >
-                <Text style={styles.confirmButtonText}>End Shift</Text>
+                <Text style={styles.confirmButtonText}>{t('end_shift')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2630,7 +2651,7 @@ export default function DashboardScreen() {
                 {isPickupLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <ActivityIndicator size="small" color="#fff" />
-                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>Picking up passenger...</Text>
+                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>{t('pickup_in_progress')}</Text>
                   </View>
                 ) : (
                   <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
@@ -2638,7 +2659,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
               {showCancelText && cancelCountdown > 0 && (
                 <Text style={styles.cancelOnText}>
-                  Cancel on: {Math.floor(cancelCountdown / 60)}:{(cancelCountdown % 60).toString().padStart(2, '0')}
+                  {t('cancel_on')}: {Math.floor(cancelCountdown / 60)}:{(cancelCountdown % 60).toString().padStart(2, '0')}
                 </Text>
               )}
               {showCancelText && cancelCountdown === 0 && (
@@ -2952,7 +2973,7 @@ export default function DashboardScreen() {
                 {isDropoffLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <ActivityIndicator size="small" color="#fff" />
-                    <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>Dropping off...</Text>
+                    <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>{t('dropoff_in_progress')}</Text>
                   </View>
                 ) : (
                   <Text style={styles.dropoffButtonText}>{t('hold_to_dropoff')}</Text>
@@ -3074,7 +3095,7 @@ export default function DashboardScreen() {
         <View style={styles.chatModal}>
           <View style={styles.chatModalCard}>
             <View style={styles.chatModalHeader}>
-              <Text style={styles.chatModalTitle}>Chat with Passenger</Text>
+              <Text style={styles.chatModalTitle}>{t('chat_with_passenger')}</Text>
               <TouchableOpacity onPress={() => setShowChat(false)}>
                 <Text style={styles.chatModalClose}>✕</Text>
               </TouchableOpacity>
@@ -3098,12 +3119,12 @@ export default function DashboardScreen() {
                 style={styles.chatInput}
                 value={chatInput}
                 onChangeText={setChatInput}
-                placeholder="Type message..."
+                placeholder={t('chat_type_message')}
                 onSubmitEditing={handleSendMessage}
                 returnKeyType="send"
               />
               <TouchableOpacity style={styles.chatSendButton} onPress={handleSendMessage}>
-                <Text style={styles.chatSendButtonText}>Send</Text>
+                <Text style={styles.chatSendButtonText}>{t('send')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3114,12 +3135,12 @@ export default function DashboardScreen() {
       {showShiftWarning && (
         <View style={styles.modalOverlay}>
           <View style={styles.shiftWarningModal}>
-            <Text style={styles.shiftWarningTitle}>⚠️ Shift Duration Warning</Text>
+            <Text style={styles.shiftWarningTitle}>{t('shift_duration_warning_title')}</Text>
             <Text style={styles.shiftWarningMessage}>
-              Your current shift has exceeded 11 hours, which violates Danish traffic safety regulations.
+              {t('shift_duration_warning_message_1')}
             </Text>
             <Text style={styles.shiftWarningMessage}>
-              You must end your shift immediately. Failure to do so within 1 hour will result in a 3-day suspension from the platform.
+              {t('shift_duration_warning_message_2')}
             </Text>
             <View style={styles.shiftWarningButtons}>
               <TouchableOpacity
@@ -3130,13 +3151,13 @@ export default function DashboardScreen() {
                   setShowEndKMModal(true);
                 }}
               >
-                <Text style={styles.endShiftButtonText}>End Shift Now</Text>
+                <Text style={styles.endShiftButtonText}>{t('end_shift_now')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.shiftWarningButton, styles.laterButton]}
                 onPress={() => setShowShiftWarning(false)}
               >
-                <Text style={styles.laterButtonText}>Remind Me Later</Text>
+                <Text style={styles.laterButtonText}>{t('remind_me_later')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3146,18 +3167,13 @@ export default function DashboardScreen() {
       {/* Floating Go Button */}
       {!driverOnline && (
         <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
-          <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>GO</Animated.Text>
+          <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>{t('go')}</Animated.Text>
         </TouchableOpacity>
       )}
 
-      {/* Searching for Trips Bar */}
+      {/* Searching for Trips Card */}
       {driverOnline && !driverBusy && !activeRide && (
         <View style={styles.searchingBar}>
-          <View style={styles.searchingBars}>
-            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot1Anim }] }]} />
-            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot2Anim }] }]} />
-            <Animated.View style={[styles.searchingBarItem, { transform: [{ scaleY: dot3Anim }] }]} />
-          </View>
           <Text style={styles.searchingText}>
             {searchLetters.map((letter, index) => (
               <Animated.Text
@@ -3171,6 +3187,13 @@ export default function DashboardScreen() {
               </Animated.Text>
             ))}
           </Text>
+          <Text style={styles.searchingSubText}>{t('searching_subtext')}</Text>
+
+          <View style={styles.searchingProgressRow}>
+            <Animated.View style={[styles.searchingProgressDot, { transform: [{ scale: dot1Anim }] }]} />
+            <Animated.View style={[styles.searchingProgressDot, { transform: [{ scale: dot2Anim }] }]} />
+            <Animated.View style={[styles.searchingProgressDot, { transform: [{ scale: dot3Anim }] }]} />
+          </View>
         </View>
       )}
 
@@ -4520,56 +4543,52 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
   },
   searchingBar: {
     position: 'absolute',
-    bottom: 22,
-    left: 16,
-    right: 16,
-    minHeight: 64,
-    backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc',
-    flexDirection: 'column',
+    bottom: 20,
+    left: 14,
+    right: 14,
+    backgroundColor: isDarkMode ? 'rgba(2,6,23,0.92)' : 'rgba(255,255,255,0.98)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     zIndex: 1000,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(148,163,184,0.35)',
+    borderColor: isDarkMode ? 'rgba(34,211,238,0.25)' : 'rgba(14,116,144,0.15)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
     elevation: 14,
   },
   searchingText: {
     textAlign: 'center',
   },
   searchingLetter: {
-    color: isDarkMode ? '#e5e7eb' : '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    fontSize: 17,
+    fontWeight: '800',
     lineHeight: 22,
   },
-  searchingBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    width: 48,
-    height: 24,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: isDarkMode ? 'rgba(23,162,184,0.12)' : 'rgba(23,162,184,0.08)',
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(23,162,184,0.3)' : 'rgba(23,162,184,0.25)',
-    marginBottom: 8,
-    flexShrink: 0,
+  searchingSubText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: isDarkMode ? '#94a3b8' : '#475569',
+    textAlign: 'center',
+    fontWeight: '600',
   },
-  searchingBarItem: {
-    width: 4,
-    height: 14,
+  searchingProgressRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 11,
+  },
+  searchingProgressDot: {
+    width: 6,
+    height: 6,
     borderRadius: 3,
-    backgroundColor: '#17a2b8',
-    marginHorizontal: 2,
+    marginHorizontal: 4,
+    backgroundColor: isDarkMode ? '#67e8f9' : '#0284c7',
   },
   cancelRideButton: {
     backgroundColor: '#dc3545',

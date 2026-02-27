@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -177,12 +178,14 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   loading = false,
   ...inputProps
 }) => {
+  const { t } = useTranslation();
+
   return (
     <Input
       {...inputProps}
       icon="search"
       iconRight={loading ? undefined : 'close-circle'}
-      placeholder="Search..."
+      placeholder={t('search_placeholder')}
       returnKeyType="search"
       onSubmitEditing={() => onSearch?.(inputProps.value || '')}
     />
