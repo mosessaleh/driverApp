@@ -2,6 +2,51 @@
 // Set EXPO_PUBLIC_API_URL in .env file or change this value based on your network
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.146:3000'; // Set EXPO_PUBLIC_API_URL in .env
 
+export type DriverLoginWarningResponse = {
+  requiresConfirmation: true;
+  warningCode: 'OUTSIDE_SCHEDULE' | string;
+  warning?: string;
+  message: string;
+  schedule?: any;
+  redistributionPolicy?: {
+    maxHours: number;
+    graceMinutes: number;
+    affectedRideCount: number;
+    affectedRideIds: number[];
+  };
+};
+
+export type DriverLoginSuccessResponse = {
+  success: true;
+  requiresConfirmation?: false;
+  message: string;
+  token: string;
+  driver: {
+    id: number;
+    name: string;
+    car: string;
+    rating?: number;
+    vehicleTypeId?: number;
+  };
+  shiftId: number;
+  shiftStartTime: string | null;
+  schedule?: any;
+  loginPolicy?: {
+    outsideSchedule: boolean;
+    redistributionPolicy?: {
+      maxHours: number;
+      graceMinutes: number;
+    };
+    releasedScheduledRides?: {
+      count: number;
+      rideIds: number[];
+      rides: Array<{ id: number; pickupTime: string | null }>;
+    };
+  };
+};
+
+export type DriverLoginResponse = DriverLoginSuccessResponse | DriverLoginWarningResponse;
+
 const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
   try {
     return await fn();
@@ -100,8 +145,13 @@ export const api = {
   // Add other methods as needed
 };
 
-export const loginDriver = async (username: string, password: string, startKM: number) => {
-  return api.post('/api/driver/login', { username, password, startKM });
+export const loginDriver = async (
+  username: string,
+  password: string,
+  startKM: number,
+  confirmOutsideSchedule: boolean = false
+): Promise<DriverLoginResponse> => {
+  return api.post('/api/driver/login', { username, password, startKM, confirmOutsideSchedule });
 };
 
 export const getAvailableRides = async (token: string) => {
@@ -229,6 +279,47 @@ export const getDriverHistory = async (token: string, startDate?: string, endDat
 
 export const getDriverUpcoming = async (token: string) => {
   return api.get('/api/driver/upcoming', token);
+};
+
+export const normalizeScheduledPendingOffers = (pendingOffers: any[] | undefined | null) => {
+  if (!Array.isArray(pendingOffers)) return [];
+
+  return pendingOffers
+    .map((offer: any) => {
+      const rideId = Number(offer?.rideId);
+      if (!Number.isFinite(rideId) || rideId <= 0) return null;
+
+      const expiresAtRaw = offer?.expiresAt;
+      const expiresAtMs = typeof expiresAtRaw === 'number'
+        ? expiresAtRaw
+        : new Date(expiresAtRaw || 0).getTime();
+
+      const pickupTime = offer?.pickupTime || offer?.rideData?.pickupTime || null;
+      const rideData = offer?.rideData || {};
+
+      return {
+        rideId,
+        pickupTime,
+        expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : 0,
+        timeLeftMs: Math.max(0, Number(offer?.timeLeftMs || 0)),
+        rideData: {
+          id: rideData?.id || rideId,
+          pickupAddress: rideData?.pickupAddress || '',
+          dropoffAddress: rideData?.dropoffAddress || '',
+          stopAddress: rideData?.stopAddress || null,
+          price: Number(rideData?.price || 0),
+          distanceKm: Number(rideData?.distanceKm || 0),
+          riderName: rideData?.riderName || '',
+          startLatLon: rideData?.startLatLon || null,
+          stopLatLon: rideData?.stopLatLon || null,
+          endLatLon: rideData?.endLatLon || null,
+          vehicleTypeId: Number(rideData?.vehicleTypeId || 0),
+          pickupTime
+        }
+      };
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.expiresAtMs - b.expiresAtMs);
 };
 
 export const endShift = async (endKM: number, token: string) => {

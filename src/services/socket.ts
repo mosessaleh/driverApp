@@ -19,6 +19,19 @@ let currentToken: string | null = null;
 let currentVehicleTypeId = 1;
 let currentJoinLocation: { lat: number; lng: number } | undefined;
 
+export type ScheduledUpcomingOffersUpdatePayload = {
+  pendingCount: number;
+  pendingOffers: Array<{
+    rideId: number;
+    pickupTime?: string | null;
+    createdAt?: number | string;
+    timeoutMs?: number;
+    expiresAt?: number | string;
+    timeLeftMs?: number;
+    rideData?: any;
+  }>;
+};
+
 type SocketListener = (...args: any[]) => void;
 const persistentListeners = new Map<string, Set<SocketListener>>();
 
@@ -334,6 +347,16 @@ export const onScheduledOfferAcknowledged = (callback: (data: { rideId: number }
 
 export const offScheduledOfferAcknowledged = () => {
   removePersistentListener('scheduledOfferAcknowledged');
+};
+
+export const onScheduledUpcomingOffersUpdate = (
+  callback: (data: ScheduledUpcomingOffersUpdatePayload) => void
+) => {
+  addPersistentListener('scheduledUpcomingOffersUpdate', callback as SocketListener);
+};
+
+export const offScheduledUpcomingOffersUpdate = () => {
+  removePersistentListener('scheduledUpcomingOffersUpdate');
 };
 
 export const onRideCancelled = (callback: (data: { rideId: number }) => void) => {

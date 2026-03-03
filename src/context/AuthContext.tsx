@@ -3,12 +3,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { AuthState, User } from '../types';
-import { loginDriver, getDriverStatus, logoutDriver, updatePushToken } from '../services/api';
+import {
+  loginDriver,
+  getDriverStatus,
+  logoutDriver,
+  updatePushToken,
+  DriverLoginResponse
+} from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
+
+type LoginOptions = {
+  confirmOutsideSchedule?: boolean;
+};
 
 const AuthContext = createContext<{
   authState: AuthState;
-  login: (username: string, password: string, startKM: number) => Promise<void>;
+  login: (username: string, password: string, startKM: number, options?: LoginOptions) => Promise<DriverLoginResponse>;
   logout: () => Promise<void>;
 } | null>(null);
 
@@ -141,17 +151,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [authState.token]);
 
-  const login = async (username: string, password: string, startKM: number) => {
+  const login = async (
+    username: string,
+    password: string,
+    startKM: number,
+    options?: LoginOptions
+  ): Promise<DriverLoginResponse> => {
     try {
-      const response = await loginDriver(username, password, startKM);
+      const response = await loginDriver(
+        username,
+        password,
+        startKM,
+        Boolean(options?.confirmOutsideSchedule)
+      );
+
+      if (response.requiresConfirmation === true) {
+        return response;
+      }
+
       if (response.token && response.driver && response.shiftId) {
         const userData = {
-          id: response.driver.id,
+          id: String(response.driver.id),
           name: response.driver.name,
           car: response.driver.car,
           vehicleTypeId: response.driver?.vehicleTypeId || 1,
           shiftId: response.shiftId,
-          shiftStartTime: response.shiftStartTime,
+          shiftStartTime: response.shiftStartTime || undefined,
           rating: response.driver.rating || 5.0,
           schedule: response.schedule || null
         };
@@ -159,6 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('user', JSON.stringify(userData));
         await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
         setAuthState({ user: userData, token: response.token, isLoading: false });
+        return response;
       } else {
         throw new Error('Invalid login response');
       }

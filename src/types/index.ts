@@ -109,6 +109,27 @@ export interface Ride extends Booking {
   riderPhone?: string;
 }
 
+export interface ScheduledPendingOffer {
+  rideId: number;
+  pickupTime?: string | null;
+  expiresAtMs: number;
+  timeLeftMs: number;
+  rideData: {
+    id: number;
+    pickupAddress: string;
+    dropoffAddress: string;
+    stopAddress?: string | null;
+    price: number;
+    distanceKm: number;
+    riderName?: string;
+    startLatLon?: { lat: number; lon: number } | null;
+    stopLatLon?: { lat: number; lon: number } | null;
+    endLatLon?: { lat: number; lon: number } | null;
+    vehicleTypeId?: number;
+    pickupTime?: string | null;
+  };
+}
+
 export interface Driver {
   id: string;
   name: string;

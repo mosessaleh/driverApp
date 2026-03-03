@@ -22,6 +22,7 @@ import { Button } from '../src/components/Button';
 import { Loading } from '../src/components/Loading';
 import { colors, typography, spacing, shadows, getThemeColors } from '../src/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { DriverLoginWarningResponse } from '../src/services/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -90,7 +91,48 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(username, password, startKMNum);
+      const response = await login(username, password, startKMNum);
+
+      if (response.requiresConfirmation === true) {
+        const warning = response as DriverLoginWarningResponse;
+        const warningMessage = warning?.message || t('login_schedule_warning_body');
+        const affectedCount = Number(warning?.redistributionPolicy?.affectedRideCount || 0);
+
+        Alert.alert(
+          t('login_schedule_warning_title'),
+          `${warningMessage}${affectedCount > 0 ? `\n\n${t('login_schedule_warning_affected_count', { count: affectedCount })}` : ''}`,
+          [
+            {
+              text: t('cancel'),
+              style: 'cancel'
+            },
+            {
+              text: t('login_schedule_warning_confirm'),
+              style: 'default',
+              onPress: async () => {
+                setLoading(true);
+                try {
+                  const confirmed = await login(username, password, startKMNum, {
+                    confirmOutsideSchedule: true
+                  });
+
+                  if (confirmed.requiresConfirmation !== true) {
+                    router.replace('/dashboard');
+                  }
+                } catch (innerError) {
+                  Alert.alert(t('login_failed'), (innerError as Error).message || t('login_generic_error'));
+                } finally {
+                  setLoading(false);
+                }
+              }
+            }
+          ]
+        );
+
+        setLoading(false);
+        return;
+      }
+
       router.replace('/dashboard');
     } catch (error) {
       Alert.alert(t('login_failed'), (error as Error).message || t('login_generic_error'));

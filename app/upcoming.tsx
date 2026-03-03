@@ -1,16 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
-import { getDriverUpcoming } from '../src/services/api';
-import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { getDriverUpcoming, normalizeScheduledPendingOffers } from '../src/services/api';
+import {
+  onScheduledUpcomingOffersUpdate,
+  offScheduledUpcomingOffersUpdate,
+  acceptRide,
+  rejectRide,
+} from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
+import type { ScheduledPendingOffer } from '../src/types';
+
+const OFFER_TIMEOUT_MS = 3 * 60 * 1000;
+
+const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number) => {
+  const byExpiry = Number.isFinite(offer?.expiresAtMs) ? Number(offer.expiresAtMs) - nowMs : 0;
+  const fallback = Number(offer?.timeLeftMs || 0);
+  return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
+};
+
+const getScheduledUrgencyColor = (remainingMs: number) => {
+  const progress = Math.max(0, Math.min(1, remainingMs / OFFER_TIMEOUT_MS));
+  const start = { r: 59, g: 130, b: 246 }; // blue
+  const end = { r: 239, g: 68, b: 68 }; // red
+  const r = Math.round(end.r + (start.r - end.r) * progress);
+  const g = Math.round(end.g + (start.g - end.g) * progress);
+  const b = Math.round(end.b + (start.b - end.b) * progress);
+  return `rgb(${r}, ${g}, ${b})`;
+};
 
 export default function UpcomingScreen() {
   const { authState } = useAuth();
   const router = useRouter();
   const { t, getCurrentLanguage } = useTranslation();
+
   const [rides, setRides] = useState<any[]>([]);
+  const [pendingOffers, setPendingOffers] = useState<ScheduledPendingOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
@@ -18,24 +44,29 @@ export default function UpcomingScreen() {
   useEffect(() => {
     loadUpcoming();
 
-    const handleRideOffer = () => {
-      router.replace('/dashboard');
+    const handleScheduledUpcomingOffersUpdate = (payload: any) => {
+      const normalizedRaw = normalizeScheduledPendingOffers(payload?.pendingOffers) as any[];
+      const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
+        (offer) => offer && Number.isFinite(Number(offer.rideId))
+      );
+      setPendingOffers(normalizedPending);
     };
-    onRideOffer(handleRideOffer);
+
+    onScheduledUpcomingOffersUpdate(handleScheduledUpcomingOffersUpdate);
 
     return () => {
-      offRideOffer();
+      offScheduledUpcomingOffersUpdate();
     };
   }, []);
 
   useEffect(() => {
-    if (rides.length === 0) {
+    if (rides.length === 0 && pendingOffers.length === 0) {
       return;
     }
     setNowTs(Date.now());
     const interval = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [rides.length]);
+  }, [rides.length, pendingOffers.length]);
 
   const loadUpcoming = async (retryCount = 0) => {
     if (!authState.token) return;
@@ -47,8 +78,14 @@ export default function UpcomingScreen() {
       } else {
         setRides([]);
       }
+
+      const normalizedRaw = normalizeScheduledPendingOffers(response?.pendingOffers) as any[];
+      const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
+        (offer) => offer && Number.isFinite(Number(offer.rideId))
+      );
+      setPendingOffers(normalizedPending);
     } catch (error) {
-      console.error('Error loading upcoming rides:', error);
+      console.error('Error loading upcoming rides/offers:', error);
       if (retryCount < 2) {
         const delay = Math.pow(2, retryCount) * 1000;
         setTimeout(() => loadUpcoming(retryCount + 1), delay);
@@ -70,7 +107,7 @@ export default function UpcomingScreen() {
     return date.toLocaleDateString(locale, {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -79,7 +116,7 @@ export default function UpcomingScreen() {
     const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
     return date.toLocaleTimeString(locale, {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -99,6 +136,19 @@ export default function UpcomingScreen() {
     return Math.max(0, Math.ceil((time - nowTs) / 1000));
   };
 
+  const pendingOffersWithMeta = useMemo(() => {
+    return pendingOffers.map((offer) => {
+      const remainingMs = getPendingOfferRemainingMs(offer, nowTs);
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      return {
+        offer,
+        remainingMs,
+        remainingSec,
+        urgencyColor: getScheduledUrgencyColor(remainingMs),
+      };
+    });
+  }, [pendingOffers, nowTs]);
+
   const goBack = () => {
     router.back();
   };
@@ -115,46 +165,97 @@ export default function UpcomingScreen() {
 
       <ScrollView
         style={styles.ridesContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefreshData} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshData} />}
       >
-        {loading && rides.length === 0 ? (
-          <Text style={styles.loadingText}>{t('upcoming_loading')}</Text>
-        ) : rides.length === 0 ? (
-          <Text style={styles.noDataText}>{t('upcoming_no_rides')}</Text>
-        ) : (
-          rides.map((ride) => (
-            <TouchableOpacity
-              key={ride.id}
-              style={styles.rideCard}
-              onPress={() => router.push(`/ride-details?id=${ride.id}`)}
-            >
-              <View style={styles.rideInfo}>
-                <View style={styles.rideHeaderRow}>
-                  <Text style={styles.rideId}>#{ride.id}</Text>
-                  <View style={styles.scheduledBadge}>
-                    <Text style={styles.scheduledBadgeText}>{t('scheduled_ride_title')}</Text>
+        {pendingOffersWithMeta.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionTitle}>{t('scheduled_ride_title')} • Pending offers</Text>
+            {pendingOffersWithMeta.map(({ offer, remainingSec, urgencyColor }) => (
+              <View key={`pending-${offer.rideId}`} style={[styles.offerCard, { borderLeftColor: urgencyColor }]}> 
+                <View style={styles.offerHeaderRow}>
+                  <Text style={styles.rideId}>#{offer.rideId}</Text>
+                  <View style={[styles.pendingCountBadge, { backgroundColor: urgencyColor }]}>
+                    <Text style={styles.pendingCountBadgeText}>{formatCountdown(remainingSec)}</Text>
                   </View>
                 </View>
-                <Text style={styles.rideDate}>
-                  {formatDate(ride.pickupTime)} • {formatTime(ride.pickupTime)}
-                </Text>
-                <Text style={styles.rideCountdown}>
-                  {t('scheduled_countdown_label')}: {formatCountdown(getCountdownSeconds(ride.pickupTime))}
-                </Text>
-                <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
-                {!!ride.stopAddress && (
-                  <Text style={styles.rideAddress}>{ride.stopAddress}</Text>
+
+                {offer?.pickupTime ? (
+                  <Text style={styles.rideDate}>
+                    {formatDate(offer.pickupTime)} • {formatTime(offer.pickupTime)}
+                  </Text>
+                ) : null}
+
+                <Text style={styles.rideAddress}>{offer?.rideData?.pickupAddress || '-'}</Text>
+                {!!offer?.rideData?.stopAddress && (
+                  <Text style={styles.rideAddress}>{offer.rideData.stopAddress}</Text>
                 )}
-                <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
+                <Text style={styles.rideAddress}>{offer?.rideData?.dropoffAddress || '-'}</Text>
+
+                <View style={styles.offerFooterRow}>
+                  <Text style={styles.amountValue}>{Number(offer?.rideData?.price || 0)} DKK</Text>
+                  <View style={styles.offerActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.offerActionBtn, styles.acceptBtn]}
+                      onPress={() => {
+                        acceptRide(offer.rideId);
+                        setPendingOffers((prev) => prev.filter((x) => x.rideId !== offer.rideId));
+                      }}
+                    >
+                      <Text style={styles.offerActionText}>{t('yes')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.offerActionBtn, styles.rejectBtn]}
+                      onPress={() => {
+                        rejectRide(offer.rideId);
+                        setPendingOffers((prev) => prev.filter((x) => x.rideId !== offer.rideId));
+                      }}
+                    >
+                      <Text style={styles.offerActionText}>{t('no')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-              <View style={styles.rideAmount}>
-                <Text style={styles.amountValue}>{ride.price} DKK</Text>
-              </View>
-            </TouchableOpacity>
-          ))
+            ))}
+          </View>
         )}
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle}>{t('upcoming_bookings')}</Text>
+          {loading && rides.length === 0 ? (
+            <Text style={styles.loadingText}>{t('upcoming_loading')}</Text>
+          ) : rides.length === 0 ? (
+            <Text style={styles.noDataText}>{t('upcoming_no_rides')}</Text>
+          ) : (
+            rides.map((ride) => (
+              <TouchableOpacity
+                key={ride.id}
+                style={styles.rideCard}
+                onPress={() => router.push(`/ride-details?id=${ride.id}`)}
+              >
+                <View style={styles.rideInfo}>
+                  <View style={styles.rideHeaderRow}>
+                    <Text style={styles.rideId}>#{ride.id}</Text>
+                    <View style={styles.scheduledBadge}>
+                      <Text style={styles.scheduledBadgeText}>{t('scheduled_ride_title')}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.rideDate}>
+                    {formatDate(ride.pickupTime)} • {formatTime(ride.pickupTime)}
+                  </Text>
+                  <Text style={styles.rideCountdown}>
+                    {t('scheduled_countdown_label')}: {formatCountdown(getCountdownSeconds(ride.pickupTime))}
+                  </Text>
+                  <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
+                  {!!ride.stopAddress && <Text style={styles.rideAddress}>{ride.stopAddress}</Text>}
+                  <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
+                </View>
+                <View style={styles.rideAmount}>
+                  <Text style={styles.amountValue}>{ride.price} DKK</Text>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -200,16 +301,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
   },
+  sectionBlock: {
+    marginBottom: 18,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 10,
+  },
   loadingText: {
     textAlign: 'center',
-    marginTop: 50,
+    marginTop: 30,
     fontSize: 16,
     color: '#666',
   },
   noDataText: {
     textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 15,
     color: '#666',
   },
   rideCard: {
@@ -225,10 +335,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  offerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 5,
+  },
   rideInfo: {
     flex: 1,
   },
   rideHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  offerHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -248,6 +376,16 @@ const styles = StyleSheet.create({
   scheduledBadgeText: {
     color: '#92400e',
     fontSize: 11,
+    fontWeight: '700',
+  },
+  pendingCountBadge: {
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  pendingCountBadgeText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '700',
   },
   rideDate: {
@@ -273,5 +411,33 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#28a745',
+  },
+  offerFooterRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  offerActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  offerActionBtn: {
+    minWidth: 62,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  acceptBtn: {
+    backgroundColor: '#16a34a',
+  },
+  rejectBtn: {
+    backgroundColor: '#dc2626',
+  },
+  offerActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

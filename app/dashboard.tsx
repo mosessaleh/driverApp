@@ -4,7 +4,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule, normalizeScheduledPendingOffers } from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
 import type { DriverStatus } from '../src/components/StatusBar';
@@ -13,8 +13,8 @@ import * as Location from 'expo-location';
 import * as Linking from 'expo-linking';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ride, Booking } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning } from '../src/services/socket';
+import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
 
@@ -74,10 +74,12 @@ export default function DashboardScreen() {
    const beepSoundRef = useRef<any>(null);
    const isAudioModeReadyRef = useRef(false);
    const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
+   const [pendingScheduledOffers, setPendingScheduledOffers] = useState<ScheduledPendingOffer[]>([]);
    const [scheduledNow, setScheduledNow] = useState(Date.now());
    const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
    const latestLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
    const nextScheduledRideRef = useRef<any>(null);
+   const pendingScheduledOffersRef = useRef<ScheduledPendingOffer[]>([]);
    const [showChat, setShowChat] = useState(false);
    const [chatMessages, setChatMessages] = useState<any[]>([]);
    const [chatInput, setChatInput] = useState('');
@@ -232,7 +234,7 @@ export default function DashboardScreen() {
       return date.toLocaleString(getCurrentLocale());
    };
 
-   const formatCountdown = (totalSeconds: number) => {
+  const formatCountdown = (totalSeconds: number) => {
      const safeSeconds = Math.max(0, Math.floor(totalSeconds));
      const hours = Math.floor(safeSeconds / 3600);
      const minutes = Math.floor((safeSeconds % 3600) / 60);
@@ -240,6 +242,25 @@ export default function DashboardScreen() {
      return `${hours.toString().padStart(2, '0')}:${minutes
        .toString()
        .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+   };
+
+   const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number) => {
+     const byExpiry = Number.isFinite(offer?.expiresAtMs)
+       ? Number(offer.expiresAtMs) - nowMs
+       : 0;
+     const fallback = Number(offer?.timeLeftMs || 0);
+     return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
+   };
+
+   const getScheduledUrgencyColor = (remainingMs: number) => {
+     const TOTAL_MS = 3 * 60 * 1000;
+     const progress = Math.max(0, Math.min(1, remainingMs / TOTAL_MS));
+     const start = { r: 59, g: 130, b: 246 }; // blue
+     const end = { r: 239, g: 68, b: 68 }; // red
+     const r = Math.round(end.r + (start.r - end.r) * progress);
+     const g = Math.round(end.g + (start.g - end.g) * progress);
+     const b = Math.round(end.b + (start.b - end.b) * progress);
+     return `rgb(${r}, ${g}, ${b})`;
    };
 
   const showScheduledBanner = (payload: {
@@ -410,7 +431,11 @@ export default function DashboardScreen() {
   }, [currentLocation]);
 
   useEffect(() => {
-    if (!upcomingRides.length) {
+    pendingScheduledOffersRef.current = pendingScheduledOffers;
+  }, [pendingScheduledOffers]);
+
+  useEffect(() => {
+    if (!upcomingRides.length && !pendingScheduledOffers.length) {
       return;
     }
     setScheduledNow(Date.now());
@@ -418,7 +443,7 @@ export default function DashboardScreen() {
       setScheduledNow(Date.now());
     }, 1000);
     return () => clearInterval(interval);
-  }, [upcomingRides.length]);
+  }, [upcomingRides.length, pendingScheduledOffers.length]);
 
   const isSearching = driverOnline && !driverBusy && !activeRide;
 
@@ -789,6 +814,29 @@ export default function DashboardScreen() {
 
       onScheduledLateWarning(handleScheduledLateWarning);
 
+      const handleScheduledUpcomingOffersUpdate = (payload: any) => {
+        try {
+          const normalizedRaw = normalizeScheduledPendingOffers(payload?.pendingOffers) as any[];
+          const normalized: ScheduledPendingOffer[] = normalizedRaw.filter(
+            (offer) => offer && Number.isFinite(Number(offer.rideId))
+          );
+          const previousIds = new Set((pendingScheduledOffersRef.current || []).map((offer: ScheduledPendingOffer) => offer.rideId));
+          const hasNewOffer = normalized.some((offer) => !previousIds.has(offer.rideId));
+
+          setPendingScheduledOffers(normalized);
+
+          if (hasNewOffer && settings.sound.rideOfferSound) {
+            playRideOfferSoundTwice().catch((error) => {
+              console.error('Error playing scheduled offer sound twice:', error);
+            });
+          }
+        } catch (error) {
+          console.error('Error handling scheduled upcoming offers update:', error);
+        }
+      };
+
+      onScheduledUpcomingOffersUpdate(handleScheduledUpcomingOffersUpdate);
+
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
         if (authState.token) {
@@ -811,6 +859,7 @@ export default function DashboardScreen() {
         offPickupProximity();
         offPickupCountdownExpired();
         offScheduledLateWarning();
+        offScheduledUpcomingOffersUpdate();
         if (offerTimeout) {
           clearInterval(offerTimeout);
         }
@@ -1268,6 +1317,12 @@ export default function DashboardScreen() {
       } else {
         setUpcomingRides([]);
       }
+
+      const normalizedRaw = normalizeScheduledPendingOffers(response?.pendingOffers) as any[];
+      const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
+        (offer) => offer && Number.isFinite(Number(offer.rideId))
+      );
+      setPendingScheduledOffers(normalizedPending);
     } catch (error) {
       console.error('Error loading upcoming rides:', error);
       if (retryCount < 2) {
@@ -1955,6 +2010,15 @@ export default function DashboardScreen() {
     }
   };
 
+  const playRideOfferSoundTwice = async () => {
+    await playRideOfferSoundOnce();
+    setTimeout(() => {
+      playRideOfferSoundOnce().catch((error) => {
+        console.error('Error replaying ride offer sound:', error);
+      });
+    }, 900);
+  };
+
   const stopRideOfferSound = async () => {
     const currentSound = rideOfferSoundRef.current || rideOfferSound;
     console.log('Stopping ride offer sound, current sound object:', currentSound);
@@ -2138,6 +2202,11 @@ export default function DashboardScreen() {
   const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
   const scheduledDepartureText = scheduledDepartureTime || t('not_available');
   const showScheduledInfoBar = !!nextScheduledRide;
+  const pendingScheduledCount = pendingScheduledOffers.length;
+  const nextPendingScheduledOffer = pendingScheduledOffers.length ? pendingScheduledOffers[0] : null;
+  const pendingUrgencyColor = nextPendingScheduledOffer
+    ? getScheduledUrgencyColor(getPendingOfferRemainingMs(nextPendingScheduledOffer, scheduledNow))
+    : '#3b82f6';
   const isScheduledOffer = !!(rideOffer?.scheduled || rideOffer?.offerType === 'scheduled' || rideOffer?.type === 'scheduled');
   const scheduledOfferTime = isScheduledOffer
     ? formatScheduledDateTime(rideOffer?.rideData?.pickupTime || rideOffer?.pickupTime)
@@ -2205,6 +2274,11 @@ export default function DashboardScreen() {
           <View style={styles.hamburgerLine} />
           <View style={styles.hamburgerLine} />
           <View style={styles.hamburgerLine} />
+          {pendingScheduledCount > 0 && (
+            <View style={[styles.pendingBadgeOnMenuButton, { backgroundColor: pendingUrgencyColor }]}>
+              <Text style={styles.pendingBadgeText}>{pendingScheduledCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -2287,6 +2361,11 @@ export default function DashboardScreen() {
                   <Text style={styles.menuItemIcon}>⏰</Text>
                 </View>
                 <Text style={styles.menuItemText}>{t('upcoming_bookings')}</Text>
+                {pendingScheduledCount > 0 && (
+                  <View style={[styles.pendingBadgeOnMenuItem, { backgroundColor: pendingUrgencyColor }]}> 
+                    <Text style={styles.pendingBadgeText}>{pendingScheduledCount}</Text>
+                  </View>
+                )}
                 <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
               </TouchableOpacity>
             )}
@@ -3300,6 +3379,19 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
     shadowColor: '#38bdf8',
     shadowOpacity: 0.4,
   },
+  pendingBadgeOnMenuButton: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
   hamburgerLine: {
     width: 22,
     height: 3,
@@ -3376,6 +3468,21 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
     color: isDarkMode ? 'rgba(226,232,240,0.6)' : '#94a3b8',
     marginLeft: isRTL ? 0 : 4,
     marginRight: isRTL ? 4 : 0,
+  },
+  pendingBadgeOnMenuItem: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  pendingBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 12,
   },
   mapContainer: {
     position: 'absolute',
