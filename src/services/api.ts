@@ -299,6 +299,7 @@ export const normalizeScheduledPendingOffers = (pendingOffers: any[] | undefined
 
       return {
         rideId,
+        stage: Number(offer?.stage || 1),
         pickupTime,
         expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : 0,
         timeLeftMs: Math.max(0, Number(offer?.timeLeftMs || 0)),

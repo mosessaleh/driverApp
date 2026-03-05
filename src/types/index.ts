@@ -111,6 +111,7 @@ export interface Ride extends Booking {
 
 export interface ScheduledPendingOffer {
   rideId: number;
+  stage?: number;
   pickupTime?: string | null;
   expiresAtMs: number;
   timeLeftMs: number;

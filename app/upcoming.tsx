@@ -13,6 +13,7 @@ import { useTranslation } from '../src/hooks/useTranslation';
 import type { ScheduledPendingOffer } from '../src/types';
 
 const OFFER_TIMEOUT_MS = 3 * 60 * 1000;
+const OFFER_TIMEOUT_STAGE3_MS = 10 * 60 * 1000;
 
 const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number) => {
   const byExpiry = Number.isFinite(offer?.expiresAtMs) ? Number(offer.expiresAtMs) - nowMs : 0;
@@ -20,8 +21,15 @@ const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number)
   return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
 };
 
-const getScheduledUrgencyColor = (remainingMs: number) => {
-  const progress = Math.max(0, Math.min(1, remainingMs / OFFER_TIMEOUT_MS));
+const getPendingOfferTimeoutMs = (offer: ScheduledPendingOffer) => {
+  const stage = Number((offer as any)?.stage || 1);
+  if (stage === 3) return OFFER_TIMEOUT_STAGE3_MS;
+  return OFFER_TIMEOUT_MS;
+};
+
+const getScheduledUrgencyColor = (remainingMs: number, totalMs: number) => {
+  const safeTotal = Math.max(1, Number(totalMs || OFFER_TIMEOUT_MS));
+  const progress = Math.max(0, Math.min(1, remainingMs / safeTotal));
   const start = { r: 59, g: 130, b: 246 }; // blue
   const end = { r: 239, g: 68, b: 68 }; // red
   const r = Math.round(end.r + (start.r - end.r) * progress);
@@ -140,11 +148,13 @@ export default function UpcomingScreen() {
     return pendingOffers.map((offer) => {
       const remainingMs = getPendingOfferRemainingMs(offer, nowTs);
       const remainingSec = Math.ceil(remainingMs / 1000);
+      const offerTimeoutMs = getPendingOfferTimeoutMs(offer);
       return {
         offer,
         remainingMs,
         remainingSec,
-        urgencyColor: getScheduledUrgencyColor(remainingMs),
+        offerTimeoutMs,
+        urgencyColor: getScheduledUrgencyColor(remainingMs, offerTimeoutMs),
       };
     });
   }, [pendingOffers, nowTs]);

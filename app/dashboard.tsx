@@ -252,9 +252,15 @@ export default function DashboardScreen() {
      return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
    };
 
-   const getScheduledUrgencyColor = (remainingMs: number) => {
-     const TOTAL_MS = 3 * 60 * 1000;
-     const progress = Math.max(0, Math.min(1, remainingMs / TOTAL_MS));
+   const getPendingOfferTimeoutMs = (offer: ScheduledPendingOffer) => {
+     const stage = Number((offer as any)?.stage || 1);
+     if (stage === 3) return 10 * 60 * 1000;
+     return 3 * 60 * 1000;
+   };
+
+   const getScheduledUrgencyColor = (remainingMs: number, totalMs: number = 3 * 60 * 1000) => {
+     const safeTotalMs = Math.max(1, Number(totalMs || 3 * 60 * 1000));
+     const progress = Math.max(0, Math.min(1, remainingMs / safeTotalMs));
      const start = { r: 59, g: 130, b: 246 }; // blue
      const end = { r: 239, g: 68, b: 68 }; // red
      const r = Math.round(end.r + (start.r - end.r) * progress);
@@ -2205,7 +2211,10 @@ export default function DashboardScreen() {
   const pendingScheduledCount = pendingScheduledOffers.length;
   const nextPendingScheduledOffer = pendingScheduledOffers.length ? pendingScheduledOffers[0] : null;
   const pendingUrgencyColor = nextPendingScheduledOffer
-    ? getScheduledUrgencyColor(getPendingOfferRemainingMs(nextPendingScheduledOffer, scheduledNow))
+    ? getScheduledUrgencyColor(
+        getPendingOfferRemainingMs(nextPendingScheduledOffer, scheduledNow),
+        getPendingOfferTimeoutMs(nextPendingScheduledOffer)
+      )
     : '#3b82f6';
   const isScheduledOffer = !!(rideOffer?.scheduled || rideOffer?.offerType === 'scheduled' || rideOffer?.type === 'scheduled');
   const scheduledOfferTime = isScheduledOffer
