@@ -29,10 +29,12 @@ export default function DashboardScreen() {
     const { settings, isDarkMode, isRTL } = useSettings();
     const { t, getCurrentLanguage } = useTranslation();
     const router = useRouter();
-   const [driverOnline, setDriverOnline] = useState(false);
-   const [driverBusy, setDriverBusy] = useState(false);
-   const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
-   const [banCountdown, setBanCountdown] = useState(0);
+    const [driverOnline, setDriverOnline] = useState(false);
+    const [driverBusy, setDriverBusy] = useState(false);
+    const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
+    const [banCountdown, setBanCountdown] = useState(0);
+    const [restrictedOffers, setRestrictedOffers] = useState(false);
+    const [restrictedOffersUntil, setRestrictedOffersUntil] = useState<Date | null>(null);
    const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
    const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
    const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -529,7 +531,7 @@ export default function DashboardScreen() {
       loadInitialStatus();
 
       // Listen for real-time driver status updates
-      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean; bannedUntil?: string }) => {
+      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean; bannedUntil?: string; restrictedOffers?: boolean; restrictedOffersUntil?: string | null }) => {
         // Update driver status based on WebSocket data
         if (data.isOnline !== undefined && data.isOnline !== driverOnlineRef.current) {
           driverOnlineRef.current = data.isOnline;
@@ -547,6 +549,17 @@ export default function DashboardScreen() {
         } else if (data.bannedUntil === null) {
           setBannedUntil(null);
           setBanCountdown(0);
+        }
+
+        if (data.restrictedOffers !== undefined) {
+          setRestrictedOffers(Boolean(data.restrictedOffers));
+        }
+
+        if (data.restrictedOffersUntil) {
+          const untilDate = new Date(data.restrictedOffersUntil);
+          setRestrictedOffersUntil(untilDate);
+        } else if (data.restrictedOffersUntil === null) {
+          setRestrictedOffersUntil(null);
         }
       };
 
@@ -1094,6 +1107,13 @@ export default function DashboardScreen() {
       } else {
         setBannedUntil(null);
         setBanCountdown(0);
+      }
+
+      setRestrictedOffers(Boolean(res?.restrictedOffers));
+      if (res?.restrictedOffersUntil) {
+        setRestrictedOffersUntil(new Date(res.restrictedOffersUntil));
+      } else {
+        setRestrictedOffersUntil(null);
       }
 
       // Set shift start time
@@ -3263,8 +3283,17 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {driverOnline && restrictedOffers && (
+        <View style={[styles.scheduleHintBar, { backgroundColor: '#b91c1c' }]}> 
+          <Text style={styles.scheduleHintText}>
+            {t('restricted_offers_active')}
+            {restrictedOffersUntil ? ` (${restrictedOffersUntil.toLocaleTimeString()})` : ''}
+          </Text>
+        </View>
+      )}
+
       {/* Searching for Trips Card */}
-      {driverOnline && !driverBusy && !activeRide && (
+      {driverOnline && !driverBusy && !activeRide && !restrictedOffers && (
         <View style={styles.searchingBar}>
           <Text style={styles.searchingText}>
             {searchLetters.map((letter, index) => (

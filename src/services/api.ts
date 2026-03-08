@@ -21,6 +21,9 @@ export type DriverLoginSuccessResponse = {
   requiresConfirmation?: false;
   message: string;
   token: string;
+  bannedUntil?: string | null;
+  restrictedOffers?: boolean;
+  restrictedOffersUntil?: string | null;
   driver: {
     id: number;
     name: string;

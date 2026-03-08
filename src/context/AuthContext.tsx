@@ -29,39 +29,52 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [authState, setAuthState] = useState<AuthState>({ user: null, token: null, isLoading: true });
+  const [authState, setAuthState] = useState<AuthState>({ user: null, token: null, isLoading: true, restrictedOffers: false, restrictedOffersUntil: null });
 
   useEffect(() => {
     const loadAuthState = async () => {
       try {
         const token = await AsyncStorage.getItem('token');
         const userStr = await AsyncStorage.getItem('user');
+        const restrictedOffersStr = await AsyncStorage.getItem('restrictedOffers');
+        const restrictedOffersUntil = await AsyncStorage.getItem('restrictedOffersUntil');
+        const restrictedOffers = restrictedOffersStr === 'true';
         if (token && userStr) {
           const user = JSON.parse(userStr);
           // Validate token by checking driver status
           try {
             const status = await getDriverStatus(token);
             if (status.hasActiveShift) {
-              setAuthState({ user, token, isLoading: false });
+              setAuthState({
+                user,
+                token,
+                isLoading: false,
+                restrictedOffers: Boolean(status?.restrictedOffers ?? restrictedOffers),
+                restrictedOffersUntil: status?.restrictedOffersUntil ?? restrictedOffersUntil ?? null
+              });
             } else {
               // No active shift, clear stored data
               await AsyncStorage.removeItem('token');
               await AsyncStorage.removeItem('user');
-              setAuthState({ user: null, token: null, isLoading: false });
+              await AsyncStorage.removeItem('restrictedOffers');
+              await AsyncStorage.removeItem('restrictedOffersUntil');
+              setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
             }
           } catch (error) {
             console.error('Token validation failed:', error);
             // Clear invalid stored data
             await AsyncStorage.removeItem('token');
             await AsyncStorage.removeItem('user');
-            setAuthState({ user: null, token: null, isLoading: false });
+            await AsyncStorage.removeItem('restrictedOffers');
+            await AsyncStorage.removeItem('restrictedOffersUntil');
+            setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
           }
         } else {
-          setAuthState({ user: null, token: null, isLoading: false });
+          setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
         }
       } catch (error) {
         console.error('Error loading auth state:', error);
-        setAuthState({ user: null, token: null, isLoading: false });
+        setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
       }
     };
     loadAuthState();
@@ -170,6 +183,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (response.token && response.driver && response.shiftId) {
+        const restrictedOffers = Boolean((response as any)?.restrictedOffers);
+        const restrictedOffersUntil = (response as any)?.restrictedOffersUntil || null;
         const userData = {
           id: String(response.driver.id),
           name: response.driver.name,
@@ -183,7 +198,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('token', response.token);
         await AsyncStorage.setItem('user', JSON.stringify(userData));
         await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
-        setAuthState({ user: userData, token: response.token, isLoading: false });
+        await AsyncStorage.setItem('restrictedOffers', restrictedOffers ? 'true' : 'false');
+        if (restrictedOffersUntil) {
+          await AsyncStorage.setItem('restrictedOffersUntil', String(restrictedOffersUntil));
+        } else {
+          await AsyncStorage.removeItem('restrictedOffersUntil');
+        }
+        setAuthState({
+          user: userData,
+          token: response.token,
+          isLoading: false,
+          restrictedOffers,
+          restrictedOffersUntil
+        });
         return response;
       } else {
         throw new Error('Invalid login response');
@@ -206,7 +233,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.removeItem('user');
     await AsyncStorage.removeItem('vehicleTypeId');
     await AsyncStorage.removeItem('expoPushToken');
-    setAuthState({ user: null, token: null, isLoading: false });
+    await AsyncStorage.removeItem('restrictedOffers');
+    await AsyncStorage.removeItem('restrictedOffersUntil');
+    setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
   };
 
   return (

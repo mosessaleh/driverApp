@@ -60,10 +60,17 @@ export interface DriverScheduleSnapshot {
   } | null;
 }
 
+export interface DriverOfferRestriction {
+  restrictedOffers: boolean;
+  restrictedOffersUntil?: string | null;
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  restrictedOffers?: boolean;
+  restrictedOffersUntil?: string | null;
 }
 
 export interface LoginCredentials {

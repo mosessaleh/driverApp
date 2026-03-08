@@ -133,6 +133,13 @@ export default function LoginScreen() {
         return;
       }
 
+      if ((response as any).restrictedOffers === true) {
+        Alert.alert(
+          t('app_warning'),
+          t('login_restricted_offers_warning')
+        );
+      }
+
       router.replace('/dashboard');
     } catch (error) {
       Alert.alert(t('login_failed'), (error as Error).message || t('login_generic_error'));
