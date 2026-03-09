@@ -12,7 +12,7 @@
     "@expo/vector-icons": "^15.0.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-firebase/app": "^23.8.3",
-    "expo": "^54.0.31",
+    "expo": "~54.0.33",
     "expo-av": "^16.0.8",
     "expo-background-fetch": "^14.0.9",
     "expo-constants": "~18.0.13",
@@ -21,12 +21,14 @@
     "expo-linking": "8.0.11",
     "expo-location": "^19.0.8",
     "expo-notifications": "^0.32.16",
-    "expo-router": "~6.0.22",
+    "expo-router": "~6.0.23",
+    "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "^14.0.9",
     "i18next": "^25.8.0",
     "jwt-decode": "^4.0.0",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-i18next": "^16.5.4",
     "react-native": "0.81.5",
     "react-native-chart-kit": "^6.12.0",
@@ -41,5 +43,11 @@
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "minimatch": "10.2.4",
+    "tar": "7.5.10",
+    "ajv": "8.18.0",
+    "@isaacs/brace-expansion": "5.0.1"
+  }
 }

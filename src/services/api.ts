@@ -1,6 +1,6 @@
-// For Expo Go on physical device, use your computer's IP address
-// Set EXPO_PUBLIC_API_URL in .env file or change this value based on your network
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.146:3000'; // Set EXPO_PUBLIC_API_URL in .env
+import { getApiBaseUrl } from '../config/network';
+
+const API_BASE_URL = getApiBaseUrl();
 
 export type DriverLoginWarningResponse = {
   requiresConfirmation: true;

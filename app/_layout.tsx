@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
+import { devLog } from '../src/config/security';
 import '../src/i18n';
 
 // Configure notifications
@@ -44,7 +45,7 @@ export default function Layout() {
     const requestPermissions = async () => {
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') {
-        console.log('Notification permissions not granted');
+        devLog('Notification permissions not granted');
       }
     };
 
@@ -55,12 +56,12 @@ export default function Layout() {
 
     // Handle notification received while app is foreground
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
+      devLog('Notification received:', notification);
     });
 
     // Handle notification response (when user taps on notification)
     const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response);
+      devLog('Notification response received');
       const data = response.notification.request.content.data;
 
       // Navigate to dashboard if ride notification

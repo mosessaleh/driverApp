@@ -11,6 +11,7 @@ import {
   DriverLoginResponse
 } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
+import { migrateLegacyAuthToken, removeAuthToken, setAuthToken } from '../services/secureStorage';
 
 type LoginOptions = {
   confirmOutsideSchedule?: boolean;
@@ -34,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const loadAuthState = async () => {
       try {
-        const token = await AsyncStorage.getItem('token');
+        const token = await migrateLegacyAuthToken();
         const userStr = await AsyncStorage.getItem('user');
         const restrictedOffersStr = await AsyncStorage.getItem('restrictedOffers');
         const restrictedOffersUntil = await AsyncStorage.getItem('restrictedOffersUntil');
@@ -54,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
             } else {
               // No active shift, clear stored data
-              await AsyncStorage.removeItem('token');
+              await removeAuthToken();
               await AsyncStorage.removeItem('user');
               await AsyncStorage.removeItem('restrictedOffers');
               await AsyncStorage.removeItem('restrictedOffersUntil');
@@ -63,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (error) {
             console.error('Token validation failed:', error);
             // Clear invalid stored data
-            await AsyncStorage.removeItem('token');
+            await removeAuthToken();
             await AsyncStorage.removeItem('user');
             await AsyncStorage.removeItem('restrictedOffers');
             await AsyncStorage.removeItem('restrictedOffersUntil');
@@ -195,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           rating: response.driver.rating || 5.0,
           schedule: response.schedule || null
         };
-        await AsyncStorage.setItem('token', response.token);
+        await setAuthToken(response.token);
         await AsyncStorage.setItem('user', JSON.stringify(userData));
         await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
         await AsyncStorage.setItem('restrictedOffers', restrictedOffers ? 'true' : 'false');
@@ -229,7 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Server logout failed:', error);
     }
-    await AsyncStorage.removeItem('token');
+    await removeAuthToken();
     await AsyncStorage.removeItem('user');
     await AsyncStorage.removeItem('vehicleTypeId');
     await AsyncStorage.removeItem('expoPushToken');

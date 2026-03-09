@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
+import { devLog } from '../config/security';
 
 export const sendLocalNotification = async (title: string, body: string) => {
-  console.log('Sending local notification:', title, body);
+  devLog('Sending local notification');
   try {
     const result = await Notifications.scheduleNotificationAsync({
       content: {
@@ -11,7 +12,7 @@ export const sendLocalNotification = async (title: string, body: string) => {
       },
       trigger: null, // Show immediately
     });
-    console.log('Notification scheduled:', result);
+    devLog('Notification scheduled:', result);
   } catch (error) {
     console.warn('Failed to send notification:', error);
   }

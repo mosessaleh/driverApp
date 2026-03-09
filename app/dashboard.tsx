@@ -17,6 +17,7 @@ import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
+import { devLog } from '../src/config/security';
 
 const { width, height } = Dimensions.get('window');
 
@@ -568,10 +569,7 @@ export default function DashboardScreen() {
 
       // Listen for ride offers
       const handleRideOffer = async (data: any) => {
-        console.log('=== RECEIVED RIDE OFFER ===');
-        console.log('Ride offer data:', data);
-        console.log('Current driver state - online:', driverOnline, 'busy:', driverBusy);
-        console.log('Current ride offer in state:', rideOffer);
+        devLog('Ride offer received');
 
         const isScheduledOffer = !!(data?.scheduled || data?.offerType === 'scheduled' || data?.type === 'scheduled');
 
@@ -602,7 +600,7 @@ export default function DashboardScreen() {
           setOfferCountdown(prev => {
               if (prev <= 1) {
                 // Timeout - automatically reject the ride like clicking reject button
-                console.log('Ride offer timed out, automatically rejecting ride');
+                devLog('Ride offer timed out, auto rejecting');
                 if (!isScheduledOffer && authState.token) {
                   // Automatically reject the ride
                   rejectRide(data.rideId);
@@ -611,9 +609,7 @@ export default function DashboardScreen() {
                 }
               setRideOffer(null);
               setOfferCountdown(0);
-              stopRideOfferSound().then(() => {
-                console.log('Sound stopped after timeout');
-              });
+              stopRideOfferSound().then(() => devLog('Offer sound stopped after timeout'));
               if (offerTimeout) {
                 clearInterval(offerTimeout);
                 setOfferTimeout(null);
@@ -632,12 +628,10 @@ export default function DashboardScreen() {
 
       // Listen for ride offer timeout
       const handleRideOfferTimeout = async (data: { rideId: number }) => {
-        console.log('=== RECEIVED RIDE OFFER TIMEOUT ===');
-        console.log('Timeout data:', data);
-        console.log('Current ride offer:', rideOffer);
+        devLog('Ride offer timeout event');
         // Only clear if this timeout matches the current offer
         if (rideOffer && rideOffer.rideId === data.rideId) {
-          console.log('Clearing offer due to timeout for matching rideId');
+          devLog('Clearing timed-out matching offer');
           await stopRideOfferSound();
           setRideOffer(null);
           setOfferCountdown(0);
@@ -646,7 +640,7 @@ export default function DashboardScreen() {
             setOfferTimeout(null);
           }
         } else {
-          console.log('Ignoring timeout for non-matching rideId');
+          devLog('Ignoring timeout for non-matching offer');
         }
       };
 
@@ -654,12 +648,10 @@ export default function DashboardScreen() {
 
       // Listen for ride offer rejection
       const handleRideOfferRejected = async (data: { rideId: number }) => {
-        console.log('=== RECEIVED RIDE OFFER REJECTED ===');
-        console.log('Rejection data:', data);
-        console.log('Current ride offer:', rideOffer);
+        devLog('Ride offer rejected event');
         // Only clear if this rejection matches the current offer
         if (rideOffer && rideOffer.rideId === data.rideId) {
-          console.log('Clearing offer due to rejection for matching rideId');
+          devLog('Clearing rejected matching offer');
           await stopRideOfferSound();
           setRideOffer(null);
           setOfferCountdown(0);
@@ -668,15 +660,14 @@ export default function DashboardScreen() {
             setOfferTimeout(null);
           }
         } else {
-          console.log('Ignoring rejection for non-matching rideId');
+          devLog('Ignoring rejection for non-matching offer');
         }
       };
 
       onRideOfferRejected(handleRideOfferRejected);
 
       const handleScheduledOfferResult = (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => {
-        console.log('=== RECEIVED SCHEDULED OFFER RESULT ===');
-        console.log('Scheduled offer result data:', data);
+        devLog('Scheduled offer result received');
         const fallbackMessage = data.selected ? t('scheduled_ride_selected') : t('scheduled_ride_not_selected');
         showScheduledBanner({
           rideId: data.rideId,
@@ -690,12 +681,10 @@ export default function DashboardScreen() {
 
       // Listen for ride cancellation
       const handleRideCancelled = async (data: { rideId: number }) => {
-        console.log('=== RECEIVED RIDE CANCELLED ===');
-        console.log('Cancellation data:', data);
-        console.log('Current ride offer:', rideOffer);
+        devLog('Ride cancelled event');
         // Only clear if this cancellation matches the current offer
         if (rideOffer && rideOffer.rideId === data.rideId) {
-          console.log('Clearing offer due to cancellation for matching rideId');
+          devLog('Clearing cancelled matching offer');
           await stopRideOfferSound();
           setRideOffer(null);
           setOfferCountdown(0);
@@ -704,7 +693,7 @@ export default function DashboardScreen() {
             setOfferTimeout(null);
           }
         } else {
-          console.log('Ignoring cancellation for non-matching rideId');
+          devLog('Ignoring cancellation for non-matching offer');
         }
       };
 
@@ -712,7 +701,7 @@ export default function DashboardScreen() {
 
       // Listen for chat messages
       const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
-        console.log('Received chat message:', data);
+        devLog('Chat message event received');
         setChatMessages(prev => [...prev, data]);
 
         // If message is from client (passenger), increment unread count and play sound
@@ -728,7 +717,7 @@ export default function DashboardScreen() {
 
       // Listen for pickup proximity notifications
       const handlePickupProximity = async (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => {
-        console.log('Received pickup proximity notification:', data);
+        devLog('Pickup proximity event received');
         // Only show countdown text, NOT the cancel button yet
         setShowCancelText(true);
         setPickupCountdownStart(data.countdownStart);
@@ -780,7 +769,7 @@ export default function DashboardScreen() {
 
       // Listen for pickup countdown expired notification from server
       const handlePickupCountdownExpired = async (data: { rideId: number }) => {
-        console.log('Received pickup countdown expired notification:', data);
+        devLog('Pickup countdown expired event received');
         // Show cancel button immediately when server confirms countdown expired
         setCancelCountdown(0);
         setShowCancelText(true);
@@ -809,7 +798,7 @@ export default function DashboardScreen() {
       // Listen for scheduled late warnings
       const handleScheduledLateWarning = async (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => {
         try {
-          console.log('Received scheduled late warning:', data);
+          devLog('Scheduled late warning received');
           if (!settings.notifications.rideUpdates) {
             return;
           }
@@ -1451,14 +1440,14 @@ export default function DashboardScreen() {
         const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
         if (isRunning) {
           await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
-          console.log('Background location tracking stopped');
+          devLog('Background location tracking stopped');
         } else {
-          console.log('Background location tracking was not running, skipping stop');
+          devLog('Background location tracking already stopped');
         }
       } catch (error: any) {
         // Check if the error is because the task was not found (never started or already stopped)
         if (error.message && (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))) {
-          console.log('Background location task was not found, it may have already been stopped or never started');
+          devLog('Background location task not found while stopping');
         } else {
           console.error('Failed to stop background location tracking:', error);
         }
@@ -2047,16 +2036,16 @@ export default function DashboardScreen() {
 
   const stopRideOfferSound = async () => {
     const currentSound = rideOfferSoundRef.current || rideOfferSound;
-    console.log('Stopping ride offer sound, current sound object:', currentSound);
+    devLog('Stopping ride offer sound');
     if (currentSound) {
       await safelyUnloadSound(currentSound, 'ride offer sound');
       if (rideOfferSoundRef.current === currentSound) {
         rideOfferSoundRef.current = null;
       }
       setRideOfferSound(null);
-      console.log('Sound unloaded successfully');
+      devLog('Ride offer sound unloaded');
     } else {
-      console.log('No sound object to stop');
+      devLog('No ride offer sound object to stop');
     }
   };
 
@@ -3165,7 +3154,7 @@ export default function DashboardScreen() {
                   setRideOffer(null);
                   setOfferCountdown(0);
                   stopRideOfferSound().then(() => {
-                    console.log('Sound stopped after timeout');
+                    devLog('Ride offer sound stopped after accept');
                   });
                   if (offerTimeout) {
                     clearInterval(offerTimeout);

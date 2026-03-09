@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectSocket, getSocket } from '../services/socket';
 import * as Location from 'expo-location';
+import { getAuthToken } from '../services/secureStorage';
 
 const SOCKET_BACKGROUND_TASK = 'socket-background-task';
 const LOCATION_BACKGROUND_TASK = 'location-background-task';
@@ -15,7 +16,7 @@ if (Constants.appOwnership !== 'expo') {
       console.log('Running socket background task for driver');
 
       // Get token and vehicleTypeId from storage
-      const token = await AsyncStorage.getItem('token');
+      const token = await getAuthToken();
       const vehicleTypeIdStr = await AsyncStorage.getItem('vehicleTypeId');
       const vehicleTypeId = vehicleTypeIdStr ? parseInt(vehicleTypeIdStr) : 1;
 

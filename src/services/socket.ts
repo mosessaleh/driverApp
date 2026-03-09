@@ -1,8 +1,9 @@
 import io, { Socket } from 'socket.io-client';
 import { jwtDecode } from 'jwt-decode';
 import * as Location from 'expo-location';
+import { getApiBaseUrl } from '../config/network';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.146:3000';
+const API_BASE_URL = getApiBaseUrl();
 
 let socket: Socket | null = null;
 
