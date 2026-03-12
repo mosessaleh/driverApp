@@ -17,7 +17,7 @@ import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
-import { devLog } from '../src/config/security';
+import { devLog, requireGoogleMapsApiKey } from '../src/config/security';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1863,9 +1863,9 @@ export default function DashboardScreen() {
     waypoint?: { lat: number; lng: number } | null
   ) => {
     try {
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
+      const googleMapsApiKey = requireGoogleMapsApiKey('DriverApp dashboard fetchDirections');
       const waypointParam = waypoint ? `&waypoints=${waypoint.lat},${waypoint.lng}` : '';
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}${waypointParam}&mode=driving&key=${apiKey}`;
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}${waypointParam}&mode=driving&key=${encodeURIComponent(googleMapsApiKey)}`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.routes && data.routes.length > 0) {

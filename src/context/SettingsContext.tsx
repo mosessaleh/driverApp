@@ -59,7 +59,7 @@ const defaultSettings: Settings = {
   appearance: {
     darkMode: false,
     fontSize: 'medium',
-    language: 'ar',
+    language: 'en',
   },
   location: {
     realTimeSharing: true,
@@ -113,6 +113,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    const nextLanguage = settings.appearance.language;
+    if (i18n.language !== nextLanguage) {
+      i18n.changeLanguage(nextLanguage).catch((error) => {
+        console.error('Error applying language setting:', error);
+      });
+    }
+  }, [settings.appearance.language]);
+
   const loadSettings = async () => {
     try {
       const savedSettings = await AsyncStorage.getItem('driverSettings');
@@ -141,11 +150,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         [key]: value,
       },
     };
-
-    // Update i18n language if language setting changed
-    if (category === 'appearance' && key === 'language') {
-      i18n.changeLanguage(value);
-    }
 
     saveSettings(newSettings);
   };
