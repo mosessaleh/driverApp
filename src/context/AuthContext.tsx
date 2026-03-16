@@ -2,16 +2,21 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import { AuthState, User } from '../types';
 import {
   loginDriver,
   getDriverStatus,
   logoutDriver,
   updatePushToken,
-  DriverLoginResponse
+  DriverLoginResponse,
+  isDriverLoginSuccessResponse,
 } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { migrateLegacyAuthToken, removeAuthToken, setAuthToken } from '../services/secureStorage';
+import { LOCATION_BACKGROUND_TASK, SOCKET_BACKGROUND_TASK } from '../tasks/socketBackgroundTask';
 
 type LoginOptions = {
   confirmOutsideSchedule?: boolean;
@@ -31,6 +36,67 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({ user: null, token: null, isLoading: true, restrictedOffers: false, restrictedOffersUntil: null });
+
+  const registerBackgroundTasks = async () => {
+    if (Constants.appOwnership === 'expo') {
+      return;
+    }
+
+    try {
+      const isSocketTaskRegistered = await BackgroundFetch.getStatusAsync();
+      if (isSocketTaskRegistered !== BackgroundFetch.BackgroundFetchStatus.Restricted) {
+        const hasSocketTask = await TaskManager.isTaskRegisteredAsync(SOCKET_BACKGROUND_TASK);
+
+        if (!hasSocketTask) {
+          await BackgroundFetch.registerTaskAsync(SOCKET_BACKGROUND_TASK, {
+            minimumInterval: 15 * 60,
+            stopOnTerminate: false,
+            startOnBoot: true,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to register socket background task:', error);
+    }
+
+    try {
+      const hasLocationTask = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+      if (!hasLocationTask) {
+        await Location.startLocationUpdatesAsync(LOCATION_BACKGROUND_TASK, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 30000,
+          distanceInterval: 50,
+          showsBackgroundLocationIndicator: true,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to register background location task from AuthContext:', error);
+    }
+  };
+
+  const unregisterBackgroundTasks = async () => {
+    if (Constants.appOwnership === 'expo') {
+      return;
+    }
+
+    try {
+      const hasSocketTask = await TaskManager.isTaskRegisteredAsync(SOCKET_BACKGROUND_TASK);
+      if (hasSocketTask) {
+        await BackgroundFetch.unregisterTaskAsync(SOCKET_BACKGROUND_TASK);
+      }
+    } catch (error) {
+      console.warn('Failed to unregister socket background task:', error);
+    }
+
+    try {
+      const hasLocationTask = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+      if (hasLocationTask) {
+        await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+      }
+    } catch (error) {
+      console.warn('Failed to unregister background location task:', error);
+    }
+  };
 
   useEffect(() => {
     const loadAuthState = async () => {
@@ -92,11 +158,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [authState.token]);
 
-  // Background fetch is disabled for now to avoid native module issues in development
-  // TODO: Re-enable when using development build
-  // useEffect(() => {
-  //   ...
-  // }, [authState.token]);
+  useEffect(() => {
+    const syncBackgroundTasks = async () => {
+      if (authState.token) {
+        await registerBackgroundTasks();
+      } else {
+        await unregisterBackgroundTasks();
+      }
+    };
+
+    syncBackgroundTasks();
+  }, [authState.token]);
 
   // Register for push notifications
   useEffect(() => {
@@ -183,9 +255,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return response;
       }
 
-      if (response.token && response.driver && response.shiftId) {
-        const restrictedOffers = Boolean((response as any)?.restrictedOffers);
-        const restrictedOffersUntil = (response as any)?.restrictedOffersUntil || null;
+      if (isDriverLoginSuccessResponse(response)) {
+        const restrictedOffers = Boolean(response.restrictedOffers);
+        const restrictedOffersUntil = response.restrictedOffersUntil || null;
         const userData = {
           id: String(response.driver.id),
           name: response.driver.name,
@@ -236,6 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.removeItem('expoPushToken');
     await AsyncStorage.removeItem('restrictedOffers');
     await AsyncStorage.removeItem('restrictedOffersUntil');
+    await unregisterBackgroundTasks();
     setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
   };
 

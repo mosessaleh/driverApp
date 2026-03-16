@@ -62,7 +62,7 @@ export default function DashboardScreen() {
    const [rideOffer, setRideOffer] = useState<any>(null);
    const [offerCountdown, setOfferCountdown] = useState(0);
    const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
-   const [offerTimeout, setOfferTimeout] = useState<NodeJS.Timeout | null>(null);
+   const [offerTimeout, setOfferTimeout] = useState<ReturnType<typeof setInterval> | null>(null);
    const [rideOfferSound, setRideOfferSound] = useState<any>(null);
    const [lateWarningSound, setLateWarningSound] = useState<any>(null);
    const [scheduledBanner, setScheduledBanner] = useState<{
@@ -71,7 +71,7 @@ export default function DashboardScreen() {
      pickupTime?: string | null;
      selected?: boolean | null;
    } | null>(null);
-   const scheduledBannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+   const scheduledBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const rideOfferSoundRef = useRef<any>(null);
    const lateWarningSoundRef = useRef<any>(null);
    const beepSoundRef = useRef<any>(null);

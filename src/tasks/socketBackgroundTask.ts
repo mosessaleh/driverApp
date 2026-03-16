@@ -3,9 +3,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectSocket, getSocket } from '../services/socket';
 import * as Location from 'expo-location';
 import { getAuthToken } from '../services/secureStorage';
+import { updateDriverLocation } from '../services/api';
 
 const SOCKET_BACKGROUND_TASK = 'socket-background-task';
 const LOCATION_BACKGROUND_TASK = 'location-background-task';
+
+type BackgroundLocationPoint = {
+  coords?: {
+    latitude?: number;
+    longitude?: number;
+  };
+  timestamp?: number;
+};
+
+type BackgroundLocationTaskPayload = {
+  locations?: BackgroundLocationPoint[];
+};
 
 if (Constants.appOwnership !== 'expo') {
   const TaskManager = require('expo-task-manager');
@@ -41,20 +54,49 @@ if (Constants.appOwnership !== 'expo') {
   });
 
   // Location tracking task
-  TaskManager.defineTask(LOCATION_BACKGROUND_TASK, async ({ data, error }: any) => {
+  TaskManager.defineTask(
+    LOCATION_BACKGROUND_TASK,
+    async ({ data, error }: { data?: BackgroundLocationTaskPayload; error?: Error }) => {
     if (error) {
       console.error('Location background task error:', error);
       return;
     }
 
-    if (data) {
-      const { locations } = data;
-      // console.log('Received location update in background:', locations); // Commented out to reduce console noise
+      const locations = data?.locations;
+      if (!Array.isArray(locations) || locations.length === 0) {
+        return;
+      }
 
-      // Here you can send location to server or handle it
-      // For now, just log it
+      const latestLocation = locations[locations.length - 1];
+      const latitude = Number(latestLocation?.coords?.latitude);
+      const longitude = Number(latestLocation?.coords?.longitude);
+
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return;
+      }
+
+      try {
+        const token = await getAuthToken();
+        if (!token) {
+          return;
+        }
+
+        const timestamp =
+          typeof latestLocation?.timestamp === 'number' && Number.isFinite(latestLocation.timestamp)
+            ? new Date(latestLocation.timestamp).toISOString()
+            : new Date().toISOString();
+
+        await updateDriverLocation(latitude, longitude, token, timestamp);
+
+        await AsyncStorage.setItem(
+          'driverapp.lastBackgroundLocation',
+          JSON.stringify({ latitude, longitude, timestamp })
+        );
+      } catch (locationUpdateError) {
+        console.error('Failed to sync background location for driver:', locationUpdateError);
+      }
     }
-  });
+  );
 }
 
 export { SOCKET_BACKGROUND_TASK, LOCATION_BACKGROUND_TASK };

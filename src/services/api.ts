@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '../config/network';
+import { ScheduledPendingOffer } from '../types';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -49,6 +50,20 @@ export type DriverLoginSuccessResponse = {
 };
 
 export type DriverLoginResponse = DriverLoginSuccessResponse | DriverLoginWarningResponse;
+
+export const isDriverLoginSuccessResponse = (
+  response: DriverLoginResponse
+): response is DriverLoginSuccessResponse => {
+  const candidate = response as Partial<DriverLoginSuccessResponse>;
+
+  return Boolean(
+    candidate?.success === true &&
+    typeof candidate?.token === 'string' &&
+    candidate?.driver &&
+    typeof candidate.driver.id === 'number' &&
+    typeof candidate?.shiftId === 'number'
+  );
+};
 
 const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
   try {
@@ -284,46 +299,92 @@ export const getDriverUpcoming = async (token: string) => {
   return api.get('/api/driver/upcoming', token);
 };
 
-export const normalizeScheduledPendingOffers = (pendingOffers: any[] | undefined | null) => {
+type ScheduledPendingOfferRaw = {
+  rideId?: number | string;
+  stage?: number | string;
+  pickupTime?: string | null;
+  expiresAt?: number | string | null;
+  timeLeftMs?: number | string | null;
+  rideData?: {
+    id?: number | string;
+    pickupAddress?: string;
+    dropoffAddress?: string;
+    stopAddress?: string | null;
+    price?: number | string;
+    distanceKm?: number | string;
+    riderName?: string;
+    startLatLon?: { lat?: number; lon?: number } | null;
+    stopLatLon?: { lat?: number; lon?: number } | null;
+    endLatLon?: { lat?: number; lon?: number } | null;
+    vehicleTypeId?: number | string;
+    pickupTime?: string | null;
+  } | null;
+};
+
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeLatLon = (
+  value: { lat?: number; lon?: number } | null | undefined
+): { lat: number; lon: number } | null => {
+  if (!value) return null;
+
+  const lat = toFiniteNumber(value.lat, Number.NaN);
+  const lon = toFiniteNumber(value.lon, Number.NaN);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+
+  return { lat, lon };
+};
+
+export const normalizeScheduledPendingOffers = (
+  pendingOffers: ScheduledPendingOfferRaw[] | undefined | null
+): ScheduledPendingOffer[] => {
   if (!Array.isArray(pendingOffers)) return [];
 
-  return pendingOffers
-    .map((offer: any) => {
-      const rideId = Number(offer?.rideId);
-      if (!Number.isFinite(rideId) || rideId <= 0) return null;
+  const normalized = pendingOffers
+    .map((offer): ScheduledPendingOffer | null => {
+      const rideId = toFiniteNumber(offer?.rideId, 0);
+      if (rideId <= 0) return null;
 
       const expiresAtRaw = offer?.expiresAt;
-      const expiresAtMs = typeof expiresAtRaw === 'number'
-        ? expiresAtRaw
-        : new Date(expiresAtRaw || 0).getTime();
+      const expiresAtMs =
+        typeof expiresAtRaw === 'number'
+          ? expiresAtRaw
+          : new Date(typeof expiresAtRaw === 'string' ? expiresAtRaw : '').getTime();
 
-      const pickupTime = offer?.pickupTime || offer?.rideData?.pickupTime || null;
-      const rideData = offer?.rideData || {};
+      const rideData = offer?.rideData ?? {};
+      const pickupTime = offer?.pickupTime || rideData.pickupTime || null;
 
       return {
         rideId,
-        stage: Number(offer?.stage || 1),
+        stage: toFiniteNumber(offer?.stage, 1),
         pickupTime,
         expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : 0,
-        timeLeftMs: Math.max(0, Number(offer?.timeLeftMs || 0)),
+        timeLeftMs: Math.max(0, toFiniteNumber(offer?.timeLeftMs, 0)),
         rideData: {
-          id: rideData?.id || rideId,
-          pickupAddress: rideData?.pickupAddress || '',
-          dropoffAddress: rideData?.dropoffAddress || '',
-          stopAddress: rideData?.stopAddress || null,
-          price: Number(rideData?.price || 0),
-          distanceKm: Number(rideData?.distanceKm || 0),
-          riderName: rideData?.riderName || '',
-          startLatLon: rideData?.startLatLon || null,
-          stopLatLon: rideData?.stopLatLon || null,
-          endLatLon: rideData?.endLatLon || null,
-          vehicleTypeId: Number(rideData?.vehicleTypeId || 0),
-          pickupTime
-        }
+          id: toFiniteNumber(rideData.id, rideId),
+          pickupAddress: rideData.pickupAddress || '',
+          dropoffAddress: rideData.dropoffAddress || '',
+          stopAddress: rideData.stopAddress || null,
+          price: toFiniteNumber(rideData.price, 0),
+          distanceKm: toFiniteNumber(rideData.distanceKm, 0),
+          riderName: rideData.riderName || '',
+          startLatLon: normalizeLatLon(rideData.startLatLon),
+          stopLatLon: normalizeLatLon(rideData.stopLatLon),
+          endLatLon: normalizeLatLon(rideData.endLatLon),
+          vehicleTypeId: toFiniteNumber(rideData.vehicleTypeId, 0),
+          pickupTime,
+        },
       };
     })
-    .filter(Boolean)
-    .sort((a: any, b: any) => a.expiresAtMs - b.expiresAtMs);
+    .filter((offer): offer is ScheduledPendingOffer => Boolean(offer));
+
+  return normalized.sort((a, b) => a.expiresAtMs - b.expiresAtMs);
 };
 
 export const endShift = async (endKM: number, token: string) => {
