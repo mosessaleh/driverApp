@@ -29,7 +29,7 @@ export default function AnalyticsScreen() {
     onRideOffer(handleRideOffer);
 
     return () => {
-      offRideOffer();
+      offRideOffer(handleRideOffer);
     };
   }, [period]);
 

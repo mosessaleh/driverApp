@@ -29,7 +29,7 @@ export default function RideDetailsScreen() {
     onRideOffer(handleRideOffer);
 
     return () => {
-      offRideOffer();
+      offRideOffer(handleRideOffer);
     };
   }, []);
 

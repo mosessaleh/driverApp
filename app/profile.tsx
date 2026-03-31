@@ -32,7 +32,7 @@ export default function ProfileScreen() {
     onRideOffer(handleRideOffer);
 
     return () => {
-      offRideOffer();
+      offRideOffer(handleRideOffer);
     };
   }, []);
 

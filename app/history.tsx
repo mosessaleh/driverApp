@@ -1,293 +1,556 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, RefreshControl } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDriverHistory } from '../src/services/api';
-import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { offRideOffer, onRideOffer } from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
+
+type RideItem = {
+  id: number | string;
+  pickupAddress?: string | null;
+  stopAddress?: string | null;
+  dropoffAddress?: string | null;
+  createdAt?: string | null;
+  status?: string;
+  cancellationReason?: string | null;
+  canceledBy?: string | null;
+  price?: number | null;
+};
+
+type HistorySummary = {
+  totalRides: number;
+  totalAmount: number;
+};
+
+type QuickFilterKey = 'today' | 'thisWeek' | 'allTime' | 'custom';
+
+type DateRange = {
+  startDate?: string;
+  endDate?: string;
+};
+
+const MAX_RETRIES = 3;
+
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateForInput = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+const buildIsoFromDateParts = (year: number, month: number, day: number): string | null => {
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+const parseDateInput = (value: string): { iso?: string; isValid: boolean } => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { iso: undefined, isValid: true };
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, dd, mm, yyyy] = slashMatch;
+    const iso = buildIsoFromDateParts(Number(yyyy), Number(mm), Number(dd));
+    return iso ? { iso, isValid: true } : { isValid: false };
+  }
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, yyyy, mm, dd] = isoMatch;
+    const iso = buildIsoFromDateParts(Number(yyyy), Number(mm), Number(dd));
+    return iso ? { iso, isValid: true } : { isValid: false };
+  }
+
+  return { isValid: false };
+};
 
 export default function HistoryScreen() {
   const { authState } = useAuth();
   const router = useRouter();
-  const { t } = useTranslation();
-  const [rides, setRides] = useState<any[]>([]);
-  const [summary, setSummary] = useState({ totalRides: 0, totalAmount: 0 });
+  const { t, getCurrentLanguage } = useTranslation();
+
+  const [rides, setRides] = useState<RideItem[]>([]);
+  const [summary, setSummary] = useState<HistorySummary>({ totalRides: 0, totalAmount: 0 });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterVisible, setFilterVisible] = useState(false);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<QuickFilterKey>('allTime');
+
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  const appliedRangeRef = useRef<DateRange>({});
+
+  const language = getCurrentLanguage();
+  const locale = language === 'ar' ? 'ar-EG' : language === 'da' ? 'da-DK' : 'en-GB';
+
+  const quickFilterOptions = useMemo(
+    () => [
+      { key: 'today' as const, label: t('filter_today') },
+      { key: 'thisWeek' as const, label: t('filter_this_week') },
+      { key: 'allTime' as const, label: t('filter_all_time') },
+    ],
+    [t]
+  );
+
+  const clearRetryTimeout = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  }, []);
+
+  const loadHistory = useCallback(
+    async (range: DateRange = appliedRangeRef.current, retryCount = 0) => {
+      if (!authState.token || !isMountedRef.current) return;
+
+      setLoading(true);
+      try {
+        const response = await getDriverHistory(authState.token, range.startDate, range.endDate);
+
+        if (!isMountedRef.current) return;
+
+        if (response.ok && Array.isArray(response.rides)) {
+          setRides(response.rides);
+          setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
+          return;
+        }
+
+        Alert.alert(t('error'), t('history_load_failed'));
+      } catch (error) {
+        console.error('Error loading history:', error);
+        if (retryCount < MAX_RETRIES - 1) {
+          const delay = Math.pow(2, retryCount) * 1000;
+          clearRetryTimeout();
+          retryTimeoutRef.current = setTimeout(() => {
+            if (isMountedRef.current) {
+              loadHistory(range, retryCount + 1);
+            }
+          }, delay);
+          return;
+        }
+
+        if (isMountedRef.current) {
+          Alert.alert(t('error'), t('history_load_failed_multiple'));
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [authState.token, clearRetryTimeout, t]
+  );
 
   useEffect(() => {
-    loadHistory();
-    
-    // Listen for ride offers to redirect to dashboard
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      clearRetryTimeout();
+    };
+  }, [clearRetryTimeout]);
+
+  useEffect(() => {
     const handleRideOffer = () => {
       router.replace('/dashboard');
     };
+
     onRideOffer(handleRideOffer);
 
     return () => {
-      offRideOffer();
+      offRideOffer(handleRideOffer);
     };
-  }, []);
+  }, [router]);
 
-  const loadHistory = async (retryCount = 0) => {
-    if (!authState.token) return;
-    
-    setLoading(true);
-    try {
-      const response = await getDriverHistory(authState.token, parseDate(startDate) || undefined, parseDate(endDate) || undefined);
-      if (response.ok && response.rides) {
-        setRides(response.rides);
-        setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
-      } else {
-        Alert.alert(t('error'), t('history_load_failed'));
+  useFocusEffect(
+    useCallback(() => {
+      if (authState.token) {
+        loadHistory(appliedRangeRef.current);
       }
-    } catch (error) {
-      console.error('Error loading history:', error);
-      if (retryCount < 3) {
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`Retrying history load in ${delay}ms (attempt ${retryCount + 1}/3)`);
-        setTimeout(() => loadHistory(retryCount + 1), delay);
-      } else {
-        Alert.alert(t('error'), t('history_load_failed_multiple'));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const onRefreshData = async () => {
+      return () => {};
+    }, [authState.token, loadHistory])
+  );
+
+  const onRefreshData = useCallback(async () => {
     setRefreshing(true);
-    await loadHistory();
-    setRefreshing(false);
-  };
+    await loadHistory(appliedRangeRef.current);
+    if (isMountedRef.current) {
+      setRefreshing(false);
+    }
+  }, [loadHistory]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  };
+  const formatDate = useCallback(
+    (dateString?: string | null) => {
+      if (!dateString) return t('not_available');
+      const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return t('not_available');
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+      return date.toLocaleDateString(locale, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    },
+    [locale, t]
+  );
 
-  const parseDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const [day, month, year] = dateStr.split('/');
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  };
+  const formatTime = useCallback(
+    (dateString?: string | null) => {
+      if (!dateString) return '--:--';
+      const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return '--:--';
 
-  const handleFilter = () => {
-    loadHistory();
+      return date.toLocaleTimeString(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+    [locale]
+  );
+
+  const formatAmount = useCallback(
+    (amount?: number | null) => {
+      const numeric = Number(amount ?? 0);
+      return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
+        Number.isFinite(numeric) ? numeric : 0
+      );
+    },
+    [locale]
+  );
+
+  const buildQuickFilterRange = useCallback(
+    (filterKey: Exclude<QuickFilterKey, 'custom'>): { range: DateRange; startInput: string; endInput: string } => {
+      const now = new Date();
+
+      if (filterKey === 'today') {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const iso = formatLocalDate(today);
+        const input = formatDateForInput(today);
+        return {
+          range: { startDate: iso, endDate: iso },
+          startInput: input,
+          endInput: input,
+        };
+      }
+
+      if (filterKey === 'thisWeek') {
+        const dayOfWeek = now.getDay();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+        return {
+          range: {
+            startDate: formatLocalDate(startOfWeek),
+            endDate: formatLocalDate(endOfWeek),
+          },
+          startInput: formatDateForInput(startOfWeek),
+          endInput: formatDateForInput(endOfWeek),
+        };
+      }
+
+      return {
+        range: {},
+        startInput: '',
+        endInput: '',
+      };
+    },
+    []
+  );
+
+  const handleQuickFilter = useCallback(
+    async (filterKey: Exclude<QuickFilterKey, 'custom'>) => {
+      const { range, startInput, endInput } = buildQuickFilterRange(filterKey);
+
+      setActiveQuickFilter(filterKey);
+      setStartDate(startInput);
+      setEndDate(endInput);
+      setFilterVisible(false);
+
+      appliedRangeRef.current = range;
+      await loadHistory(range);
+    },
+    [buildQuickFilterRange, loadHistory]
+  );
+
+  const validateFilterInputs = useCallback((): DateRange | null => {
+    const parsedStart = parseDateInput(startDate);
+    const parsedEnd = parseDateInput(endDate);
+
+    if (!parsedStart.isValid || !parsedEnd.isValid) {
+      Alert.alert(t('error'), t('history_invalid_date_format'));
+      return null;
+    }
+
+    if (parsedStart.iso && parsedEnd.iso && parsedStart.iso > parsedEnd.iso) {
+      Alert.alert(t('error'), t('history_invalid_date_range'));
+      return null;
+    }
+
+    return {
+      startDate: parsedStart.iso,
+      endDate: parsedEnd.iso,
+    };
+  }, [endDate, startDate, t]);
+
+  const handleFilter = useCallback(async () => {
+    const nextRange = validateFilterInputs();
+    if (!nextRange) return;
+
+    appliedRangeRef.current = nextRange;
+    setActiveQuickFilter(nextRange.startDate || nextRange.endDate ? 'custom' : 'allTime');
     setFilterVisible(false);
-  };
+    await loadHistory(nextRange);
+  }, [loadHistory, validateFilterInputs]);
 
-  const handleClearFilter = () => {
+  const handleClearFilter = useCallback(async () => {
     setStartDate('');
     setEndDate('');
-    loadHistory();
+    setActiveQuickFilter('allTime');
     setFilterVisible(false);
-  };
 
-  const formatLocalDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+    appliedRangeRef.current = {};
+    await loadHistory({});
+  }, [loadHistory]);
 
-  const handleQuickFilter = async (filter: string) => {
-    const now = new Date();
-    let startDateStr: string | undefined;
-    let endDateStr: string | undefined;
-
-    if (filter === t('filter_today')) {
-      // Get today's date in local time as YYYY-MM-DD
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      startDateStr = formatLocalDate(today);
-      endDateStr = startDateStr; // Same day
-    } else if (filter === t('filter_this_week')) {
-      const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
-      startOfWeek.setHours(0, 0, 0, 0);
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      endOfWeek.setHours(23, 59, 59, 999);
-      startDateStr = formatLocalDate(startOfWeek);
-      endDateStr = formatLocalDate(endOfWeek);
-    } else if (filter === t('filter_all_time')) {
-      startDateStr = undefined;
-      endDateStr = undefined;
-    }
-
-    // Load history directly with the calculated dates
-    if (!authState.token) return;
-
-    setLoading(true);
-    try {
-      const response = await getDriverHistory(authState.token, startDateStr, endDateStr);
-      if (response.ok && response.rides) {
-        setRides(response.rides);
-        setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
-      } else {
-        Alert.alert(t('error'), t('history_load_failed'));
-      }
-    } catch (error) {
-      console.error('Error loading history:', error);
-      Alert.alert(t('error'), t('history_load_failed'));
-    } finally {
-      setLoading(false);
-      setFilterVisible(false);
-    }
-  };
-
-  const formatDateForInput = (date: Date) => {
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const goBack = () => {
+  const goBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
+
+  const renderRideItem = useCallback(
+    ({ item }: { item: RideItem }) => {
+      const normalizedStatus = String(item.status || '').toUpperCase();
+      const isCanceled = normalizedStatus === 'CANCELED' || normalizedStatus === 'CANCELLED';
+      const isCompleted = normalizedStatus === 'COMPLETED';
+      const statusText = isCanceled
+        ? t('ride_status_cancelled')
+        : isCompleted
+          ? t('ride_status_completed')
+          : item.status || t('not_available');
+      const statusBadgeStyle = isCanceled
+        ? styles.statusBadgeCanceled
+        : isCompleted
+          ? styles.statusBadgeCompleted
+          : styles.statusBadgePending;
+      const statusTextStyle = isCanceled
+        ? styles.statusBadgeCanceledText
+        : isCompleted
+          ? styles.statusBadgeCompletedText
+          : styles.statusBadgePendingText;
+
+      return (
+        <TouchableOpacity
+          style={styles.rideCard}
+          activeOpacity={0.9}
+          onPress={() => router.push(`/ride-details?id=${item.id}`)}
+        >
+          <View style={styles.rideHeaderRow}>
+            <Text style={styles.rideId}>#{item.id}</Text>
+            <View style={[styles.statusBadge, statusBadgeStyle]}>
+              <Text style={[styles.statusBadgeText, statusTextStyle]}>
+                {statusText}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.rideDateTime}>{formatDate(item.createdAt)} • {formatTime(item.createdAt)}</Text>
+
+          <View style={styles.addressBlock}>
+            <Text style={styles.addressLabel}>{t('pickup')}</Text>
+            <Text style={styles.addressValue}>{item.pickupAddress || t('not_available')}</Text>
+          </View>
+
+          {!!item.stopAddress && (
+            <View style={styles.addressBlock}>
+              <Text style={styles.addressLabel}>{t('stop')}</Text>
+              <Text style={styles.addressValue}>{item.stopAddress}</Text>
+            </View>
+          )}
+
+          <View style={styles.addressBlock}>
+            <Text style={styles.addressLabel}>{t('dropoff')}</Text>
+            <Text style={styles.addressValue}>{item.dropoffAddress || t('not_available')}</Text>
+          </View>
+
+          {isCanceled && (item.cancellationReason || item.canceledBy) && (
+            <View style={styles.cancellationBox}>
+              {item.cancellationReason ? (
+                <Text style={styles.cancellationText}>{`${t('cancellation_reason')}: ${t(item.cancellationReason)}`}</Text>
+              ) : null}
+              {item.canceledBy ? (
+                <Text style={styles.cancellationText}>{`${t('canceled_by')}: ${t(`canceled_by_${item.canceledBy}`)}`}</Text>
+              ) : null}
+            </View>
+          )}
+
+          <View style={styles.amountRow}>
+            <Text style={styles.amountLabel}>{t('price')}</Text>
+            <Text style={styles.amountValue}>{formatAmount(item.price)} DKK</Text>
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [formatAmount, formatDate, formatTime, router, t]
+  );
+
+  const renderEmptyState = useCallback(() => {
+    return (
+      <View style={styles.emptyState}>
+        {loading ? <ActivityIndicator size="large" color="#1d4ed8" /> : null}
+        <Text style={styles.emptyText}>{loading ? t('history_loading') : t('history_no_rides')}</Text>
+      </View>
+    );
+  }, [loading, t]);
 
   return (
     <View style={styles.container}>
-      {/* Header with Back Button */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Text style={styles.backButtonText}>❮</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('history')}</Text>
-        <TouchableOpacity style={styles.filterToggleButton} onPress={() => setFilterVisible(!filterVisible)}>
-          <Text style={styles.filterToggleButtonText}>{t('filter')}</Text>
+        <TouchableOpacity
+          style={[styles.filterToggleButton, filterVisible && styles.filterToggleButtonActive]}
+          onPress={() => setFilterVisible((prev) => !prev)}
+        >
+          <Text style={[styles.filterToggleButtonText, filterVisible && styles.filterToggleButtonTextActive]}>
+            {t('filter')}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Summary Box */}
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>{t('total_rides')}</Text>
-            <Text style={styles.summaryValue}>{summary.totalRides}</Text>
-          </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>{t('total_amount')}</Text>
-            <Text style={styles.summaryValue}>{summary.totalAmount} DKK</Text>
-          </View>
-        </View>
+      <FlatList
+        data={rides}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderRideItem}
+        style={styles.list}
+        contentContainerStyle={[
+          styles.listContent,
+          rides.length === 0 ? styles.listContentEmpty : undefined,
+        ]}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.summaryContainer}>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>{t('total_rides')}</Text>
+                <Text style={styles.summaryValue}>{summary.totalRides}</Text>
+              </View>
 
-      {/* Filter Box */}
-      {filterVisible && (
-        <View style={styles.filterContainer}>
-        <Text style={styles.filterTitle}>{t('filter_by_date')}</Text>
-        <View style={styles.quickFilterButtons}>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_today'))}>
-            <Text style={styles.quickFilterButtonText}>{t('filter_today')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_this_week'))}>
-            <Text style={styles.quickFilterButtonText}>{t('filter_this_week')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickFilterButton} onPress={() => handleQuickFilter(t('filter_all_time'))}>
-            <Text style={styles.quickFilterButtonText}>{t('filter_all_time')}</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.orText}>{t('or')}</Text>
-        <View style={styles.filterRow}>
-          <View style={styles.filterInputContainer}>
-            <Text style={styles.filterLabel}>{t('from')}</Text>
-            <TextInput
-              style={styles.filterInput}
-              placeholder={t('date_placeholder')}
-              value={startDate}
-              onChangeText={setStartDate}
-              placeholderTextColor="#999"
-            />
-          </View>
-          <View style={[styles.filterInputContainer, styles.filterInputContainerLast]}>
-            <Text style={styles.filterLabel}>{t('to')}</Text>
-            <TextInput
-              style={styles.filterInput}
-              placeholder={t('date_placeholder')}
-              value={endDate}
-              onChangeText={setEndDate}
-              placeholderTextColor="#999"
-            />
-          </View>
-        </View>
-        <View style={styles.filterButtons}>
-          <TouchableOpacity style={styles.filterButton} onPress={handleFilter}>
-            <Text style={styles.filterButtonText}>{t('filter')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.clearButton} onPress={handleClearFilter}>
-            <Text style={styles.clearButtonText}>{t('clear')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      )}
+              <View style={styles.summaryGap} />
 
-      {/* Rides List */}
-      <ScrollView 
-        style={styles.ridesContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefreshData} />
-        }
-      >
-        {loading && rides.length === 0 ? (
-          <Text style={styles.loadingText}>{t('history_loading')}</Text>
-        ) : rides.length === 0 ? (
-          <Text style={styles.noDataText}>{t('history_no_rides')}</Text>
-        ) : (
-          rides.map((ride) => (
-            <TouchableOpacity 
-              key={ride.id} 
-              style={styles.rideCard}
-              onPress={() => router.push(`/ride-details?id=${ride.id}`)}
-            >
-              <View style={styles.rideInfo}>
-                <Text style={styles.rideId}>#{ride.id}</Text>
-                <Text style={styles.rideDate}>{formatDate(ride.createdAt)} • {formatTime(ride.createdAt)}</Text>
-                <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
-                {!!ride.stopAddress && (
-                  <Text style={styles.rideAddress}>{ride.stopAddress}</Text>
-                )}
-                <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
-                {ride.status === 'CANCELED' && (ride.cancellationReason || ride.canceledBy) && (
-                  <View style={styles.cancellationBox}>
-                    {ride.cancellationReason ? (
-                      <Text style={styles.cancellationText}>
-                        {`${t('cancellation_reason')}: ${t(ride.cancellationReason)}`}
-                      </Text>
-                    ) : null}
-                    {ride.canceledBy ? (
-                      <Text style={styles.cancellationText}>
-                        {`${t('canceled_by')}: ${t(`canceled_by_${ride.canceledBy}`)}`}
-                      </Text>
-                    ) : null}
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>{t('total_amount')}</Text>
+                <Text style={styles.summaryValue}>{formatAmount(summary.totalAmount)} DKK</Text>
+              </View>
+            </View>
+
+            {filterVisible ? (
+              <View style={styles.filterContainer}>
+                <Text style={styles.filterTitle}>{t('filter_by_date')}</Text>
+
+                <View style={styles.quickFiltersRow}>
+                  {quickFilterOptions.map((option, index) => {
+                    const isActive = activeQuickFilter === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.quickFilterChip,
+                          isActive && styles.quickFilterChipActive,
+                          index === quickFilterOptions.length - 1 && styles.quickFilterChipLast,
+                        ]}
+                        onPress={() => handleQuickFilter(option.key)}
+                      >
+                        <Text style={[styles.quickFilterChipText, isActive && styles.quickFilterChipTextActive]}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.orText}>{t('or')}</Text>
+
+                <View style={styles.inputRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>{t('from')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={t('date_placeholder')}
+                      value={startDate}
+                      onChangeText={setStartDate}
+                      placeholderTextColor="#94a3b8"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
                   </View>
-                )}
+
+                  <View style={[styles.inputContainer, styles.inputContainerLast]}>
+                    <Text style={styles.inputLabel}>{t('to')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={t('date_placeholder')}
+                      value={endDate}
+                      onChangeText={setEndDate}
+                      placeholderTextColor="#94a3b8"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.filterActionsRow}>
+                  <TouchableOpacity style={[styles.filterActionButton, styles.applyButton]} onPress={handleFilter}>
+                    <Text style={styles.applyButtonText}>{t('filter')}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[styles.filterActionButton, styles.clearButton]} onPress={handleClearFilter}>
+                    <Text style={styles.clearButtonText}>{t('clear')}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.rideAmount}>
-                <Text style={styles.amountValue}>{ride.price} DKK</Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
+            ) : null}
+          </View>
+        }
+        ListEmptyComponent={renderEmptyState}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshData} tintColor="#1d4ed8" />}
+      />
     </View>
   );
 }
@@ -295,240 +558,330 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#eef3fa',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 10,
-    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#e2e8f0',
   },
   backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButtonText: {
     fontSize: 18,
-    color: '#007bff',
-    fontWeight: 'bold',
+    fontWeight: '700',
+    color: '#1d4ed8',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
     flex: 1,
     textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginHorizontal: 12,
   },
   filterToggleButton: {
-    paddingVertical: 8,
+    minWidth: 74,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 12,
   },
+  filterToggleButtonActive: {
+    backgroundColor: '#1d4ed8',
+  },
   filterToggleButtonText: {
-    fontSize: 16,
-    color: '#007bff',
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  filterToggleButtonTextActive: {
+    color: '#ffffff',
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
   },
   summaryContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 10,
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 12,
   },
-  summaryBox: {
+  summaryCard: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  summaryGap: {
+    width: 10,
   },
   summaryLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 4,
+    fontWeight: '600',
   },
   summaryValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  summaryDivider: {
-    width: 1,
-    height: 60,
-    backgroundColor: '#e0e0e0',
-    marginHorizontal: 15,
+    fontSize: 20,
+    color: '#0f172a',
+    fontWeight: '800',
   },
   filterContainer: {
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginBottom: 10,
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   filterTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
     marginBottom: 10,
   },
-  filterRow: {
+  quickFiltersRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 15,
   },
-  filterInputContainer: {
+  quickFilterChip: {
     flex: 1,
-    marginRight: 10,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginRight: 6,
   },
-  filterInputContainerLast: {
+  quickFilterChipLast: {
     marginRight: 0,
   },
-  filterLabel: {
+  quickFilterChipActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#60a5fa',
+  },
+  quickFilterChipText: {
+    color: '#334155',
     fontSize: 12,
-    color: '#666',
-    marginBottom: 5,
+    fontWeight: '700',
   },
-  filterInput: {
-    height: 40,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
-  },
-  filterButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  filterButton: {
-    backgroundColor: '#007bff',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  filterButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  clearButton: {
-    backgroundColor: '#6c757d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  clearButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  ridesContainer: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  loadingText: {
-    textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
-    color: '#666',
-  },
-  noDataText: {
-    textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
-    color: '#666',
-  },
-  rideCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rideInfo: {
-    flex: 1,
-  },
-  rideId: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-  },
-  rideDate: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  rideAddress: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 2,
-  },
-  rideAmount: {
-    alignItems: 'flex-end',
-  },
-  amountValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#28a745',
-  },
-  cancellationBox: {
-    backgroundColor: '#fff5f5',
-    borderColor: '#f5c6cb',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 8,
-    marginTop: 8,
-  },
-  cancellationText: {
-    fontSize: 12,
-    color: '#a61b1b',
-  },
-  quickFilterButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  quickFilterButton: {
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 6,
-    flex: 1,
-    marginHorizontal: 2,
-    alignItems: 'center',
-  },
-  quickFilterButtonText: {
-    color: '#495057',
-    fontSize: 12,
-    fontWeight: 'bold',
+  quickFilterChipTextActive: {
+    color: '#1e40af',
   },
   orText: {
     textAlign: 'center',
-    fontSize: 14,
-    color: '#666',
     marginVertical: 10,
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  inputRow: {
+    flexDirection: 'row',
+  },
+  inputContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
+  inputContainerLast: {
+    marginRight: 0,
+  },
+  inputLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  input: {
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 10,
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterActionsRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+  },
+  filterActionButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButton: {
+    backgroundColor: '#1d4ed8',
+    marginRight: 8,
+  },
+  applyButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  clearButton: {
+    backgroundColor: '#e2e8f0',
+  },
+  clearButtonText: {
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  rideCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  rideHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  rideId: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  statusBadgeCompleted: {
+    backgroundColor: '#dcfce7',
+  },
+  statusBadgeCanceled: {
+    backgroundColor: '#fee2e2',
+  },
+  statusBadgePending: {
+    backgroundColor: '#e2e8f0',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  statusBadgeCompletedText: {
+    color: '#166534',
+  },
+  statusBadgeCanceledText: {
+    color: '#991b1b',
+  },
+  statusBadgePendingText: {
+    color: '#334155',
+  },
+  rideDateTime: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 10,
+    fontWeight: '600',
+  },
+  addressBlock: {
+    marginBottom: 8,
+  },
+  addressLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '700',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  addressValue: {
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '500',
+  },
+  cancellationBox: {
+    marginTop: 6,
+    borderRadius: 10,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    padding: 10,
+  },
+  cancellationText: {
+    color: '#991b1b',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  amountRow: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amountLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  amountValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  emptyText: {
+    marginTop: 12,
+    textAlign: 'center',
+    fontSize: 15,
+    color: '#64748b',
+    fontWeight: '600',
   },
 });

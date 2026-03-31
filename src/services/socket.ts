@@ -312,8 +312,10 @@ export const onRideOffer = (
   addPersistentListener('rideOffer', callback as SocketListener);
 };
 
-export const offRideOffer = () => {
-  removePersistentListener('rideOffer');
+export const offRideOffer = (
+  callback?: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void
+) => {
+  removePersistentListener('rideOffer', callback as SocketListener | undefined);
 };
 
 export const onRideOfferTimeout = (callback: (data: { rideId: number }) => void) => {
