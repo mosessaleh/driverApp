@@ -14,12 +14,42 @@ import * as Linking from 'expo-linking';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate } from '../src/services/socket';
+import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate, getSocket } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
 import { devLog, requireGoogleMapsApiKey } from '../src/config/security';
+import {
+  buildSmartAlerts,
+  type NetworkMode,
+  type SmartAlert,
+} from '../src/features/driverIntelligence';
 
 const { width, height } = Dimensions.get('window');
+
+const DASHBOARD_SNAPSHOT_KEY = 'driver_dashboard_snapshot_v1';
+const OFFLINE_LOCATION_QUEUE_KEY = 'driver_offline_location_queue_v1';
+const MAX_OFFLINE_LOCATION_QUEUE = 80;
+
+type QueuedLocationUpdate = {
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+};
+
+type DashboardSnapshot = {
+  timestamp: number;
+  driverOnline: boolean;
+  driverBusy: boolean;
+  upcomingRides: any[];
+  pendingScheduledOffers: ScheduledPendingOffer[];
+  currentLocation: { latitude: number; longitude: number } | null;
+  totalRidesToday: number;
+  earningsToday: number;
+  lastRidePreview: {
+    id: number;
+    status: string;
+  } | null;
+};
 
 export const options = {
   headerShown: false,
@@ -88,6 +118,9 @@ export default function DashboardScreen() {
    const [chatInput, setChatInput] = useState('');
    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
    const [isSocketConnected, setIsSocketConnected] = useState(false);
+   const [networkMode, setNetworkMode] = useState<NetworkMode>('online');
+   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+   const [lastCachedRidePreview, setLastCachedRidePreview] = useState<{ id: number; status: string } | null>(null);
    const [showShiftWarning, setShowShiftWarning] = useState(false);
    const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
    const [cancelCountdown, setCancelCountdown] = useState(0);
@@ -108,6 +141,9 @@ export default function DashboardScreen() {
    const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
    const driverOnlineRef = useRef(false);
    const driverBusyRef = useRef(false);
+   const isSocketConnectedRef = useRef(false);
+   const networkModeRef = useRef<NetworkMode>('online');
+   const isFlushingQueueRef = useRef(false);
 
    const quickReplies = useMemo(
      () => [
@@ -122,10 +158,159 @@ export default function DashboardScreen() {
    const waitFor = (ms: number) =>
      new Promise(resolve => setTimeout(resolve, ms));
 
-   useEffect(() => {
+   const readQueuedLocations = async (): Promise<QueuedLocationUpdate[]> => {
+     try {
+       const raw = await AsyncStorage.getItem(OFFLINE_LOCATION_QUEUE_KEY);
+       if (!raw) return [];
+       const parsed = JSON.parse(raw);
+       if (!Array.isArray(parsed)) return [];
+
+       return parsed.filter((entry: any) => {
+         const latitude = Number(entry?.latitude);
+         const longitude = Number(entry?.longitude);
+         return Number.isFinite(latitude) && Number.isFinite(longitude) && typeof entry?.timestamp === 'string';
+       });
+     } catch (error) {
+       console.error('Error reading queued offline locations:', error);
+       return [];
+     }
+   };
+
+   const persistQueuedLocations = async (queue: QueuedLocationUpdate[]) => {
+     const sanitized = queue.slice(-MAX_OFFLINE_LOCATION_QUEUE);
+     if (sanitized.length === 0) {
+       await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
+       setOfflineQueueCount(0);
+       return;
+     }
+
+     await AsyncStorage.setItem(OFFLINE_LOCATION_QUEUE_KEY, JSON.stringify(sanitized));
+     setOfflineQueueCount(sanitized.length);
+   };
+
+   const enqueueLocationForSync = async (
+     location: { latitude: number; longitude: number },
+     timestamp: string
+   ) => {
+     const queued = await readQueuedLocations();
+     queued.push({
+       latitude: location.latitude,
+       longitude: location.longitude,
+       timestamp,
+     });
+     await persistQueuedLocations(queued);
+   };
+
+   const flushQueuedLocations = async () => {
+     if (!authState.token || isFlushingQueueRef.current) return;
+
+     isFlushingQueueRef.current = true;
+
+     try {
+       const queued = await readQueuedLocations();
+       if (!queued.length) {
+         setOfflineQueueCount(0);
+         if (networkModeRef.current !== 'online') {
+           setNetworkMode('online');
+         }
+         return;
+       }
+
+       setNetworkMode('syncing');
+       networkModeRef.current = 'syncing';
+
+       let index = 0;
+       for (; index < queued.length; index += 1) {
+         const point = queued[index];
+         try {
+           await updateDriverLocation(point.latitude, point.longitude, authState.token, point.timestamp);
+         } catch (error) {
+           console.error('Error flushing queued location point:', error);
+           break;
+         }
+       }
+
+       if (index >= queued.length) {
+         await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
+         setOfflineQueueCount(0);
+         setNetworkMode('online');
+         networkModeRef.current = 'online';
+       } else {
+         const remaining = queued.slice(index);
+         await persistQueuedLocations(remaining);
+         setNetworkMode('offline');
+         networkModeRef.current = 'offline';
+       }
+     } catch (error) {
+       console.error('Error while flushing offline queue:', error);
+       setNetworkMode('offline');
+       networkModeRef.current = 'offline';
+     } finally {
+       isFlushingQueueRef.current = false;
+     }
+   };
+
+   const loadDashboardSnapshot = async () => {
+     try {
+       const rawSnapshot = await AsyncStorage.getItem(DASHBOARD_SNAPSHOT_KEY);
+       if (!rawSnapshot) return;
+
+       const snapshot: DashboardSnapshot = JSON.parse(rawSnapshot);
+
+       if (!currentLocation && snapshot?.currentLocation) {
+         setCurrentLocation(snapshot.currentLocation);
+       }
+
+       if (!upcomingRides.length && Array.isArray(snapshot?.upcomingRides)) {
+         setUpcomingRides(snapshot.upcomingRides);
+       }
+
+       if (!pendingScheduledOffers.length && Array.isArray(snapshot?.pendingScheduledOffers)) {
+         setPendingScheduledOffers(snapshot.pendingScheduledOffers);
+       }
+
+       if (typeof snapshot?.totalRidesToday === 'number' && totalRidesToday === 0) {
+         setTotalRidesToday(snapshot.totalRidesToday);
+       }
+
+       if (typeof snapshot?.earningsToday === 'number' && earningsToday === 0) {
+         setEarningsToday(snapshot.earningsToday);
+       }
+
+       if (snapshot?.lastRidePreview) {
+         setLastCachedRidePreview(snapshot.lastRidePreview);
+       }
+     } catch (error) {
+       console.error('Error loading dashboard snapshot cache:', error);
+     }
+   };
+
+  useEffect(() => {
      driverOnlineRef.current = driverOnline;
      driverBusyRef.current = driverBusy;
-   }, [driverOnline, driverBusy]);
+  }, [driverOnline, driverBusy]);
+
+   useEffect(() => {
+     isSocketConnectedRef.current = isSocketConnected;
+   }, [isSocketConnected]);
+
+   useEffect(() => {
+     networkModeRef.current = networkMode;
+   }, [networkMode]);
+
+   useEffect(() => {
+     loadDashboardSnapshot();
+     readQueuedLocations()
+       .then((queued) => {
+         setOfflineQueueCount(queued.length);
+         if (queued.length > 0) {
+           setNetworkMode('offline');
+         }
+       })
+       .catch((error) => {
+         console.error('Error loading queued locations on mount:', error);
+       });
+   }, []);
 
    const getAudioMode = () => ({
      allowsRecordingIOS: false,
@@ -515,6 +700,18 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (authState.token) {
+      loadDashboardSnapshot();
+      readQueuedLocations()
+        .then((queued) => {
+          setOfflineQueueCount(queued.length);
+          if (queued.length > 0) {
+            setNetworkMode('offline');
+          }
+        })
+        .catch((error) => {
+          console.error('Error reading offline queue during auth bootstrap:', error);
+        });
+
       getCurrentLocation();
 
       // Set shift start time from user data if available
@@ -528,6 +725,7 @@ export default function DashboardScreen() {
         await new Promise(resolve => setTimeout(resolve, 1000));
         await loadDriverStatus();
         await loadUpcomingRides();
+        await flushQueuedLocations();
       };
       loadInitialStatus();
 
@@ -897,6 +1095,7 @@ export default function DashboardScreen() {
       }
 
       try {
+        await flushQueuedLocations();
         await loadDriverStatus();
         await loadUpcomingRides();
       } catch (error) {
@@ -933,16 +1132,49 @@ export default function DashboardScreen() {
 
   // Monitor socket connection status
   useEffect(() => {
-    const checkSocketStatus = () => {
-      // This is a simple check - in a real app, you'd get this from socket events
-      // For now, we'll assume it's connected if we have a token
-      setIsSocketConnected(!!authState.token);
+    let disposed = false;
+
+    const checkSocketStatus = async () => {
+      const socket = getSocket();
+      const connected = Boolean(authState.token && socket?.connected);
+
+      if (disposed) return;
+
+      setIsSocketConnected(connected);
+
+      if (!authState.token) {
+        setNetworkMode('offline');
+        return;
+      }
+
+      if (!connected) {
+        setNetworkMode((previous) => (previous === 'syncing' ? 'syncing' : 'offline'));
+        return;
+      }
+
+      try {
+        const queued = await readQueuedLocations();
+        if (disposed) return;
+
+        setOfflineQueueCount(queued.length);
+
+        if (queued.length > 0) {
+          await flushQueuedLocations();
+        } else {
+          setNetworkMode('online');
+        }
+      } catch (error) {
+        console.error('Error checking queued updates during socket monitor:', error);
+      }
     };
 
     checkSocketStatus();
-    const interval = setInterval(checkSocketStatus, 5000); // Check every 5 seconds
+    const interval = setInterval(checkSocketStatus, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
   }, [authState.token]);
 
   // Animate map to current location when it changes
@@ -1390,16 +1622,30 @@ export default function DashboardScreen() {
             // Send location update to database only every 30 seconds
             const now = Date.now();
             if (authState.token && now - lastLocationUpdate >= 30000) {
+              const timestamp = new Date(now).toISOString();
               try {
                 await updateDriverLocation(
                   newLocation.latitude,
                   newLocation.longitude,
                   authState.token,
-                  new Date().toISOString()
+                  timestamp
                 );
                 setLastLocationUpdate(now);
+
+                if (networkModeRef.current !== 'online') {
+                  if (offlineQueueCount > 0) {
+                    flushQueuedLocations();
+                  } else {
+                    setNetworkMode('online');
+                    networkModeRef.current = 'online';
+                  }
+                }
               } catch (error) {
                 console.error('Failed to update location on server:', error);
+                await enqueueLocationForSync(newLocation, timestamp);
+                setLastLocationUpdate(now);
+                setNetworkMode('offline');
+                networkModeRef.current = 'offline';
               }
             }
           }
@@ -2213,10 +2459,37 @@ export default function DashboardScreen() {
     return calculateEtaMinutes(currentLocation, { lat, lon });
   };
 
+  const liveRidePreview = useMemo(() => {
+    if (activeRide?.id) {
+      return {
+        id: Number(activeRide.id),
+        status: String(activeRide.status || 'ACTIVE'),
+      };
+    }
+
+    if (rideOffer?.rideId) {
+      return {
+        id: Number(rideOffer.rideId),
+        status: 'OFFER',
+      };
+    }
+
+    return null;
+  }, [activeRide?.id, activeRide?.status, rideOffer?.rideId]);
+
+  useEffect(() => {
+    if (liveRidePreview) {
+      setLastCachedRidePreview(liveRidePreview);
+    }
+  }, [liveRidePreview]);
+
   const pickupEtaMinutes = getPickupEtaMinutes();
   const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
   const scheduledDepartureText = scheduledDepartureTime || t('not_available');
   const showScheduledInfoBar = !!nextScheduledRide;
+  const scheduledCountdownMinutes = showScheduledInfoBar
+    ? Math.max(0, Math.ceil(scheduledCountdownSeconds / 60))
+    : null;
   const pendingScheduledCount = pendingScheduledOffers.length;
   const nextPendingScheduledOffer = pendingScheduledOffers.length ? pendingScheduledOffers[0] : null;
   const pendingUrgencyColor = nextPendingScheduledOffer
@@ -2240,6 +2513,55 @@ export default function DashboardScreen() {
   const offerProgress = offerTotalSeconds > 0
     ? Math.max(0, Math.min(1, offerCountdown / offerTotalSeconds))
     : 0;
+
+  const smartAlerts = useMemo<SmartAlert[]>(
+    () =>
+      buildSmartAlerts({
+        networkMode,
+        offlineQueueCount,
+        nextScheduledRideCountdownMinutes: scheduledCountdownMinutes,
+        scheduledEtaMinutes,
+        restrictedOffers,
+      }),
+    [
+      networkMode,
+      offlineQueueCount,
+      scheduledCountdownMinutes,
+      scheduledEtaMinutes,
+      restrictedOffers,
+    ]
+  );
+
+  useEffect(() => {
+    if (!authState.token) return;
+
+    const snapshot: DashboardSnapshot = {
+      timestamp: Date.now(),
+      driverOnline,
+      driverBusy,
+      upcomingRides: upcomingRides.slice(0, 20),
+      pendingScheduledOffers: pendingScheduledOffers.slice(0, 20),
+      currentLocation,
+      totalRidesToday,
+      earningsToday,
+      lastRidePreview: liveRidePreview || lastCachedRidePreview,
+    };
+
+    AsyncStorage.setItem(DASHBOARD_SNAPSHOT_KEY, JSON.stringify(snapshot)).catch((error) => {
+      console.error('Error caching dashboard snapshot:', error);
+    });
+  }, [
+    authState.token,
+    driverOnline,
+    driverBusy,
+    upcomingRides,
+    pendingScheduledOffers,
+    currentLocation,
+    totalRidesToday,
+    earningsToday,
+    liveRidePreview,
+    lastCachedRidePreview,
+  ]);
 
   const styles = getStyles(isDarkMode, isRTL, isScheduledOffer);
 
@@ -2488,131 +2810,133 @@ export default function DashboardScreen() {
       {/* Map View - Full Screen */}
       <View style={styles.mapContainer}>
         {currentLocation ? (
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider="google"
-            initialRegion={{
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            showsUserLocation={true}
-            followsUserLocation={isTracking}
-          >
-            {activeRide && showPickupModal && (
-              <>
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.startLatLon.lat,
-                    longitude: activeRide.startLatLon.lon,
-                  }}
-                  title={t('pickup_marker_title')}
-                  pinColor="green"
-                />
-                {routeCoordinates.length > 0 && (
-                  <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor="#007bff"
-                    strokeWidth={3}
-                  />
-                )}
-                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+          <>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              provider="google"
+              initialRegion={{
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+              showsUserLocation={true}
+              followsUserLocation={isTracking}
+            >
+              {activeRide && showPickupModal && (
+                <>
                   <Marker
                     coordinate={{
-                      latitude: activeRide.stopLatLon.lat,
-                      longitude: activeRide.stopLatLon.lon,
+                      latitude: activeRide.startLatLon.lat,
+                      longitude: activeRide.startLatLon.lon,
                     }}
-                    title={t('stop')}
-                    pinColor="#f59e0b"
+                    title={t('pickup_marker_title')}
+                    pinColor="green"
                   />
-                )}
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.endLatLon.lat,
-                    longitude: activeRide.endLatLon.lon,
-                  }}
-                  title={t('dropoff_marker_title')}
-                  pinColor="red"
-                />
-              </>
-            )}
-            {activeRide && showStopModal && (
-              <>
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.startLatLon.lat,
-                    longitude: activeRide.startLatLon.lon,
-                  }}
-                  title={t('pickup_marker_title')}
-                  pinColor="green"
-                />
-                {routeCoordinates.length > 0 && (
-                  <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor="#007bff"
-                    strokeWidth={3}
-                  />
-                )}
-                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="#007bff"
+                      strokeWidth={3}
+                    />
+                  )}
+                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                    <Marker
+                      coordinate={{
+                        latitude: activeRide.stopLatLon.lat,
+                        longitude: activeRide.stopLatLon.lon,
+                      }}
+                      title={t('stop')}
+                      pinColor="#f59e0b"
+                    />
+                  )}
                   <Marker
                     coordinate={{
-                      latitude: activeRide.stopLatLon.lat,
-                      longitude: activeRide.stopLatLon.lon,
+                      latitude: activeRide.endLatLon.lat,
+                      longitude: activeRide.endLatLon.lon,
                     }}
-                    title={t('stop')}
-                    pinColor="#f59e0b"
+                    title={t('dropoff_marker_title')}
+                    pinColor="red"
                   />
-                )}
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.endLatLon.lat,
-                    longitude: activeRide.endLatLon.lon,
-                  }}
-                  title={t('dropoff_marker_title')}
-                  pinColor="red"
-                />
-              </>
-            )}
-            {activeRide && showDropoffModal && (
-              <>
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.startLatLon.lat,
-                    longitude: activeRide.startLatLon.lon,
-                  }}
-                  title={t('pickup_marker_title')}
-                  pinColor="green"
-                />
-                {routeCoordinates.length > 0 && (
-                  <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor="#007bff"
-                    strokeWidth={3}
-                  />
-                )}
-                {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                </>
+              )}
+              {activeRide && showStopModal && (
+                <>
                   <Marker
                     coordinate={{
-                      latitude: activeRide.stopLatLon.lat,
-                      longitude: activeRide.stopLatLon.lon,
+                      latitude: activeRide.startLatLon.lat,
+                      longitude: activeRide.startLatLon.lon,
                     }}
-                    title={t('stop')}
-                    pinColor="#f59e0b"
+                    title={t('pickup_marker_title')}
+                    pinColor="green"
                   />
-                )}
-                <Marker
-                  coordinate={{
-                    latitude: activeRide.endLatLon.lat,
-                    longitude: activeRide.endLatLon.lon,
-                  }}
-                  title={t('dropoff_marker_title')}
-                  pinColor="red"
-                />
-              </>
-            )}
-          </MapView>
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="#007bff"
+                      strokeWidth={3}
+                    />
+                  )}
+                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                    <Marker
+                      coordinate={{
+                        latitude: activeRide.stopLatLon.lat,
+                        longitude: activeRide.stopLatLon.lon,
+                      }}
+                      title={t('stop')}
+                      pinColor="#f59e0b"
+                    />
+                  )}
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.endLatLon.lat,
+                      longitude: activeRide.endLatLon.lon,
+                    }}
+                    title={t('dropoff_marker_title')}
+                    pinColor="red"
+                  />
+                </>
+              )}
+              {activeRide && showDropoffModal && (
+                <>
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.startLatLon.lat,
+                      longitude: activeRide.startLatLon.lon,
+                    }}
+                    title={t('pickup_marker_title')}
+                    pinColor="green"
+                  />
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="#007bff"
+                      strokeWidth={3}
+                    />
+                  )}
+                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
+                    <Marker
+                      coordinate={{
+                        latitude: activeRide.stopLatLon.lat,
+                        longitude: activeRide.stopLatLon.lon,
+                      }}
+                      title={t('stop')}
+                      pinColor="#f59e0b"
+                    />
+                  )}
+                  <Marker
+                    coordinate={{
+                      latitude: activeRide.endLatLon.lat,
+                      longitude: activeRide.endLatLon.lon,
+                    }}
+                    title={t('dropoff_marker_title')}
+                    pinColor="red"
+                  />
+                </>
+              )}
+            </MapView>
+          </>
         ) : (
           <Text style={styles.mapPlaceholderText}>
             {locationPermission ? t('getting_location') : t('vehicle_required')}
@@ -3278,6 +3602,42 @@ export default function DashboardScreen() {
             {t('restricted_offers_active')}
             {restrictedOffersUntil ? ` (${restrictedOffersUntil.toLocaleTimeString()})` : ''}
           </Text>
+        </View>
+      )}
+
+      {driverOnline && !activeRide && smartAlerts.length > 0 && (
+        <View style={styles.smartAlertsContainer}>
+          <Text style={styles.smartAlertsTitle}>{t('smart_alerts_title')}</Text>
+          {smartAlerts.map((alert) => {
+            const accent =
+              alert.severity === 'high' ? '#dc2626' : alert.severity === 'medium' ? '#d97706' : '#0ea5e9';
+
+            const lightBackground =
+              alert.severity === 'high'
+                ? 'rgba(254, 226, 226, 0.95)'
+                : alert.severity === 'medium'
+                  ? 'rgba(255, 247, 237, 0.95)'
+                  : 'rgba(239, 246, 255, 0.95)';
+
+            return (
+              <View
+                key={alert.id}
+                style={[
+                  styles.smartAlertCard,
+                  {
+                    borderColor: accent,
+                    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.94)' : lightBackground,
+                  },
+                ]}
+              >
+                <Text style={styles.smartAlertIcon}>{alert.icon}</Text>
+                <View style={styles.smartAlertTextWrap}>
+                  <Text style={[styles.smartAlertHeading, { color: accent }]}>{t(alert.titleKey)}</Text>
+                  <Text style={styles.smartAlertBody}>{t(alert.bodyKey, alert.values || {})}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -4746,6 +5106,54 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
     textAlign: 'center',
     fontSize: 12,
     fontWeight: '700',
+  },
+  smartAlertsContainer: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 238,
+    zIndex: 1002,
+  },
+  smartAlertsTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    marginBottom: 6,
+  },
+  smartAlertCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    flexDirection: isRTL ? 'row-reverse' : 'row',
+    alignItems: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  smartAlertIcon: {
+    fontSize: 16,
+    marginRight: isRTL ? 0 : 8,
+    marginLeft: isRTL ? 8 : 0,
+    marginTop: 1,
+  },
+  smartAlertTextWrap: {
+    flex: 1,
+  },
+  smartAlertHeading: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 2,
+    textAlign: isRTL ? 'right' : 'left',
+  },
+  smartAlertBody: {
+    fontSize: 11,
+    color: isDarkMode ? '#e2e8f0' : '#334155',
+    lineHeight: 15,
+    textAlign: isRTL ? 'right' : 'left',
   },
   cancelRideButton: {
     backgroundColor: '#dc3545',

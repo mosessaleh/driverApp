@@ -5,8 +5,9 @@ import { useRouter } from 'expo-router';
 import { getAnalytics } from '../src/services/api';
 import { useTranslation } from '../src/hooks/useTranslation';
 import { onRideOffer, offRideOffer } from '../src/services/socket';
-import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
+import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
+import { buildRatingRecommendations } from '../src/features/driverIntelligence';
 
 const { width } = Dimensions.get('window');
 
@@ -136,6 +137,24 @@ export default function AnalyticsScreen() {
   }
 
   const { summary, charts, insights } = analytics;
+  const averageRating = Number(summary?.averageRating ?? 0);
+  const acceptanceRate = Number(summary?.acceptanceRate ?? 0);
+  const completionRate = Number(summary?.completionRate ?? 0);
+  const peakHours: string[] = Array.isArray(insights?.peakHours)
+    ? insights.peakHours.map((entry: any) => entry?.hour).filter((hour: any) => typeof hour === 'string')
+    : [];
+  const topArea =
+    Array.isArray(insights?.topPickupAreas) && insights.topPickupAreas.length > 0
+      ? insights.topPickupAreas[0]?.area
+      : undefined;
+
+  const ratingRecommendations = buildRatingRecommendations({
+    averageRating,
+    completionRate,
+    acceptanceRate,
+    peakHours,
+    topArea,
+  });
 
   return (
     <View style={styles.container}>
@@ -179,6 +198,42 @@ export default function AnalyticsScreen() {
             <Text style={styles.summaryValue}>{summary.averageRating}</Text>
             <Text style={styles.summaryLabel}>{t('rating')}</Text>
           </View>
+        </View>
+
+        {/* Driver Rating Center */}
+        <View style={styles.ratingCenterCard}>
+          <View style={styles.ratingCenterHeader}>
+            <View style={styles.ratingCenterIconWrap}>
+              <Ionicons name="star-half" size={20} color="#f59e0b" />
+            </View>
+            <View style={styles.ratingCenterHeaderTextWrap}>
+              <Text style={styles.ratingCenterTitle}>{t('rating_center_title')}</Text>
+              <Text style={styles.ratingCenterSubtitle}>{t('rating_center_subtitle', { target: '4.8' })}</Text>
+            </View>
+          </View>
+
+          <View style={styles.ratingMetricsRow}>
+            <View style={styles.ratingMetricItem}>
+              <Text style={styles.ratingMetricValue}>{averageRating.toFixed(1)}</Text>
+              <Text style={styles.ratingMetricLabel}>{t('rating')}</Text>
+            </View>
+            <View style={styles.ratingMetricItem}>
+              <Text style={styles.ratingMetricValue}>{Math.round(acceptanceRate)}%</Text>
+              <Text style={styles.ratingMetricLabel}>{t('analytics_acceptance_rate')}</Text>
+            </View>
+            <View style={styles.ratingMetricItem}>
+              <Text style={styles.ratingMetricValue}>{Math.round(completionRate)}%</Text>
+              <Text style={styles.ratingMetricLabel}>{t('analytics_completion_rate')}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.ratingRecommendationsTitle}>{t('rating_recommendations_title')}</Text>
+          {ratingRecommendations.map((recommendation, index) => (
+            <View key={`rating-recommendation-${recommendation.key}-${index}`} style={styles.ratingRecommendationRow}>
+              <Text style={styles.ratingRecommendationIndex}>{index + 1}</Text>
+              <Text style={styles.ratingRecommendationText}>{t(recommendation.key, recommendation.values || {})}</Text>
+            </View>
+          ))}
         </View>
 
         {/* Daily Earnings Chart */}
@@ -351,6 +406,100 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6c757d',
     marginTop: 4,
+  },
+  ratingCenterCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  ratingCenterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  ratingCenterIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ratingCenterHeaderTextWrap: {
+    flex: 1,
+  },
+  ratingCenterTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  ratingCenterSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  ratingMetricsRow: {
+    flexDirection: 'row',
+    marginBottom: 14,
+    gap: 8,
+  },
+  ratingMetricItem: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  ratingMetricValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  ratingMetricLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  ratingRecommendationsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  ratingRecommendationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 7,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  ratingRecommendationIndex: {
+    width: 20,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2563eb',
+    marginTop: 1,
+  },
+  ratingRecommendationText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#334155',
+    fontWeight: '500',
   },
   chartContainer: {
     backgroundColor: '#fff',
