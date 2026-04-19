@@ -46,3 +46,14 @@ assets/*.json
 # generated native folders
 /ios
 /android
+
+# non-project audit list (local only)
+NON_PROJECT_FILES_TO_IGNORE.md
+
+# test files not required for production app upload
+__tests__/
+**/*.test.ts
+**/*.test.tsx
+jest.config.js
+jest.setup.js
+scripts/run-tests.js

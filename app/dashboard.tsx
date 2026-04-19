@@ -2694,6 +2694,22 @@ export default function DashboardScreen() {
                 activeOpacity={0.85}
                 onPress={() => {
                   setShowMenu(false);
+                  router.push('/shifts');
+                }}
+              >
+                <View style={styles.menuItemIconWrap}>
+                  <Text style={styles.menuItemIcon}>🕒</Text>
+                </View>
+                <Text style={styles.menuItemText}>{t('completed_shifts')}</Text>
+                <Text style={styles.menuItemArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            )}
+            {!activeRide && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowMenu(false);
                   router.push('/upcoming');
                 }}
               >

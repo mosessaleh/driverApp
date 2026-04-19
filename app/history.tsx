@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDriverHistory } from '../src/services/api';
 import { offRideOffer, onRideOffer } from '../src/services/socket';
@@ -39,6 +39,14 @@ type QuickFilterKey = 'today' | 'thisWeek' | 'allTime' | 'custom';
 type DateRange = {
   startDate?: string;
   endDate?: string;
+};
+
+type ShiftWindow = {
+  startMs: number;
+  endMs: number;
+  startIso: string;
+  endIso: string;
+  shiftId?: string;
 };
 
 const MAX_RETRIES = 3;
@@ -93,9 +101,23 @@ const parseDateInput = (value: string): { iso?: string; isValid: boolean } => {
   return { isValid: false };
 };
 
+const getSingleParam = (value: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+};
+
 export default function HistoryScreen() {
   const { authState } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    fromShift?: string | string[];
+    shiftId?: string | string[];
+    shiftStart?: string | string[];
+    shiftEnd?: string | string[];
+  }>();
   const { t, getCurrentLanguage } = useTranslation();
 
   const [rides, setRides] = useState<RideItem[]>([]);
@@ -106,10 +128,12 @@ export default function HistoryScreen() {
   const [endDate, setEndDate] = useState('');
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeQuickFilter, setActiveQuickFilter] = useState<QuickFilterKey>('allTime');
+  const [activeShiftWindow, setActiveShiftWindow] = useState<ShiftWindow | null>(null);
 
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const appliedRangeRef = useRef<DateRange>({});
+  const shiftWindowRef = useRef<ShiftWindow | null>(null);
 
   const language = getCurrentLanguage();
   const locale = language === 'ar' ? 'ar-EG' : language === 'da' ? 'da-DK' : 'en-GB';
@@ -141,8 +165,27 @@ export default function HistoryScreen() {
         if (!isMountedRef.current) return;
 
         if (response.ok && Array.isArray(response.rides)) {
-          setRides(response.rides);
-          setSummary(response.summary || { totalRides: 0, totalAmount: 0 });
+          const currentShiftWindow = shiftWindowRef.current;
+          const filteredRides = currentShiftWindow
+            ? response.rides.filter((ride: RideItem) => {
+                const createdAtMs = new Date(ride.createdAt || '').getTime();
+                if (!Number.isFinite(createdAtMs)) return false;
+                return createdAtMs >= currentShiftWindow.startMs && createdAtMs <= currentShiftWindow.endMs;
+              })
+            : response.rides;
+
+          const computedSummary = currentShiftWindow
+            ? {
+                totalRides: filteredRides.length,
+                totalAmount: filteredRides.reduce((sum: number, ride: RideItem) => {
+                  const price = Number(ride.price ?? 0);
+                  return sum + (Number.isFinite(price) ? price : 0);
+                }, 0),
+              }
+            : response.summary || { totalRides: 0, totalAmount: 0 };
+
+          setRides(filteredRides);
+          setSummary(computedSummary);
           return;
         }
 
@@ -202,6 +245,51 @@ export default function HistoryScreen() {
       return () => {};
     }, [authState.token, loadHistory])
   );
+
+  useEffect(() => {
+    const fromShift = getSingleParam(params.fromShift);
+    const shiftId = getSingleParam(params.shiftId);
+    const shiftStart = getSingleParam(params.shiftStart);
+    const shiftEnd = getSingleParam(params.shiftEnd);
+
+    if (fromShift === '1' && shiftStart && shiftEnd) {
+      const startMs = new Date(shiftStart).getTime();
+      const endMs = new Date(shiftEnd).getTime();
+
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+        const shiftWindow: ShiftWindow = {
+          startMs,
+          endMs,
+          startIso: new Date(startMs).toISOString(),
+          endIso: new Date(endMs).toISOString(),
+          shiftId,
+        };
+
+        shiftWindowRef.current = shiftWindow;
+        setActiveShiftWindow(shiftWindow);
+
+        const range: DateRange = {
+          startDate: formatLocalDate(new Date(startMs)),
+          endDate: formatLocalDate(new Date(endMs)),
+        };
+
+        appliedRangeRef.current = range;
+        setStartDate(formatDateForInput(new Date(startMs)));
+        setEndDate(formatDateForInput(new Date(endMs)));
+        setActiveQuickFilter('custom');
+        setFilterVisible(false);
+
+        if (authState.token) {
+          loadHistory(range);
+        }
+
+        return;
+      }
+    }
+
+    shiftWindowRef.current = null;
+    setActiveShiftWindow(null);
+  }, [authState.token, loadHistory, params.fromShift, params.shiftEnd, params.shiftId, params.shiftStart]);
 
   const onRefreshData = useCallback(async () => {
     setRefreshing(true);
@@ -332,13 +420,25 @@ export default function HistoryScreen() {
     const nextRange = validateFilterInputs();
     if (!nextRange) return;
 
+    if (shiftWindowRef.current) {
+      shiftWindowRef.current = null;
+      setActiveShiftWindow(null);
+      router.replace('/history');
+    }
+
     appliedRangeRef.current = nextRange;
     setActiveQuickFilter(nextRange.startDate || nextRange.endDate ? 'custom' : 'allTime');
     setFilterVisible(false);
     await loadHistory(nextRange);
-  }, [loadHistory, validateFilterInputs]);
+  }, [loadHistory, router, validateFilterInputs]);
 
   const handleClearFilter = useCallback(async () => {
+    if (shiftWindowRef.current) {
+      shiftWindowRef.current = null;
+      setActiveShiftWindow(null);
+      router.replace('/history');
+    }
+
     setStartDate('');
     setEndDate('');
     setActiveQuickFilter('allTime');
@@ -346,7 +446,21 @@ export default function HistoryScreen() {
 
     appliedRangeRef.current = {};
     await loadHistory({});
-  }, [loadHistory]);
+  }, [loadHistory, router]);
+
+  const handleShowAllHistory = useCallback(async () => {
+    shiftWindowRef.current = null;
+    setActiveShiftWindow(null);
+
+    setStartDate('');
+    setEndDate('');
+    setActiveQuickFilter('allTime');
+    setFilterVisible(false);
+
+    appliedRangeRef.current = {};
+    router.replace('/history');
+    await loadHistory({});
+  }, [loadHistory, router]);
 
   const goBack = useCallback(() => {
     router.back();
@@ -479,6 +593,24 @@ export default function HistoryScreen() {
                 <Text style={styles.summaryValue}>{formatAmount(summary.totalAmount)} DKK</Text>
               </View>
             </View>
+
+            {activeShiftWindow ? (
+              <View style={styles.shiftFilterBanner}>
+                <View style={styles.shiftFilterBannerTextWrap}>
+                  <Text style={styles.shiftFilterBannerTitle}>
+                    {t('history_shift_filter_label', { shiftId: activeShiftWindow.shiftId || '--' })}
+                  </Text>
+                  <Text style={styles.shiftFilterBannerSubtitle}>{t('history_shift_filter_active')}</Text>
+                  <Text style={styles.shiftFilterBannerRange}>
+                    {formatDate(activeShiftWindow.startIso)} • {formatTime(activeShiftWindow.startIso)} - {formatDate(activeShiftWindow.endIso)} • {formatTime(activeShiftWindow.endIso)}
+                  </Text>
+                </View>
+
+                <TouchableOpacity style={styles.shiftFilterBannerAction} onPress={handleShowAllHistory}>
+                  <Text style={styles.shiftFilterBannerActionText}>{t('history_show_all')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             {filterVisible ? (
               <View style={styles.filterContainer}>
@@ -642,6 +774,48 @@ const styles = StyleSheet.create({
   },
   summaryGap: {
     width: 10,
+  },
+  shiftFilterBanner: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  shiftFilterBannerTextWrap: {
+    flex: 1,
+    marginRight: 10,
+  },
+  shiftFilterBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1e3a8a',
+    marginBottom: 2,
+  },
+  shiftFilterBannerSubtitle: {
+    fontSize: 12,
+    color: '#1d4ed8',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  shiftFilterBannerRange: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  shiftFilterBannerAction: {
+    borderRadius: 10,
+    backgroundColor: '#1d4ed8',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  shiftFilterBannerActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
   },
   summaryLabel: {
     fontSize: 12,

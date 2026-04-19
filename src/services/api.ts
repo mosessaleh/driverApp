@@ -295,6 +295,15 @@ export const getDriverHistory = async (token: string, startDate?: string, endDat
   return api.get(`/api/driver/history${query}`, token);
 };
 
+export const getDriverCompletedShifts = async (token: string, limit: number = 120) => {
+  const params = new URLSearchParams();
+  if (Number.isFinite(limit) && limit > 0) {
+    params.append('limit', String(Math.trunc(limit)));
+  }
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return api.get(`/api/driver/shifts${query}`, token);
+};
+
 export const getDriverUpcoming = async (token: string) => {
   return api.get('/api/driver/upcoming', token);
 };
