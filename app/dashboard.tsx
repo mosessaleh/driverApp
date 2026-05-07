@@ -2349,7 +2349,6 @@ export default function DashboardScreen() {
     };
 
     sendMessage(activeRide.id, message.message, message.sender);
-    setChatMessages(prev => [...prev, message]);
     setChatInput('');
   };
 
@@ -2363,7 +2362,6 @@ export default function DashboardScreen() {
     };
 
     sendMessage(activeRide.id, message.message, message.sender);
-    setChatMessages(prev => [...prev, message]);
   };
 
   const getStatusText = () => {

@@ -15,7 +15,23 @@ import {
   isDriverLoginSuccessResponse,
 } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
-import { migrateLegacyAuthToken, removeAuthToken, setAuthToken } from '../services/secureStorage';
+import {
+  migrateLegacyAuthToken,
+  migrateLegacyAuthUser,
+  migrateLegacyPushToken,
+  migrateLegacyRestrictedOffers,
+  migrateLegacyRestrictedOffersUntil,
+  removeAuthToken,
+  removeStoredPushToken,
+  removeStoredRestrictedOffers,
+  removeStoredRestrictedOffersUntil,
+  removeStoredAuthUser,
+  setAuthToken,
+  setStoredAuthUser,
+  setStoredPushToken,
+  setStoredRestrictedOffers,
+  setStoredRestrictedOffersUntil
+} from '../services/secureStorage';
 import { LOCATION_BACKGROUND_TASK, SOCKET_BACKGROUND_TASK } from '../tasks/socketBackgroundTask';
 
 type LoginOptions = {
@@ -102,9 +118,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadAuthState = async () => {
       try {
         const token = await migrateLegacyAuthToken();
-        const userStr = await AsyncStorage.getItem('user');
-        const restrictedOffersStr = await AsyncStorage.getItem('restrictedOffers');
-        const restrictedOffersUntil = await AsyncStorage.getItem('restrictedOffersUntil');
+        const userStr = await migrateLegacyAuthUser();
+        const restrictedOffersStr = await migrateLegacyRestrictedOffers();
+        const restrictedOffersUntil = await migrateLegacyRestrictedOffersUntil();
         const restrictedOffers = restrictedOffersStr === 'true';
         if (token && userStr) {
           const user = JSON.parse(userStr);
@@ -122,18 +138,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else {
               // No active shift, clear stored data
               await removeAuthToken();
-              await AsyncStorage.removeItem('user');
-              await AsyncStorage.removeItem('restrictedOffers');
-              await AsyncStorage.removeItem('restrictedOffersUntil');
+              await removeStoredAuthUser();
+              await removeStoredRestrictedOffers();
+              await removeStoredRestrictedOffersUntil();
               setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
             }
           } catch (error) {
             console.error('Token validation failed:', error);
             // Clear invalid stored data
             await removeAuthToken();
-            await AsyncStorage.removeItem('user');
-            await AsyncStorage.removeItem('restrictedOffers');
-            await AsyncStorage.removeItem('restrictedOffersUntil');
+            await removeStoredAuthUser();
+            await removeStoredRestrictedOffers();
+            await removeStoredRestrictedOffersUntil();
             setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
           }
         } else {
@@ -175,12 +191,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const registerForPushNotifications = async () => {
       if (!authState.token) return;
 
-      console.log('App ownership:', Constants.appOwnership);
-      console.log('Expo Go check:', Constants.appOwnership === 'expo' ? 'Running in Expo Go' : 'Not Expo Go');
-
       // Skip push notifications in Expo Go as they are not supported in SDK 54+
       if (Constants.appOwnership === 'expo') {
-        console.log('Skipping push notifications in Expo Go');
         return;
       }
 
@@ -199,15 +211,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const tokenData = await getExpoPushTokenAsync();
         const pushToken = tokenData.data;
 
-        const storedPushToken = await AsyncStorage.getItem('expoPushToken');
+        const storedPushToken = await migrateLegacyPushToken();
         if (storedPushToken === pushToken) {
           return;
         }
 
         // Send push token to server
         await updatePushToken(pushToken, authState.token);
-        await AsyncStorage.setItem('expoPushToken', pushToken);
-        console.log('Push token registered successfully');
+        await setStoredPushToken(pushToken);
       } catch (error) {
         // Push notifications may not be available
         console.warn('Push notifications not available:', error instanceof Error ? error.message : String(error));
@@ -223,10 +234,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!nextToken) return;
 
       try {
-        const currentStored = await AsyncStorage.getItem('expoPushToken');
+        const currentStored = await migrateLegacyPushToken();
         if (currentStored === nextToken) return;
         await updatePushToken(nextToken, authState.token);
-        await AsyncStorage.setItem('expoPushToken', nextToken);
+        await setStoredPushToken(nextToken);
       } catch (error) {
         console.warn('Failed to update rotated push token:', error);
       }
@@ -269,13 +280,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           schedule: response.schedule || null
         };
         await setAuthToken(response.token);
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
+        await setStoredAuthUser(JSON.stringify(userData));
         await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
-        await AsyncStorage.setItem('restrictedOffers', restrictedOffers ? 'true' : 'false');
+        await setStoredRestrictedOffers(restrictedOffers ? 'true' : 'false');
         if (restrictedOffersUntil) {
-          await AsyncStorage.setItem('restrictedOffersUntil', String(restrictedOffersUntil));
+          await setStoredRestrictedOffersUntil(String(restrictedOffersUntil));
         } else {
-          await AsyncStorage.removeItem('restrictedOffersUntil');
+          await removeStoredRestrictedOffersUntil();
         }
         setAuthState({
           user: userData,
@@ -303,11 +314,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Server logout failed:', error);
     }
     await removeAuthToken();
-    await AsyncStorage.removeItem('user');
+    await removeStoredAuthUser();
     await AsyncStorage.removeItem('vehicleTypeId');
-    await AsyncStorage.removeItem('expoPushToken');
-    await AsyncStorage.removeItem('restrictedOffers');
-    await AsyncStorage.removeItem('restrictedOffersUntil');
+    await removeStoredPushToken();
+    await removeStoredRestrictedOffers();
+    await removeStoredRestrictedOffersUntil();
     await unregisterBackgroundTasks();
     setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
   };

@@ -2,6 +2,7 @@ import io, { Socket } from 'socket.io-client';
 import { jwtDecode } from 'jwt-decode';
 import * as Location from 'expo-location';
 import { getApiBaseUrl } from '../config/network';
+import { devLog, devWarn } from '../config/security';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -107,10 +108,10 @@ const startLocationUpdates = (driverId: number) => {
 
       if (socket && socket.connected) {
         socket.emit('updateLocation', { driverId, location: locationData });
-        console.log('Location updated via socket:', locationData);
+        devLog('Location updated via socket');
       }
     } catch (error) {
-      console.error('Error updating location via socket:', error);
+      devWarn('Error updating location via socket:', error);
     }
   }, 30000);
 };
@@ -123,7 +124,7 @@ const joinDriverRoom = () => {
     const driverId = Number(decoded?.driverId ?? decoded?.id);
 
     if (!Number.isFinite(driverId) || driverId <= 0) {
-      console.error('driverId not found in token payload');
+      devWarn('driverId not found in token payload');
       return;
     }
 
@@ -133,10 +134,10 @@ const joinDriverRoom = () => {
       location: currentJoinLocation,
     });
 
-    console.log('Joined driver room:', driverId, 'with vehicle type:', currentVehicleTypeId);
+    devLog('Joined driver room:', driverId, 'with vehicle type:', currentVehicleTypeId);
     startLocationUpdates(driverId);
   } catch (error) {
-    console.error('Error decoding token for socket join:', error);
+    devWarn('Error decoding token for socket join:', error);
   }
 };
 
@@ -158,7 +159,7 @@ const scheduleReconnect = () => {
 
     if (!shouldReconnect || !currentToken) return;
 
-    console.log(`Reconnecting socket (attempt ${reconnectAttempts})...`);
+    devLog(`Reconnecting socket (attempt ${reconnectAttempts})...`);
 
     if (!socket) {
       // سيتم إنشاء السوكيت من connectSocket لاحقاً
@@ -187,7 +188,7 @@ const createSocket = () => {
   attachPersistentListeners(newSocket);
 
   newSocket.on('connect', () => {
-    console.log('Socket connected successfully');
+    devLog('Socket connected successfully');
     reconnectAttempts = 0;
     isReconnecting = false;
 
@@ -200,12 +201,12 @@ const createSocket = () => {
   });
 
   newSocket.on('connect_error', (err) => {
-    console.error('Socket connect_error:', err?.message || err);
+    devWarn('Socket connect_error:', err?.message || err);
     scheduleReconnect();
   });
 
   newSocket.on('disconnect', (reason) => {
-    console.log('Disconnected from socket:', reason);
+    devLog('Disconnected from socket:', reason);
     stopLocationUpdates();
 
     if (shouldReconnect && reason !== 'io client disconnect') {
