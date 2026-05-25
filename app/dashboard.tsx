@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState, Alert, BackHandler } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+// Load react-native-maps dynamically only on native builds to avoid native module init in Expo Go
+// (we'll require it inside the component when needed)
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule, normalizeScheduledPendingOffers } from '../src/services/api';
+import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule, normalizeScheduledPendingOffers, getDriverHistory } from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
 import type { DriverStatus } from '../src/components/StatusBar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,7 +19,13 @@ import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
 import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate, getSocket } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
-import { devLog, requireGoogleMapsApiKey } from '../src/config/security';
+import {
+  devLog,
+  getGoogleMapsApiKey,
+  requireGoogleMapsApiKey,
+} from '../src/config/security';
+import MapPlaceholder from './components/MapPlaceholder';
+import LastRidesList from './components/LastRidesList';
 import {
   buildSmartAlerts,
   type NetworkMode,
@@ -60,6 +68,7 @@ export default function DashboardScreen() {
     const { settings, isDarkMode, isRTL } = useSettings();
     const { t, getCurrentLanguage } = useTranslation();
     const router = useRouter();
+    const googleMapsApiKey = getGoogleMapsApiKey();
     const [driverOnline, setDriverOnline] = useState(false);
     const [driverBusy, setDriverBusy] = useState(false);
     const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
@@ -107,10 +116,39 @@ export default function DashboardScreen() {
    const beepSoundRef = useRef<any>(null);
    const isAudioModeReadyRef = useRef(false);
    const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
+  const [recentRides, setRecentRides] = useState<any[]>([]);
    const [pendingScheduledOffers, setPendingScheduledOffers] = useState<ScheduledPendingOffer[]>([]);
    const [scheduledNow, setScheduledNow] = useState(Date.now());
    const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
    const latestLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
+  const loadRecentRides = async (retryCount = 0) => {
+    if (!authState.token) return;
+    try {
+      const endDate = new Date();
+      const startDate = new Date(endDate.getTime() - 180 * 24 * 60 * 60 * 1000);
+      const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+      const response = await getDriverHistory(
+        authState.token,
+        formatDate(startDate),
+        formatDate(endDate),
+        true
+      );
+
+      if (response && response.ok && Array.isArray(response.rides)) {
+        setRecentRides(response.rides.slice(0, 6));
+      } else {
+        console.warn('Driver history response did not include rides:', response);
+        setRecentRides([]);
+      }
+    } catch (error) {
+      console.error('Error loading recent rides:', error);
+      if (retryCount < 2) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => loadRecentRides(retryCount + 1), delay);
+      }
+    }
+  };
    const nextScheduledRideRef = useRef<any>(null);
    const pendingScheduledOffersRef = useRef<ScheduledPendingOffer[]>([]);
    const [showChat, setShowChat] = useState(false);
@@ -517,7 +555,7 @@ export default function DashboardScreen() {
   });
 
   // Map ref for animating to location
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     ensureAudioMode();
@@ -712,7 +750,9 @@ export default function DashboardScreen() {
           console.error('Error reading offline queue during auth bootstrap:', error);
         });
 
-      getCurrentLocation();
+      setTimeout(() => {
+        getCurrentLocation();
+      }, 1200);
 
       // Set shift start time from user data if available
       if (authState.user?.shiftStartTime) {
@@ -725,6 +765,7 @@ export default function DashboardScreen() {
         await new Promise(resolve => setTimeout(resolve, 1000));
         await loadDriverStatus();
         await loadUpcomingRides();
+        await loadRecentRides();
         await flushQueuedLocations();
       };
       loadInitialStatus();
@@ -1050,8 +1091,9 @@ export default function DashboardScreen() {
             loadDriverStatus();
           }
           loadUpcomingRides();
+          loadRecentRides();
         }
-      }, 30000); // Check every 30 seconds
+      }, 15000); // Check every 15 seconds
 
       return () => {
         stopLocationTracking();
@@ -1098,6 +1140,7 @@ export default function DashboardScreen() {
         await flushQueuedLocations();
         await loadDriverStatus();
         await loadUpcomingRides();
+        await loadRecentRides();
       } catch (error) {
         console.error('Failed to refresh dashboard after app became active:', error);
       }
@@ -2109,7 +2152,17 @@ export default function DashboardScreen() {
     waypoint?: { lat: number; lng: number } | null
   ) => {
     try {
-      const googleMapsApiKey = requireGoogleMapsApiKey('DriverApp dashboard fetchDirections');
+      const googleMapsApiKey = getGoogleMapsApiKey();
+      if (!googleMapsApiKey) {
+        devLog('Google Maps API key unavailable for fetchDirections in DriverApp dashboard');
+        const fallbackCoordinates = [
+          { latitude: origin.lat, longitude: origin.lng },
+          ...(waypoint ? [{ latitude: waypoint.lat, longitude: waypoint.lng }] : []),
+          { latitude: destination.lat, longitude: destination.lng },
+        ];
+        setRouteCoordinates(fallbackCoordinates);
+        return;
+      }
       const waypointParam = waypoint ? `&waypoints=${waypoint.lat},${waypoint.lng}` : '';
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}${waypointParam}&mode=driving&key=${encodeURIComponent(googleMapsApiKey)}`;
       const response = await fetch(url);
@@ -2821,142 +2874,17 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Map View - Full Screen */}
-      <View style={styles.mapContainer}>
-        {currentLocation ? (
-          <>
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider="google"
-              initialRegion={{
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              showsUserLocation={true}
-              followsUserLocation={isTracking}
-            >
-              {activeRide && showPickupModal && (
-                <>
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.startLatLon.lat,
-                      longitude: activeRide.startLatLon.lon,
-                    }}
-                    title={t('pickup_marker_title')}
-                    pinColor="green"
-                  />
-                  {routeCoordinates.length > 0 && (
-                    <Polyline
-                      coordinates={routeCoordinates}
-                      strokeColor="#007bff"
-                      strokeWidth={3}
-                    />
-                  )}
-                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
-                    <Marker
-                      coordinate={{
-                        latitude: activeRide.stopLatLon.lat,
-                        longitude: activeRide.stopLatLon.lon,
-                      }}
-                      title={t('stop')}
-                      pinColor="#f59e0b"
-                    />
-                  )}
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.endLatLon.lat,
-                      longitude: activeRide.endLatLon.lon,
-                    }}
-                    title={t('dropoff_marker_title')}
-                    pinColor="red"
-                  />
-                </>
-              )}
-              {activeRide && showStopModal && (
-                <>
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.startLatLon.lat,
-                      longitude: activeRide.startLatLon.lon,
-                    }}
-                    title={t('pickup_marker_title')}
-                    pinColor="green"
-                  />
-                  {routeCoordinates.length > 0 && (
-                    <Polyline
-                      coordinates={routeCoordinates}
-                      strokeColor="#007bff"
-                      strokeWidth={3}
-                    />
-                  )}
-                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
-                    <Marker
-                      coordinate={{
-                        latitude: activeRide.stopLatLon.lat,
-                        longitude: activeRide.stopLatLon.lon,
-                      }}
-                      title={t('stop')}
-                      pinColor="#f59e0b"
-                    />
-                  )}
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.endLatLon.lat,
-                      longitude: activeRide.endLatLon.lon,
-                    }}
-                    title={t('dropoff_marker_title')}
-                    pinColor="red"
-                  />
-                </>
-              )}
-              {activeRide && showDropoffModal && (
-                <>
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.startLatLon.lat,
-                      longitude: activeRide.startLatLon.lon,
-                    }}
-                    title={t('pickup_marker_title')}
-                    pinColor="green"
-                  />
-                  {routeCoordinates.length > 0 && (
-                    <Polyline
-                      coordinates={routeCoordinates}
-                      strokeColor="#007bff"
-                      strokeWidth={3}
-                    />
-                  )}
-                  {activeRide.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number' && (
-                    <Marker
-                      coordinate={{
-                        latitude: activeRide.stopLatLon.lat,
-                        longitude: activeRide.stopLatLon.lon,
-                      }}
-                      title={t('stop')}
-                      pinColor="#f59e0b"
-                    />
-                  )}
-                  <Marker
-                    coordinate={{
-                      latitude: activeRide.endLatLon.lat,
-                      longitude: activeRide.endLatLon.lon,
-                    }}
-                    title={t('dropoff_marker_title')}
-                    pinColor="red"
-                  />
-                </>
-              )}
-            </MapView>
-          </>
-        ) : (
-          <Text style={styles.mapPlaceholderText}>
-            {locationPermission ? t('getting_location') : t('vehicle_required')}
-          </Text>
-        )}
-
+      {/* Compact recent rides box */}
+      <View style={[styles.mapContainer, { padding: 12 }]}> 
+        <LastRidesList
+          rides={recentRides.map(r => ({
+            id: r.id,
+            startTime: r.createdAt || r.pickupTime || undefined,
+            from: r.pickupAddress || r.startName || 'Unknown',
+            to: r.dropoffAddress || r.stopAddress || r.endName || 'Unknown',
+            price: r.price ?? r.fare ?? undefined,
+          }))}
+        />
       </View>
 
       {/* End KM Modal */}
@@ -3887,13 +3815,35 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
   },
   mapContainer: {
     position: 'absolute',
-    top: 40,
+    top: 140,
     left: 0,
     right: 0,
-    bottom: 0,
+    minHeight: 300,
+    maxHeight: 440,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.96)' : '#f8fafc',
+    borderRadius: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(148,163,184,0.12)' : '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 14,
+    zIndex: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+  },
+  mapDisabledContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? '#121212' : '#f0f0f0',
+    paddingHorizontal: 24,
   },
   map: {
     width: '100%',
@@ -3902,6 +3852,18 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolea
   mapPlaceholderText: {
     fontSize: 16,
     color: isDarkMode ? '#ccc' : '#666',
+    textAlign: 'center',
+  },
+  mapKeyLabel: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: isDarkMode ? '#e5e7eb' : '#111827',
+  },
+  mapKeyText: {
+    marginTop: 6,
+    fontSize: 13,
+    color: isDarkMode ? '#d1d5db' : '#4b5563',
     textAlign: 'center',
   },
   modalOverlay: {

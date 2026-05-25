@@ -52,8 +52,13 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({ user: null, token: null, isLoading: true, restrictedOffers: false, restrictedOffersUntil: null });
+  const DISABLE_BACKGROUND_TASKS = false;
 
   const registerBackgroundTasks = async () => {
+    if (DISABLE_BACKGROUND_TASKS) {
+      console.warn('Background tasks temporarily disabled for debugging.');
+      return;
+    }
     if (Constants.appOwnership === 'expo') {
       return;
     }
@@ -78,6 +83,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const hasLocationTask = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
       if (!hasLocationTask) {
+        const backgroundPermission = await Location.getBackgroundPermissionsAsync();
+        if (backgroundPermission.status !== 'granted') {
+          const requestedBackgroundPermission = await Location.requestBackgroundPermissionsAsync();
+          if (requestedBackgroundPermission.status !== 'granted') {
+            console.warn(
+              'Background location permission was not granted; skipping background location task registration.'
+            );
+            return;
+          }
+        }
+
         await Location.startLocationUpdatesAsync(LOCATION_BACKGROUND_TASK, {
           accuracy: Location.Accuracy.High,
           timeInterval: 30000,
@@ -91,6 +107,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const unregisterBackgroundTasks = async () => {
+    if (DISABLE_BACKGROUND_TASKS) {
+      console.warn('Background tasks temporarily disabled for debugging.');
+      return;
+    }
     if (Constants.appOwnership === 'expo') {
       return;
     }

@@ -99,6 +99,11 @@ module.exports = ({ config }) => {
   return {
     ...baseConfig,
     ...config,
+    extra: {
+      ...((baseConfig.extra || {})),
+      ...((config?.extra || {})),
+      ...(googleMapsApiKey ? { googleMapsApiKey } : {}),
+    },
     ios: {
       ...(baseConfig.ios || {}),
       ...(config?.ios || {}),

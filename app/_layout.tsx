@@ -55,16 +55,22 @@ export default function Layout() {
 
     // Request permissions for notifications
     const requestPermissions = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        devLog('Notification permissions not granted');
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          devLog('Notification permissions not granted');
+        }
+      } catch (error) {
+        console.warn('Failed to request notification permissions:', error);
       }
     };
 
     setupAndroidChannel().catch((error) => {
       console.warn('Failed to configure Android notification channel:', error);
     });
-    requestPermissions();
+    setTimeout(() => {
+      requestPermissions();
+    }, 1200);
 
     // Handle notification received while app is foreground
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
