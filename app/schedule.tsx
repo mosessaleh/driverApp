@@ -93,7 +93,15 @@ type ExceptionDraft = {
   note: string;
 };
 
-const FALLBACK_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const FALLBACK_DAY_NAME_KEYS = [
+  'weekday_sunday',
+  'weekday_monday',
+  'weekday_tuesday',
+  'weekday_wednesday',
+  'weekday_thursday',
+  'weekday_friday',
+  'weekday_saturday',
+] as const;
 const EXCEPTION_TYPES: ExceptionType[] = ['OFF', 'LEAVE', 'SICK', 'CUSTOM', 'EMERGENCY'];
 const LEGAL_MAX_DAILY_MINUTES = 11 * 60;
 
@@ -206,7 +214,7 @@ export default function DriverScheduleScreen() {
 
       return {
         dayOfWeek,
-        dayName: row?.dayName || FALLBACK_DAY_NAMES[dayOfWeek],
+        dayName: row?.dayName || t(FALLBACK_DAY_NAME_KEYS[dayOfWeek]),
         enabled: Boolean(selectedWindow),
         start,
         end,

@@ -53,6 +53,7 @@ const resources = {
       "upcoming_loading": "Loading upcoming rides...",
       "upcoming_no_rides": "No upcoming scheduled rides",
       "scheduled_ride_title": "Scheduled Ride",
+      "scheduled_pending_offers": "Pending offers",
       "scheduled_ride_time_label": "Scheduled time",
       "scheduled_countdown_label": "Time left",
       "driver_departure_time_label": "Departure time",
@@ -390,6 +391,13 @@ const resources = {
       "schedule_preferences_admin_only": "These limits are managed by admin and are shown here for reference only",
       "schedule_daily_max_hint": "Maximum allowed working window per day: {{hours}} hours (legal/admin policy)",
       "schedule_daily_max_exceeded": "Daily window cannot exceed {{hours}} hours",
+      "weekday_sunday": "Sunday",
+      "weekday_monday": "Monday",
+      "weekday_tuesday": "Tuesday",
+      "weekday_wednesday": "Wednesday",
+      "weekday_thursday": "Thursday",
+      "weekday_friday": "Friday",
+      "weekday_saturday": "Saturday",
     }
   },
   ar: {
@@ -442,6 +450,7 @@ const resources = {
       "upcoming_loading": "جارٍ تحميل الحجوزات القادمة...",
       "upcoming_no_rides": "لا توجد رحلات مؤجلة قادمة",
       "scheduled_ride_title": "رحلة مؤجلة",
+      "scheduled_pending_offers": "العروض المعلقة",
       "scheduled_ride_time_label": "موعد الرحلة",
       "scheduled_countdown_label": "الوقت المتبقي",
       "driver_departure_time_label": "وقت الانطلاق",
@@ -779,6 +788,13 @@ const resources = {
       "schedule_preferences_admin_only": "هذه الحدود يتم ضبطها من قبل الإدارة وهي للعرض فقط",
       "schedule_daily_max_hint": "أقصى نافذة دوام يومية مسموحة: {{hours}} ساعات (وفق السياسة القانونية/الإدارية)",
       "schedule_daily_max_exceeded": "لا يمكن أن تتجاوز نافذة الدوام اليومية {{hours}} ساعات",
+      "weekday_sunday": "الأحد",
+      "weekday_monday": "الاثنين",
+      "weekday_tuesday": "الثلاثاء",
+      "weekday_wednesday": "الأربعاء",
+      "weekday_thursday": "الخميس",
+      "weekday_friday": "الجمعة",
+      "weekday_saturday": "السبت",
     }
   },
   da: {
@@ -831,6 +847,7 @@ const resources = {
       "upcoming_loading": "Indlæser kommende ture...",
       "upcoming_no_rides": "Ingen kommende planlagte ture",
       "scheduled_ride_title": "Planlagt tur",
+      "scheduled_pending_offers": "Afventende tilbud",
       "scheduled_ride_time_label": "Planlagt tidspunkt",
       "scheduled_countdown_label": "Tid tilbage",
       "driver_departure_time_label": "Afgangstid",
@@ -1168,6 +1185,13 @@ const resources = {
       "schedule_preferences_admin_only": "Disse grænser administreres af admin og vises kun som reference",
       "schedule_daily_max_hint": "Maks tilladt dagligt arbejdsinterval: {{hours}} timer (lov/admin-politik)",
       "schedule_daily_max_exceeded": "Dagligt arbejdsinterval må ikke overstige {{hours}} timer",
+      "weekday_sunday": "Søndag",
+      "weekday_monday": "Mandag",
+      "weekday_tuesday": "Tirsdag",
+      "weekday_wednesday": "Onsdag",
+      "weekday_thursday": "Torsdag",
+      "weekday_friday": "Fredag",
+      "weekday_saturday": "Lørdag",
     }
   }
 };

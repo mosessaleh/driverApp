@@ -179,7 +179,7 @@ export default function UpcomingScreen() {
       >
         {pendingOffersWithMeta.length > 0 && (
           <View style={styles.sectionBlock}>
-            <Text style={styles.sectionTitle}>{t('scheduled_ride_title')} • Pending offers</Text>
+            <Text style={styles.sectionTitle}>{t('scheduled_ride_title')} • {t('scheduled_pending_offers')}</Text>
             {pendingOffersWithMeta.map(({ offer, remainingSec, urgencyColor }) => (
               <View key={`pending-${offer.rideId}`} style={[styles.offerCard, { borderLeftColor: urgencyColor }]}> 
                 <View style={styles.offerHeaderRow}>
