@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { useTranslation } from '../../src/hooks/useTranslation';
 
 type RideItem = {
   id?: number | string;
@@ -7,6 +8,7 @@ type RideItem = {
   from?: string;
   to?: string;
   price?: number | string;
+  status?: string;
 };
 
 type Props = {
@@ -66,7 +68,16 @@ function shortenAddress(address?: string) {
   return lastPart || cleaned;
 }
 
+function getStatusLabel(status: string | undefined, t: (key: string) => string) {
+  const normalized = String(status || '').toUpperCase();
+  if (['DISPATCHED', 'ONGOING', 'PICKED_UP', 'IN_PROGRESS'].includes(normalized)) return t('status_on_ride');
+  if (normalized === 'COMPLETED') return t('ride_status_completed');
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED') return t('ride_status_cancelled');
+  return status || '';
+}
+
 export default function LastRidesList({ rides, maxItems = 6 }: Props) {
+  const { t } = useTranslation();
   const data = rides ? rides.slice(0, maxItems) : [];
 
   return (
@@ -91,6 +102,19 @@ export default function LastRidesList({ rides, maxItems = 6 }: Props) {
           keyExtractor={(item, idx) => (item.id != null ? String(item.id) : String(idx))}
           renderItem={({ item, index }) => (
             <View style={[styles.row, index % 2 === 0 ? styles.rowEven : styles.rowOdd]}>
+              {!!getStatusLabel(item.status, t) && (
+                <Text
+                  style={[
+                    styles.statusText,
+                    ['DISPATCHED', 'ONGOING', 'PICKED_UP', 'IN_PROGRESS'].includes(String(item.status || '').toUpperCase())
+                      ? styles.statusTextActive
+                      : styles.statusTextMuted,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {getStatusLabel(item.status, t)}
+                </Text>
+              )}
               <Text style={styles.lineText} numberOfLines={1} ellipsizeMode="tail">
                 {formatTime(item.startTime)} • {shortenAddress(item.from)} → {shortenAddress(item.to)} • {item.price != null ? `${item.price} DKK` : '--'}
               </Text>
@@ -158,6 +182,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '500',
+  },
+  statusText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  statusTextActive: {
+    color: '#0369a1',
+  },
+  statusTextMuted: {
+    color: '#475569',
   },
   sep: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 0 },
 });

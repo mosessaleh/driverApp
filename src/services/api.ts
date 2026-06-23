@@ -291,12 +291,14 @@ export const getDriverHistory = async (
   token: string,
   startDate?: string,
   endDate?: string,
-  allDrivers: boolean = false
+  allDrivers: boolean = false,
+  includeActive: boolean = false
 ) => {
   const params = new URLSearchParams();
   if (startDate) params.append('startDate', startDate);
   if (endDate) params.append('endDate', endDate);
   if (allDrivers) params.append('all', 'true');
+  if (includeActive) params.append('includeActive', 'true');
   const query = params.toString() ? `?${params.toString()}` : '';
   return api.get(`/api/driver/history${query}`, token);
 };
