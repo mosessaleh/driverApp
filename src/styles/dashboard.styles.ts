@@ -1028,10 +1028,24 @@ StyleSheet.create({
    rideOfferMetaRow: {
      flexDirection: 'row',
      justifyContent: 'space-between',
-     gap: 10,
-     marginBottom: 14,
-   },
-   rideOfferMetaItem: {
+      gap: 10,
+      marginBottom: 14,
+    },
+    rideOfferEtaBanner: {
+      width: '100%',
+      backgroundColor: '#007AFF',
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 14,
+    },
+    rideOfferEtaBannerText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    rideOfferMetaItem: {
      flex: 1,
      backgroundColor: isDarkMode ? '#2a2a2a' : '#f8f9fa',
      borderRadius: 12,
@@ -1045,12 +1059,17 @@ StyleSheet.create({
      color: isDarkMode ? '#bbb' : '#666',
      marginBottom: 4,
    },
-   rideOfferMetaValue: {
-     fontSize: 16,
-     fontWeight: '700',
-     color: isDarkMode ? '#fff' : '#222',
-   },
-   rideOfferAddressBlock: {
+    rideOfferMetaValue: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: isDarkMode ? '#fff' : '#222',
+    },
+    rideOfferMetaValueHighlight: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#007AFF',
+    },
+    rideOfferAddressBlock: {
      backgroundColor: isDarkMode ? '#2a2a2a' : '#f8f9fa',
      borderRadius: 14,
      padding: 14,

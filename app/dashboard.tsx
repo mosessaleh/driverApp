@@ -1337,11 +1337,8 @@ export default function DashboardScreen() {
     if (activeRide && activeRide.id) {
       console.log('Joining chat room for ride:', activeRide.id);
       joinChat(activeRide.id);
-      // Clear previous chat messages when starting new ride
-      setChatMessages([]);
-      setUnreadMessagesCount(0);
     }
-  }, [activeRide]);
+  }, [activeRide?.id]);
 
   const loadDriverStatus = async (retryCount = 0) => {
     if (!authState.token) {
@@ -1432,6 +1429,8 @@ export default function DashboardScreen() {
           if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
             // Accepted, show pickup modal
             setActiveRide(ride);
+            setChatMessages([]);
+            setUnreadMessagesCount(0);
             setShowPickupModal(true);
             setShowStopModal(false);
             setShowDropoffModal(false);
@@ -1511,6 +1510,8 @@ export default function DashboardScreen() {
           } else if (ride.status === 'PICKED_UP') {
             // Picked up, show stop modal first if needed
             setActiveRide(ride);
+            setChatMessages([]);
+            setUnreadMessagesCount(0);
             setShowPickupModal(false);
             const hasStop = !!ride.stopAddress;
             let stopCompleted = false;
@@ -1959,7 +1960,7 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleDropoffConfirm = async () => {
+  const handleDropoffConfirm = async (meterPrice?: number) => {
     const rideId = activeRide?.id;
     if (!rideId) return;
     setShowStopModal(false);
@@ -1969,10 +1970,14 @@ export default function DashboardScreen() {
     }
     setIsDropoffLoading(true);
     try {
-      const res = await api.put(`/api/driver/rides/${rideId}/status`, {
+      const body: any = {
         status: 'COMPLETED',
         droppedAt: new Date().toISOString()
-      }, authState.token!);
+      };
+      if (meterPrice !== undefined && meterPrice > 0) {
+        body.meterPrice = meterPrice;
+      }
+      const res = await api.put(`/api/driver/rides/${rideId}/status`, body, authState.token!);
       if (res.ok) {
         setShowDropoffModal(false);
         setActiveRide(null);
@@ -2474,6 +2479,14 @@ export default function DashboardScreen() {
     return Math.max(1, Math.ceil(distanceKm * 2)); // ~30km/h average
   };
 
+  const formatMinutesHuman = (minutes: number): string => {
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}min`;
+  };
+
   useEffect(() => {
     if (!nextScheduledRide) {
       setScheduledEtaMinutes(null);
@@ -2544,6 +2557,9 @@ export default function DashboardScreen() {
   }, [liveRidePreview]);
 
   const pickupEtaMinutes = getPickupEtaMinutes();
+  const rideEtaMinutes = rideOffer?.rideData?.distanceKm
+    ? Math.max(1, Math.ceil((rideOffer.rideData.distanceKm || 0) * 2))
+    : null;
   const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
   const scheduledDepartureText = scheduledDepartureTime || t('not_available');
   const showScheduledInfoBar = !!nextScheduledRide;
@@ -2732,7 +2748,7 @@ export default function DashboardScreen() {
                     style={styles.callIconInModal}
                     onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
                   >
-                    <Text style={styles.callIconText}>ðŸ“ž</Text>
+                    <Text style={styles.callIconText}>📞</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2740,7 +2756,11 @@ export default function DashboardScreen() {
             <View style={styles.pickupInfoRow}>
               <View style={styles.pickupInfoCard}>
                 <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
-                <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+                {activeRide.paymentMethod === 'meter' ? (
+                  <Text style={[styles.pickupInfoValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+                ) : (
+                  <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+                )}
               </View>
               <View style={styles.pickupInfoCard}>
                 <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
@@ -2788,7 +2808,7 @@ export default function DashboardScreen() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.pickupChatButtonText}>ðŸ’¬ {t('chat')}</Text>
+                    <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
                     {unreadMessagesCount > 0 && (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
@@ -2851,7 +2871,7 @@ export default function DashboardScreen() {
               </Text>
               {cancelStep !== 'loading' && (
                 <TouchableOpacity onPress={closeCancelModal} style={styles.cancelModalCloseButton}>
-                  <Text style={styles.cancelModalCloseText}>âœ•</Text>
+                  <Text style={styles.cancelModalCloseText}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2868,7 +2888,7 @@ export default function DashboardScreen() {
                   
                   {/* Warning Banner */}
                   <View style={styles.cancelWarningBanner}>
-                    <Text style={styles.cancelWarningIcon}>âš ï¸</Text>
+                    <Text style={styles.cancelWarningIcon}>⚠️</Text>
                     <Text style={styles.cancelWarningText}>{t('cancel_ride_warning')}</Text>
                   </View>
 
@@ -2891,12 +2911,12 @@ export default function DashboardScreen() {
                   {/* Reason Options */}
                   <View style={styles.cancelReasonsList}>
                     {[
-                      { key: 'passenger_no_show', icon: 'ðŸ‘¤', color: '#dc3545' },
-                      { key: 'car_problem', icon: 'ðŸš—', color: '#fd7e14' },
-                      { key: 'traffic_issue', icon: 'ðŸš¦', color: '#ffc107' },
-                      { key: 'wrong_address', icon: 'ðŸ“', color: '#6f42c1' },
-                      { key: 'emergency', icon: 'ðŸ†˜', color: '#dc3545' },
-                      { key: 'other_reason', icon: 'ðŸ“', color: '#6c757d' },
+                      { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
+                      { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
+                      { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
+                      { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
+                      { key: 'emergency', icon: '🆘', color: '#dc3545' },
+                      { key: 'other_reason', icon: '📝', color: '#6c757d' },
                     ].map((reason) => (
                       <TouchableOpacity
                         key={reason.key}
@@ -2905,7 +2925,7 @@ export default function DashboardScreen() {
                       >
                         <Text style={styles.cancelReasonIcon}>{reason.icon}</Text>
                         <Text style={styles.cancelReasonOptionText}>{t(reason.key)}</Text>
-                        <Text style={styles.cancelReasonArrow}>â€º</Text>
+                        <Text style={styles.cancelReasonArrow}>›</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -2916,7 +2936,7 @@ export default function DashboardScreen() {
               {cancelStep === 'confirm' && (
                 <View style={styles.cancelStepContainer}>
                   <View style={styles.cancelConfirmIconContainer}>
-                    <Text style={styles.cancelConfirmIcon}>âš ï¸</Text>
+                    <Text style={styles.cancelConfirmIcon}>⚠️</Text>
                   </View>
                   <Text style={styles.cancelConfirmMessage}>{t('cancel_ride_confirm_message')}</Text>
                   
@@ -2959,7 +2979,7 @@ export default function DashboardScreen() {
                 <View style={styles.cancelStepContainer}>
                   <View style={styles.cancelSuccessContainer}>
                     <View style={styles.cancelSuccessIcon}>
-                      <Text style={styles.cancelSuccessIconText}>âœ“</Text>
+                      <Text style={styles.cancelSuccessIconText}>✓</Text>
                     </View>
                     <Text style={styles.cancelSuccessTitle}>{t('cancel_ride_success')}</Text>
                     <Text style={styles.cancelSuccessMessage}>{t('cancel_ride_success_message')}</Text>
@@ -2972,7 +2992,7 @@ export default function DashboardScreen() {
                 <View style={styles.cancelStepContainer}>
                   <View style={styles.cancelErrorContainer}>
                     <View style={styles.cancelErrorIcon}>
-                      <Text style={styles.cancelErrorIconText}>âœ•</Text>
+                      <Text style={styles.cancelErrorIconText}>✕</Text>
                     </View>
                     <Text style={styles.cancelErrorTitle}>{t('cancel_ride_error')}</Text>
                     <Text style={styles.cancelErrorMessage}>{cancelErrorMessage}</Text>
@@ -3016,19 +3036,31 @@ export default function DashboardScreen() {
               </View>
             )}
 
+            {pickupEtaMinutes !== null && (
+              <View style={styles.rideOfferEtaBanner}>
+                <Text style={styles.rideOfferEtaBannerText}>
+                  🚗 {t('ride_offer_eta_to_pickup')}: {formatMinutesHuman(pickupEtaMinutes)}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.rideOfferMetaRow}>
               <View style={styles.rideOfferMetaItem}>
                 <Text style={styles.rideOfferMetaLabel}>{t('price')}</Text>
-                <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
+                {rideOffer.rideData.paymentMethod === 'meter' ? (
+                  <Text style={[styles.rideOfferMetaValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+                ) : (
+                  <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
+                )}
               </View>
               <View style={styles.rideOfferMetaItem}>
                 <Text style={styles.rideOfferMetaLabel}>{t('distance')}</Text>
                 <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.distanceKm} km</Text>
               </View>
-              {pickupEtaMinutes !== null && (
+              {rideEtaMinutes !== null && (
                 <View style={styles.rideOfferMetaItem}>
-                  <Text style={styles.rideOfferMetaLabel}>{t('ride_offer_eta_to_pickup')}</Text>
-                  <Text style={styles.rideOfferMetaValue}>{pickupEtaMinutes} {t('minutes_short')}</Text>
+                  <Text style={styles.rideOfferMetaLabel}>{t('ride_offer_eta_trip')}</Text>
+                  <Text style={styles.rideOfferMetaValueHighlight}>{formatMinutesHuman(rideEtaMinutes)}</Text>
                 </View>
               )}
             </View>
@@ -3078,6 +3110,7 @@ export default function DashboardScreen() {
                     setOfferTimeout(null);
                   }
                   await loadDriverStatus();
+                  loadUpcomingRides().catch(() => {});
                 }}
               >
                 <Text style={styles.acceptButtonText}>{isScheduledOffer ? t('yes') : t('ride_offer_accept')}</Text>

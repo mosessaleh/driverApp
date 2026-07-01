@@ -67,7 +67,11 @@ export default function StopModal({
         <View style={styles.pickupInfoRow}>
           <View style={styles.pickupInfoCard}>
             <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
-            <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+            {activeRide.paymentMethod === 'meter' ? (
+              <Text style={[styles.pickupInfoValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+            ) : (
+              <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
+            )}
           </View>
           <View style={styles.pickupInfoCard}>
             <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
