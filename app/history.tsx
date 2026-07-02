@@ -14,7 +14,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDriverHistory } from '../src/services/api';
-import { offRideOffer, onRideOffer } from '../src/services/socket';
+import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
 import { useTranslation } from '../src/hooks/useTranslation';
 
 type RideItem = {
@@ -224,17 +224,7 @@ export default function HistoryScreen() {
     };
   }, [clearRetryTimeout]);
 
-  useEffect(() => {
-    const handleRideOffer = () => {
-      router.replace('/dashboard');
-    };
-
-    onRideOffer(handleRideOffer);
-
-    return () => {
-      offRideOffer(handleRideOffer);
-    };
-  }, [router]);
+  useRideOfferRedirect(true);
 
   useFocusEffect(
     useCallback(() => {

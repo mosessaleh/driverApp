@@ -1335,7 +1335,7 @@ export default function DashboardScreen() {
   // Join chat room when active ride is available
   useEffect(() => {
     if (activeRide && activeRide.id) {
-      console.log('Joining chat room for ride:', activeRide.id);
+      devLog('Joining chat room for ride:', activeRide.id);
       joinChat(activeRide.id);
     }
   }, [activeRide?.id]);
@@ -1351,7 +1351,7 @@ export default function DashboardScreen() {
 
       // Ensure driver is marked as online if they have an active shift
       if (res.hasActiveShift && !res.isOnline) {
-        console.log('Driver has active shift but not online, setting online');
+        devLog('Driver has active shift but not online, setting online');
         await toggleDriverOnline(true, authState.token);
         res.isOnline = true;
       }
@@ -1490,7 +1490,7 @@ export default function DashboardScreen() {
                     }, 1000);
                   } else {
                     // Countdown already expired - show cancel button immediately
-                    console.log(`Countdown already expired for ride ${ride.id}, showing cancel button`);
+                    devLog(`Countdown already expired for ride ${ride.id}, showing cancel button`);
                     setShowCancelText(true);
                     setCancelCountdown(0);
                     AsyncStorage.setItem(
@@ -1590,7 +1590,7 @@ export default function DashboardScreen() {
       // Retry up to 3 times with exponential backoff
       if (retryCount < 3) {
         const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-        console.log(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
+        devLog(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadDriverStatus(retryCount + 1), delay);
       }
     }
@@ -2755,9 +2755,20 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.pickupInfoRow}>
               <View style={styles.pickupInfoCard}>
-                <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
-                {activeRide.paymentMethod === 'meter' ? (
-                  <Text style={[styles.pickupInfoValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+                <Text style={styles.pickupInfoLabel}>
+                  {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
+                    ? t('approximate_price')
+                    : t('price')}
+                </Text>
+                {(activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash') ? (
+                  <>
+                    <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent, { color: '#f59e0b' }]}>
+                      ~{activeRide.price} DKK
+                    </Text>
+                    <Text style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
+                      {t('meter_runs_on_meter')}
+                    </Text>
+                  </>
                 ) : (
                   <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
                 )}
@@ -3046,9 +3057,20 @@ export default function DashboardScreen() {
 
             <View style={styles.rideOfferMetaRow}>
               <View style={styles.rideOfferMetaItem}>
-                <Text style={styles.rideOfferMetaLabel}>{t('price')}</Text>
-                {rideOffer.rideData.paymentMethod === 'meter' ? (
-                  <Text style={[styles.rideOfferMetaValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+                <Text style={styles.rideOfferMetaLabel}>
+                  {rideOffer.rideData.paymentMethod === 'meter' || rideOffer.rideData.paymentMethod === 'cash'
+                    ? t('approximate_price')
+                    : t('price')}
+                </Text>
+                {(rideOffer.rideData.paymentMethod === 'meter' || rideOffer.rideData.paymentMethod === 'cash') ? (
+                  <>
+                    <Text style={[styles.rideOfferMetaValue, { color: '#f59e0b' }]}>
+                      ~{rideOffer.rideData.price} DKK
+                    </Text>
+                    <Text style={[styles.rideOfferMetaLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
+                      {t('meter_runs_on_meter')}
+                    </Text>
+                  </>
                 ) : (
                   <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
                 )}

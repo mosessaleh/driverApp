@@ -4,7 +4,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useRouter } from 'expo-router';
 import { getDriverProfile, requestDriverPasswordReset } from '../src/services/api';
-import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../src/components/Card';
 import { Button } from '../src/components/Button';
@@ -24,16 +24,10 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  useRideOfferRedirect(true);
+
   useEffect(() => {
     loadProfile();
-    const handleRideOffer = () => {
-      router.replace('/dashboard');
-    };
-    onRideOffer(handleRideOffer);
-
-    return () => {
-      offRideOffer(handleRideOffer);
-    };
   }, []);
 
   const loadProfile = async (showLoading = true) => {

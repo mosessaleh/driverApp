@@ -3,6 +3,24 @@ import { jwtDecode } from 'jwt-decode';
 import * as Location from 'expo-location';
 import { getApiBaseUrl } from '../config/network';
 import { devLog, devWarn } from '../config/security';
+import type {
+  DriverStatusUpdatePayload,
+  RideOfferPayload,
+  RideOfferTimeoutPayload,
+  RideOfferRejectedPayload,
+  RideAcceptedPayload,
+  RideAcceptFailedPayload,
+  ScheduledOfferResultPayload,
+  ScheduledOfferAcknowledgedPayload,
+  ScheduledUpcomingOffersUpdatePayload,
+  RideCancelledPayload,
+  NewMessagePayload,
+  PickupProximityPayload,
+  PickupCountdownExpiredPayload,
+  ScheduledLateWarningPayload,
+} from '../types/socket';
+
+export type { ScheduledUpcomingOffersUpdatePayload };
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -21,20 +39,7 @@ let currentToken: string | null = null;
 let currentVehicleTypeId = 1;
 let currentJoinLocation: { lat: number; lng: number } | undefined;
 
-export type ScheduledUpcomingOffersUpdatePayload = {
-  pendingCount: number;
-  pendingOffers: Array<{
-    rideId: number;
-    pickupTime?: string | null;
-    createdAt?: number | string;
-    timeoutMs?: number;
-    expiresAt?: number | string;
-    timeLeftMs?: number;
-    rideData?: any;
-  }>;
-};
-
-type SocketListener = (...args: any[]) => void;
+type SocketListener = (...args: unknown[]) => void;
 const persistentListeners = new Map<string, Set<SocketListener>>();
 
 const addPersistentListener = (event: string, callback: SocketListener) => {
@@ -47,7 +52,7 @@ const addPersistentListener = (event: string, callback: SocketListener) => {
   if (!listeners.has(callback)) {
     listeners.add(callback);
     if (socket) {
-      socket.on(event, callback as any);
+      socket.on(event, callback as (...args: unknown[]) => void);
     }
   }
 };
@@ -65,7 +70,7 @@ const removePersistentListener = (event: string, callback?: SocketListener) => {
   if (callback) {
     listeners.delete(callback);
     if (socket) {
-      socket.off(event, callback as any);
+      socket.off(event, callback as (...args: unknown[]) => void);
     }
     if (listeners.size === 0) {
       persistentListeners.delete(event);
@@ -74,7 +79,7 @@ const removePersistentListener = (event: string, callback?: SocketListener) => {
   }
 
   if (socket) {
-    listeners.forEach((cb) => socket?.off(event, cb as any));
+    listeners.forEach((cb) => socket?.off(event, cb as (...args: unknown[]) => void));
     socket.off(event);
   }
   persistentListeners.delete(event);
@@ -248,9 +253,7 @@ export const connectSocket = (
   return socket;
 };
 
-export const onDriverStatusUpdate = (
-  callback: (data: { isOnline?: boolean; currentRideId: number | null; isBusy: boolean; rideAccepted: number | null }) => void
-) => {
+export const onDriverStatusUpdate = (callback: (data: DriverStatusUpdatePayload) => void) => {
   addPersistentListener('driverStatusUpdate', callback as SocketListener);
 };
 
@@ -299,27 +302,23 @@ export const updateLocation = (location: { lat: number; lng: number }) => {
   }
 };
 
-export const onRideAccepted = (callback: (data: { rideId: number }) => void) => {
+export const onRideAccepted = (callback: (data: RideAcceptedPayload) => void) => {
   addPersistentListener('rideAccepted', callback as SocketListener);
 };
 
-export const onRideAcceptFailed = (callback: (data: { rideId: number; reason: string }) => void) => {
+export const onRideAcceptFailed = (callback: (data: RideAcceptFailedPayload) => void) => {
   addPersistentListener('rideAcceptFailed', callback as SocketListener);
 };
 
-export const onRideOffer = (
-  callback: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void
-) => {
+export const onRideOffer = (callback: (data: RideOfferPayload) => void) => {
   addPersistentListener('rideOffer', callback as SocketListener);
 };
 
-export const offRideOffer = (
-  callback?: (data: { type?: string; offerType?: string; scheduled?: boolean; rideId: number; rideData: any; timestamp: number; timeoutMs?: number }) => void
-) => {
+export const offRideOffer = (callback?: (data: RideOfferPayload) => void) => {
   removePersistentListener('rideOffer', callback as SocketListener | undefined);
 };
 
-export const onRideOfferTimeout = (callback: (data: { rideId: number }) => void) => {
+export const onRideOfferTimeout = (callback: (data: RideOfferTimeoutPayload) => void) => {
   addPersistentListener('rideOfferTimeout', callback as SocketListener);
 };
 
@@ -327,7 +326,7 @@ export const offRideOfferTimeout = () => {
   removePersistentListener('rideOfferTimeout');
 };
 
-export const onRideOfferRejected = (callback: (data: { rideId: number }) => void) => {
+export const onRideOfferRejected = (callback: (data: RideOfferRejectedPayload) => void) => {
   addPersistentListener('rideOfferRejected', callback as SocketListener);
 };
 
@@ -336,7 +335,7 @@ export const offRideOfferRejected = () => {
 };
 
 export const onScheduledOfferResult = (
-  callback: (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => void
+  callback: (data: ScheduledOfferResultPayload) => void,
 ) => {
   addPersistentListener('scheduledOfferResult', callback as SocketListener);
 };
@@ -345,7 +344,7 @@ export const offScheduledOfferResult = () => {
   removePersistentListener('scheduledOfferResult');
 };
 
-export const onScheduledOfferAcknowledged = (callback: (data: { rideId: number }) => void) => {
+export const onScheduledOfferAcknowledged = (callback: (data: ScheduledOfferAcknowledgedPayload) => void) => {
   addPersistentListener('scheduledOfferAcknowledged', callback as SocketListener);
 };
 
@@ -363,7 +362,7 @@ export const offScheduledUpcomingOffersUpdate = () => {
   removePersistentListener('scheduledUpcomingOffersUpdate');
 };
 
-export const onRideCancelled = (callback: (data: { rideId: number }) => void) => {
+export const onRideCancelled = (callback: (data: RideCancelledPayload) => void) => {
   addPersistentListener('rideCancelled', callback as SocketListener);
 };
 
@@ -394,7 +393,7 @@ export const sendMessage = (bookingId: number, message: string, sender: string) 
   }
 };
 
-export const onNewMessage = (callback: (data: { message: string; sender: string; timestamp: string }) => void) => {
+export const onNewMessage = (callback: (data: NewMessagePayload) => void) => {
   addPersistentListener('newMessage', callback as SocketListener);
 };
 
@@ -402,9 +401,7 @@ export const offNewMessage = () => {
   removePersistentListener('newMessage');
 };
 
-export const onPickupProximity = (
-  callback: (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => void
-) => {
+export const onPickupProximity = (callback: (data: PickupProximityPayload) => void) => {
   addPersistentListener('pickupProximity', callback as SocketListener);
 };
 
@@ -412,7 +409,7 @@ export const offPickupProximity = () => {
   removePersistentListener('pickupProximity');
 };
 
-export const onPickupCountdownExpired = (callback: (data: { rideId: number }) => void) => {
+export const onPickupCountdownExpired = (callback: (data: PickupCountdownExpiredPayload) => void) => {
   addPersistentListener('pickupCountdownExpired', callback as SocketListener);
 };
 
@@ -420,9 +417,7 @@ export const offPickupCountdownExpired = () => {
   removePersistentListener('pickupCountdownExpired');
 };
 
-export const onScheduledLateWarning = (
-  callback: (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => void
-) => {
+export const onScheduledLateWarning = (callback: (data: ScheduledLateWarningPayload) => void) => {
   addPersistentListener('scheduledLateWarning', callback as SocketListener);
 };
 

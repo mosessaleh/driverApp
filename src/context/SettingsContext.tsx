@@ -86,7 +86,7 @@ const defaultSettings: Settings = {
 
 interface SettingsContextType {
   settings: Settings;
-  updateSetting: (category: keyof Settings, key: string, value: any) => void;
+  updateSetting: <K extends keyof Settings>(category: K, key: keyof Settings[K], value: Settings[K][typeof key]) => void;
   isDarkMode: boolean;
   isRTL: boolean;
   currentLanguage: 'en' | 'ar' | 'da';
@@ -142,7 +142,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
-  const updateSetting = (category: keyof Settings, key: string, value: any) => {
+  const updateSetting = <K extends keyof Settings>(category: K, key: keyof Settings[K], value: Settings[K][typeof key]) => {
     const newSettings = {
       ...settings,
       [category]: {

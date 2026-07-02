@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../src/context/AuthContext';
 import { SettingsProvider } from '../src/context/SettingsContext';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
@@ -91,10 +92,12 @@ export default function Layout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <Stack />
-      </SettingsProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SettingsProvider>
+          <Stack />
+        </SettingsProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

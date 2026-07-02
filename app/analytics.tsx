@@ -4,7 +4,8 @@ import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
 import { getAnalytics } from '../src/services/api';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { devLog } from '../src/config/security';
+import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { buildRatingRecommendations } from '../src/features/driverIntelligence';
@@ -19,18 +20,10 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
 
+  useRideOfferRedirect(true);
+
   useEffect(() => {
     loadAnalytics();
-
-    // Listen for ride offers to redirect to dashboard
-    const handleRideOffer = () => {
-      router.replace('/dashboard');
-    };
-    onRideOffer(handleRideOffer);
-
-    return () => {
-      offRideOffer(handleRideOffer);
-    };
   }, [period]);
 
   const loadAnalytics = async () => {
@@ -39,7 +32,7 @@ export default function AnalyticsScreen() {
     try {
       setLoading(true);
       const response = await getAnalytics(authState.token, period);
-      console.log('Analytics response:', response);
+      devLog('Analytics response:', response);
       if (response.ok && response.data) {
         setAnalytics(response.data);
       } else {

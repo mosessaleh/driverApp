@@ -202,7 +202,18 @@ export default function UpcomingScreen() {
                 <Text style={styles.rideAddress}>{offer?.rideData?.dropoffAddress || '-'}</Text>
 
                 <View style={styles.offerFooterRow}>
-                  <Text style={styles.amountValue}>{Number(offer?.rideData?.price || 0)} DKK</Text>
+                  {(offer?.rideData?.paymentMethod === 'meter' || offer?.rideData?.paymentMethod === 'cash') ? (
+                    <View>
+                      <Text style={[styles.amountValue, { color: '#f59e0b' }]}>
+                        ~{Number(offer?.rideData?.price || 0)} DKK
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#f59e0b', marginTop: 2 }}>
+                        {t('meter_runs_on_meter')}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.amountValue}>{Number(offer?.rideData?.price || 0)} DKK</Text>
+                  )}
                   <View style={styles.offerActionsRow}>
                     <TouchableOpacity
                       style={[styles.offerActionBtn, styles.acceptBtn]}

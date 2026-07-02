@@ -65,10 +65,30 @@ export const isDriverLoginSuccessResponse = (
   );
 };
 
+class HttpError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
+const isRetryableHttpError = (status: number): boolean => {
+  if (status === 429) return false;
+  if (status === 408) return true;
+  if (status >= 400 && status < 500) return false;
+  return true;
+};
+
 const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
   try {
     return await fn();
   } catch (error) {
+    if (error instanceof HttpError && !isRetryableHttpError(error.status)) {
+      throw error;
+    }
     if (retries > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
       return retry(fn, retries - 1, delay * 2);
@@ -105,7 +125,7 @@ export const api = {
         } catch (e) {
           // If not JSON, use the text as is
         }
-        throw new Error(errorMessage);
+        throw new HttpError(errorMessage, response.status);
       }
       return response.json();
     });
@@ -123,7 +143,7 @@ export const api = {
         headers,
       });
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        throw new HttpError(`API Error: ${response.status} ${response.statusText}`, response.status);
       }
       return response.json();
     });
@@ -155,7 +175,7 @@ export const api = {
         } catch (e) {
           // If not JSON, use the text as is
         }
-        throw new Error(errorMessage);
+        throw new HttpError(errorMessage, response.status);
       }
       return response.json();
     });
@@ -330,6 +350,7 @@ type ScheduledPendingOfferRaw = {
     price?: number | string;
     distanceKm?: number | string;
     riderName?: string;
+    paymentMethod?: string;
     startLatLon?: { lat?: number; lon?: number } | null;
     stopLatLon?: { lat?: number; lon?: number } | null;
     endLatLon?: { lat?: number; lon?: number } | null;
@@ -391,6 +412,7 @@ export const normalizeScheduledPendingOffers = (
           price: toFiniteNumber(rideData.price, 0),
           distanceKm: toFiniteNumber(rideData.distanceKm, 0),
           riderName: rideData.riderName || '',
+          paymentMethod: rideData.paymentMethod || undefined,
           startLatLon: normalizeLatLon(rideData.startLatLon),
           stopLatLon: normalizeLatLon(rideData.stopLatLon),
           endLatLon: normalizeLatLon(rideData.endLatLon),

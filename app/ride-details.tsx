@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'rea
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getRide } from '../src/services/api';
-import { onRideOffer, offRideOffer } from '../src/services/socket';
+import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
+import { devLog } from '../src/config/security';
 import { useTranslation } from '../src/hooks/useTranslation';
 
 export default function RideDetailsScreen() {
@@ -14,28 +15,19 @@ export default function RideDetailsScreen() {
   const [ride, setRide] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  useRideOfferRedirect(true);
+
   useEffect(() => {
-    // Get ride ID from query parameters
     const rideId = id as string;
-    
+
     if (rideId) {
       loadRideDetails(rideId);
     }
-    
-    // Listen for ride offers to redirect to dashboard
-    const handleRideOffer = () => {
-      router.replace('/dashboard');
-    };
-    onRideOffer(handleRideOffer);
-
-    return () => {
-      offRideOffer(handleRideOffer);
-    };
   }, []);
 
   const loadRideDetails = async (rideId: string) => {
     if (!authState.token) return;
-    
+
     setLoading(true);
     try {
       const response = await getRide(rideId, authState.token);
@@ -46,7 +38,7 @@ export default function RideDetailsScreen() {
         router.back();
       }
     } catch (error) {
-      console.error('Error loading ride details:', error);
+      devLog('Error loading ride details:', error);
       Alert.alert(t('error'), t('ride_details_load_failed'));
       router.back();
     } finally {

@@ -13,6 +13,7 @@ type ActiveRide = {
   dropoffAddress?: string;
   riderPhone?: string;
   vehicleTypeName?: string;
+  paymentMethod?: string;
 };
 
 type Props = {
@@ -66,9 +67,20 @@ export default function StopModal({
         </View>
         <View style={styles.pickupInfoRow}>
           <View style={styles.pickupInfoCard}>
-            <Text style={styles.pickupInfoLabel}>{t('price')}</Text>
-            {activeRide.paymentMethod === 'meter' ? (
-              <Text style={[styles.pickupInfoValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+            <Text style={styles.pickupInfoLabel}>
+              {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
+                ? t('approximate_price')
+                : t('price')}
+            </Text>
+            {(activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash') ? (
+              <>
+                <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent, { color: '#f59e0b' }]}>
+                  ~{activeRide.price} DKK
+                </Text>
+                <Text style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
+                  {t('meter_runs_on_meter')}
+                </Text>
+              </>
             ) : (
               <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
             )}

@@ -39,7 +39,7 @@ export default function DropoffModal({
 
   if (!visible || !activeRide) return null;
 
-  const isMeter = activeRide.paymentMethod === 'meter';
+  const isMeter = activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash';
 
   const validateAndDropoff = () => {
     if (isMeter) {
@@ -80,9 +80,18 @@ export default function DropoffModal({
         </View>
         <View style={styles.dropoffInfoRow}>
           <View style={styles.dropoffInfoCard}>
-            <Text style={styles.dropoffInfoLabel}>{t('price')}</Text>
+            <Text style={styles.dropoffInfoLabel}>
+              {isMeter ? t('approximate_price') : t('price')}
+            </Text>
             {isMeter ? (
-              <Text style={[styles.dropoffInfoValue, { color: '#f59e0b', fontSize: 14 }]}>Meter (Cash)</Text>
+              <>
+                <Text style={[styles.dropoffInfoValue, styles.dropoffInfoValueAccent, { color: '#f59e0b' }]}>
+                  ~{activeRide.price} DKK
+                </Text>
+                <Text style={[styles.dropoffInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
+                  {t('meter_runs_on_meter')}
+                </Text>
+              </>
             ) : (
               <Text style={[styles.dropoffInfoValue, styles.dropoffInfoValueAccent]}>
                 {activeRide.price} DKK

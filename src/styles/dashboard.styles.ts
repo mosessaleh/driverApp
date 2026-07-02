@@ -1,12 +1,51 @@
 ﻿import { StyleSheet, Dimensions } from 'react-native';
+import { colors } from '../theme';
 
 const { height } = Dimensions.get('window');
 
-export const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolean) =>
-StyleSheet.create({
+// Color resolver based on dark/light mode
+const c = (isDark: boolean) => ({
+  bg: isDark ? colors.dark.background : colors.light.background,
+  surface: isDark ? colors.dark.surface : colors.light.surface,
+  surfaceVariant: isDark ? colors.dark.surfaceVariant : colors.light.surfaceVariant,
+  border: isDark ? colors.dark.border : colors.light.border,
+  borderLight: isDark ? colors.dark.borderLight : colors.light.borderLight,
+  text: isDark ? colors.dark.text : colors.light.text,
+  textSecondary: isDark ? colors.dark.textSecondary : colors.light.textSecondary,
+  textTertiary: isDark ? colors.dark.textTertiary : colors.light.textTertiary,
+  disabled: isDark ? colors.dark.disabled : colors.light.disabled,
+  primary: colors.primary[500],
+  primaryLight: isDark ? 'rgba(59,130,246,0.15)' : '#e0f2fe',
+  success: colors.success[500],
+  successLight: isDark ? 'rgba(34,197,94,0.18)' : '#dcfce7',
+  successSoft: isDark ? '#86efac' : '#15803d',
+  danger: colors.danger[500],
+  dangerLight: isDark ? 'rgba(220,53,69,0.18)' : '#fee2e2',
+  dangerSoft: isDark ? '#fecaca' : '#b91c1c',
+  warning: colors.warning[500],
+  warningLight: isDark ? 'rgba(245,158,11,0.35)' : '#fcd34d',
+  warningSoft: isDark ? '#fbbf24' : '#b45309',
+  info: colors.info[500],
+  infoLight: isDark ? 'rgba(56,189,248,0.18)' : '#e0f2fe',
+  infoSoft: isDark ? '#bae6fd' : '#0369a1',
+  textOnPrimary: '#fff',
+  inputBg: isDark ? '#444' : '#f9f9f9',
+  inputBorder: isDark ? '#555' : '#ddd',
+  textInverted: isDark ? '#f8fafc' : '#0f172a',
+  overlay: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)',
+  modalBg: isDark ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.98)',
+  modalBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+  cardBg: isDark ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.95)',
+  menuBg: isDark ? 'rgba(17,24,39,0.98)' : 'rgba(255,255,255,0.98)',
+  menuBorder: isDark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.08)',
+});
+
+export const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolean) => {
+const t = c(isDarkMode);
+return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDarkMode ? '#0f0f0f' : '#ffffff',
+    backgroundColor: t.bg,
   },
   statusBar: {
     position: 'absolute',
@@ -20,7 +59,7 @@ StyleSheet.create({
     paddingHorizontal: 15,
     backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)',
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? '#333' : '#e0e0e0',
+    borderBottomColor: t.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -98,7 +137,7 @@ StyleSheet.create({
   hamburgerLine: {
     width: 22,
     height: 3,
-    backgroundColor: isDarkMode ? '#e2e8f0' : '#0f172a',
+    backgroundColor: t.textInverted,
     marginVertical: 2,
     borderRadius: 2,
   },
@@ -152,7 +191,7 @@ StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    backgroundColor: t.surfaceVariant,
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : '#e2e8f0',
   },
@@ -162,7 +201,7 @@ StyleSheet.create({
   menuItemText: {
     flex: 1,
     fontSize: 15,
-    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    color: t.text,
     fontWeight: '600',
     textAlign: isRTL ? 'right' : 'left',
   },
@@ -203,7 +242,7 @@ StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.12)' : '#e2e8f0',
+    borderColor: t.borderLight,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.12,
@@ -225,7 +264,7 @@ StyleSheet.create({
   },
   mapPlaceholderText: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
   },
   mapKeyLabel: {
@@ -253,14 +292,14 @@ StyleSheet.create({
   },
   kmInput: {
     height: 50,
-    borderColor: isDarkMode ? '#555' : '#ddd',
+    borderColor: t.border,
     borderWidth: 1,
     borderRadius: 8,
     marginBottom: 20,
     paddingHorizontal: 15,
     fontSize: 16,
-    backgroundColor: isDarkMode ? '#333' : '#f9f9f9',
-    color: isDarkMode ? '#fff' : '#000',
+    backgroundColor: t.surfaceVariant,
+    color: t.text,
     textAlign: 'center',
   },
   personIcon: {
@@ -306,7 +345,7 @@ StyleSheet.create({
     alignItems: 'stretch',
     position: 'relative',
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    borderColor: t.borderLight,
   },
   pickupModalCard: {
     backgroundColor: isDarkMode ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.98)',
@@ -328,7 +367,7 @@ StyleSheet.create({
     width: 50,
     height: 5,
     borderRadius: 999,
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    backgroundColor: t.disabled,
     marginBottom: 12,
   },
   pickupHeaderRow: {
@@ -358,7 +397,7 @@ StyleSheet.create({
     gap: 8,
   },
   pickupIdPill: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    backgroundColor: t.surfaceVariant,
     borderRadius: 999,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -368,7 +407,7 @@ StyleSheet.create({
   pickupIdText: {
     fontSize: 12,
     fontWeight: '700',
-    color: isDarkMode ? '#e2e8f0' : '#334155',
+    color: t.textSecondary,
   },
   pickupInfoRow: {
     flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -377,7 +416,7 @@ StyleSheet.create({
   },
   pickupInfoCard: {
     flex: 1,
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    backgroundColor: t.surfaceVariant,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -386,14 +425,14 @@ StyleSheet.create({
   },
   pickupInfoLabel: {
     fontSize: 12,
-    color: isDarkMode ? '#aaa' : '#6b7280',
+    color: t.textTertiary,
     marginBottom: 4,
     textAlign: isRTL ? 'right' : 'left',
   },
   pickupInfoValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: isDarkMode ? '#fff' : '#111827',
+    color: t.text,
     textAlign: isRTL ? 'right' : 'left',
   },
   pickupInfoValueAccent: {
@@ -472,17 +511,17 @@ StyleSheet.create({
     flex: 1,
   },
   pickupNavButton: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    backgroundColor: t.surfaceVariant,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    borderColor: t.disabled,
   },
   pickupNavText: {
-    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    color: t.textInverted,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -521,7 +560,7 @@ StyleSheet.create({
     width: 50,
     height: 5,
     borderRadius: 999,
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    backgroundColor: t.disabled,
     marginBottom: 12,
   },
   dropoffHeaderRow: {
@@ -546,7 +585,7 @@ StyleSheet.create({
     textTransform: 'uppercase',
   },
   dropoffIdPill: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    backgroundColor: t.surfaceVariant,
     borderRadius: 999,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -556,7 +595,7 @@ StyleSheet.create({
   dropoffIdText: {
     fontSize: 12,
     fontWeight: '700',
-    color: isDarkMode ? '#e2e8f0' : '#334155',
+    color: t.textSecondary,
   },
   dropoffInfoRow: {
     flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -565,7 +604,7 @@ StyleSheet.create({
   },
   dropoffInfoCard: {
     flex: 1,
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    backgroundColor: t.surfaceVariant,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -574,14 +613,14 @@ StyleSheet.create({
   },
   dropoffInfoLabel: {
     fontSize: 12,
-    color: isDarkMode ? '#aaa' : '#6b7280',
+    color: t.textTertiary,
     marginBottom: 4,
     textAlign: isRTL ? 'right' : 'left',
   },
   dropoffInfoValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: isDarkMode ? '#fff' : '#111827',
+    color: t.text,
     textAlign: isRTL ? 'right' : 'left',
   },
   dropoffInfoValueAccent: {
@@ -626,17 +665,17 @@ StyleSheet.create({
     gap: 10,
   },
   dropoffNavButton: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+    backgroundColor: t.surfaceVariant,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+    borderColor: t.disabled,
   },
   dropoffNavText: {
-    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    color: t.textInverted,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -647,7 +686,7 @@ StyleSheet.create({
     marginBottom: 12,
   },
   rideIdPill: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+    backgroundColor: t.surfaceVariant,
     borderRadius: 999,
     paddingVertical: 4,
     paddingHorizontal: 10,
@@ -657,7 +696,7 @@ StyleSheet.create({
   rideIdPillText: {
     fontSize: 12,
     fontWeight: '700',
-    color: isDarkMode ? '#e2e8f0' : '#334155',
+    color: t.textSecondary,
   },
   rideMetaRow: {
     flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -709,7 +748,7 @@ StyleSheet.create({
   },
   rideModalDistance: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     marginBottom: 4,
     textAlign: isRTL ? 'right' : 'left',
   },
@@ -723,7 +762,7 @@ StyleSheet.create({
   },
   rideModalType: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     marginBottom: 8,
   },
   rideTypeBadge: {
@@ -746,7 +785,7 @@ StyleSheet.create({
     top: 10,
     left: 10,
     fontSize: 14,
-    color: isDarkMode ? '#ccc' : '#999',
+    color: t.textTertiary,
     fontWeight: 'bold',
   },
   rideModalButtons: {
@@ -831,7 +870,7 @@ StyleSheet.create({
   },
   sliderTrack: {
     height: 50,
-    backgroundColor: isDarkMode ? '#555' : '#f0f0f0',
+    backgroundColor: t.border,
     borderRadius: 25,
     position: 'relative',
     overflow: 'hidden',
@@ -865,7 +904,7 @@ StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     fontSize: 14,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
   },
   sliderSpinner: {
     position: 'absolute',
@@ -898,13 +937,13 @@ StyleSheet.create({
   endShiftTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
     textAlign: 'center',
     marginBottom: 10,
   },
   endShiftMessage: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
@@ -1011,7 +1050,7 @@ StyleSheet.create({
    scheduledOfferTitle: {
      fontSize: 22,
      fontWeight: '800',
-     color: isDarkMode ? '#fff' : '#111827',
+     color: t.text,
    },
    rideOfferPill: {
      backgroundColor: isDarkMode ? '#2f2f2f' : '#f1f3f5',
@@ -1021,7 +1060,7 @@ StyleSheet.create({
      marginLeft: 12,
    },
    rideOfferPillText: {
-     color: isDarkMode ? '#fff' : '#333',
+     color: t.textInverted,
      fontSize: 12,
      fontWeight: '600',
    },
@@ -1095,7 +1134,7 @@ StyleSheet.create({
    scheduledOfferTimeValue: {
      fontSize: 16,
      fontWeight: '700',
-     color: isDarkMode ? '#fff' : '#111827',
+     color: t.text,
      textAlign: isRTL ? 'right' : 'left',
    },
    rideOfferAddressRow: {
@@ -1152,7 +1191,7 @@ StyleSheet.create({
      width: '100%',
    },
    rideOfferSecondary: {
-     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f3f5',
+     backgroundColor: t.surfaceVariant,
      borderWidth: 1,
      borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : '#dee2e6',
      width: '100%',
@@ -1256,16 +1295,16 @@ StyleSheet.create({
     marginBottom: 15,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? '#555' : '#f0f0f0',
+    borderBottomColor: t.border,
   },
   chatModalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
   },
   chatModalClose: {
     fontSize: 24,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     padding: 5,
   },
   chatMessages: {
@@ -1297,14 +1336,14 @@ StyleSheet.create({
   chatInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: isDarkMode ? '#555' : '#ddd',
+    borderColor: t.inputBorder,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 10,
     fontSize: 14,
-    backgroundColor: isDarkMode ? '#444' : '#f9f9f9',
-    color: isDarkMode ? '#fff' : '#000',
+    backgroundColor: t.inputBg,
+    color: t.text,
   },
   chatSendButton: {
     backgroundColor: '#007bff',
@@ -1338,7 +1377,7 @@ StyleSheet.create({
     maxHeight: 50,
     paddingVertical: 5,
     borderTopWidth: 1,
-    borderTopColor: isDarkMode ? '#555' : '#f0f0f0',
+    borderTopColor: t.border,
   },
   quickReplyButton: {
     backgroundColor: '#6c757d',
@@ -1374,7 +1413,7 @@ StyleSheet.create({
   },
   shiftWarningMessage: {
     fontSize: 16,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
     marginBottom: 10,
     lineHeight: 22,
@@ -1432,7 +1471,7 @@ StyleSheet.create({
     textAlign: 'center',
   },
   searchingLetter: {
-    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    color: t.textInverted,
     fontSize: 17,
     fontWeight: '800',
     lineHeight: 22,
@@ -1486,7 +1525,7 @@ StyleSheet.create({
   smartAlertsTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    color: t.textInverted,
     marginBottom: 6,
   },
   smartAlertCard: {
@@ -1520,7 +1559,7 @@ StyleSheet.create({
   },
   smartAlertBody: {
     fontSize: 11,
-    color: isDarkMode ? '#e2e8f0' : '#334155',
+    color: t.textSecondary,
     lineHeight: 15,
     textAlign: isRTL ? 'right' : 'left',
   },
@@ -1558,7 +1597,7 @@ StyleSheet.create({
   scheduledInfoText: {
     fontSize: 11,
     fontWeight: '600',
-    color: isDarkMode ? '#e2e8f0' : '#0f172a',
+    color: t.textInverted,
   },
   scheduledInfoTextLeft: {
     textAlign: isRTL ? 'right' : 'left',
@@ -1592,7 +1631,7 @@ StyleSheet.create({
   scheduledBannerTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    color: t.textInverted,
     textAlign: 'center',
   },
   scheduledBannerMessage: {
@@ -1637,13 +1676,13 @@ StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? '#333' : '#f0f0f0',
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    borderBottomColor: t.border,
+    backgroundColor: t.surfaceVariant,
   },
   cancelModalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
     flex: 1,
   },
   cancelModalCloseButton: {
@@ -1658,7 +1697,7 @@ StyleSheet.create({
   },
   cancelModalSubtitle: {
     fontSize: 14,
-    color: isDarkMode ? '#aaa' : '#666',
+    color: t.textTertiary,
     marginBottom: 15,
     textAlign: 'center',
   },
@@ -1685,7 +1724,7 @@ StyleSheet.create({
   },
   // Fee Preview
   cancelFeePreview: {
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    backgroundColor: t.surfaceVariant,
     padding: 15,
     borderRadius: 12,
     marginBottom: 15,
@@ -1697,11 +1736,11 @@ StyleSheet.create({
   },
   cancelFeeLabel: {
     fontSize: 14,
-    color: isDarkMode ? '#aaa' : '#666',
+    color: t.textTertiary,
   },
   cancelFeeValue: {
     fontSize: 14,
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
     fontWeight: '500',
   },
   cancelFeeTotal: {
@@ -1713,7 +1752,7 @@ StyleSheet.create({
   cancelFeeTotalLabel: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
   },
   cancelFeeTotalValue: {
     fontSize: 16,
@@ -1727,7 +1766,7 @@ StyleSheet.create({
   cancelReasonOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    backgroundColor: t.surfaceVariant,
     padding: 15,
     borderRadius: 12,
     borderLeftWidth: 4,
@@ -1739,7 +1778,7 @@ StyleSheet.create({
   cancelReasonOptionText: {
     flex: 1,
     fontSize: 15,
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
   },
   cancelReasonArrow: {
     fontSize: 20,
@@ -1755,13 +1794,13 @@ StyleSheet.create({
   },
   cancelConfirmMessage: {
     fontSize: 15,
-    color: isDarkMode ? '#ccc' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
   },
   cancelSelectedReason: {
-    backgroundColor: isDarkMode ? '#252525' : '#f8f9fa',
+    backgroundColor: t.surfaceVariant,
     padding: 15,
     borderRadius: 12,
     marginBottom: 15,
@@ -1774,7 +1813,7 @@ StyleSheet.create({
   cancelSelectedReasonValue: {
     fontSize: 16,
     fontWeight: '500',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
   },
   cancelFinalFee: {
     flexDirection: 'row',
@@ -1830,7 +1869,7 @@ StyleSheet.create({
   cancelLoadingText: {
     marginTop: 15,
     fontSize: 14,
-    color: isDarkMode ? '#aaa' : '#666',
+    color: t.textTertiary,
   },
   // Success Step
   cancelSuccessContainer: {
@@ -1854,12 +1893,12 @@ StyleSheet.create({
   cancelSuccessTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
     marginBottom: 10,
   },
   cancelSuccessMessage: {
     fontSize: 14,
-    color: isDarkMode ? '#aaa' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
   },
   // Error Step
@@ -1884,12 +1923,12 @@ StyleSheet.create({
   cancelErrorTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: isDarkMode ? '#fff' : '#333',
+    color: t.textInverted,
     marginBottom: 10,
   },
   cancelErrorMessage: {
     fontSize: 14,
-    color: isDarkMode ? '#aaa' : '#666',
+    color: t.textTertiary,
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -1933,3 +1972,5 @@ StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+};
