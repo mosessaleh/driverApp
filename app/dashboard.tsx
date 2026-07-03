@@ -1172,6 +1172,12 @@ export default function DashboardScreen() {
   // Handle back button press on Android
   useEffect(() => {
     const backAction = () => {
+      if (showMenu) { setShowMenu(false); return true; }
+      if (showEndKMModal) { setShowEndKMModal(false); return true; }
+      if (showCancelModal) { setShowCancelModal(false); return true; }
+      if (showStatusExpanded) { setShowStatusExpanded(false); return true; }
+      if (showShiftWarning) { setShowShiftWarning(false); return true; }
+
       Alert.alert(
         t('app_warning'),
         t('app_exit_warning'),
@@ -1180,13 +1186,13 @@ export default function DashboardScreen() {
           { text: t('app_exit'), style: 'destructive', onPress: () => BackHandler.exitApp() }
         ]
       );
-      return true; // Prevent default back action
+      return true;
     };
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
     return () => backHandler?.remove();
-  }, [t]);
+  }, [t, showMenu, showEndKMModal, showCancelModal, showStatusExpanded, showShiftWarning]);
 
   // Monitor socket connection status
   useEffect(() => {

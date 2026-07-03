@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, StyleSheet } from 'react-native';
 import { useSettings } from '../../src/context/SettingsContext';
 import { useTranslation } from '../../src/hooks/useTranslation';
+import { getStyles as getDashboardStyles } from '../../src/styles/dashboard.styles';
 
 type ActiveRide = {
   id: number;
@@ -33,7 +34,9 @@ export default function DropoffModal({
   const { isDarkMode } = useSettings();
   const { t, getCurrentLanguage } = useTranslation();
   const lang = getCurrentLanguage();
-  const styles = React.useMemo(() => getStyles(isDarkMode), [isDarkMode]);
+  const dashboardStyles = React.useMemo(() => getDashboardStyles(isDarkMode), [isDarkMode]);
+  const modalStyles = React.useMemo(() => getModalStyles(isDarkMode), [isDarkMode]);
+  const styles = { ...dashboardStyles, ...modalStyles };
   const [meterPrice, setMeterPrice] = useState('');
   const [priceError, setPriceError] = useState('');
 
@@ -78,29 +81,29 @@ export default function DropoffModal({
             <Text style={styles.dropoffIdText}>#{activeRide.id}</Text>
           </View>
         </View>
-        <View style={styles.dropoffInfoRow}>
-          <View style={styles.dropoffInfoCard}>
-            <Text style={styles.dropoffInfoLabel}>
+        <View style={styles.pickupInfoRow}>
+          <View style={styles.pickupInfoCard}>
+            <Text style={styles.pickupInfoLabel}>
               {isMeter ? t('approximate_price') : t('price')}
             </Text>
             {isMeter ? (
               <>
-                <Text style={[styles.dropoffInfoValue, styles.dropoffInfoValueAccent, { color: '#f59e0b' }]}>
+                <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent, { color: '#f59e0b' }]}>
                   ~{activeRide.price} DKK
                 </Text>
-                <Text style={[styles.dropoffInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
+                <Text style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
                   {t('meter_runs_on_meter')}
                 </Text>
               </>
             ) : (
-              <Text style={[styles.dropoffInfoValue, styles.dropoffInfoValueAccent]}>
+              <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
                 {activeRide.price} DKK
               </Text>
             )}
           </View>
-          <View style={styles.dropoffInfoCard}>
-            <Text style={styles.dropoffInfoLabel}>{t('distance')}</Text>
-            <Text style={styles.dropoffInfoValue}>{activeRide.distanceKm} km</Text>
+          <View style={styles.pickupInfoCard}>
+            <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+            <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
           </View>
         </View>
 
@@ -171,7 +174,7 @@ export default function DropoffModal({
   );
 }
 
-const getStyles = (isDarkMode: boolean) => StyleSheet.create({
+const getModalStyles = (isDarkMode: boolean) => StyleSheet.create({
   rideModalContainer: {
     position: 'absolute',
     top: 0,
@@ -229,99 +232,6 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? '#94a3b8' : '#64748b',
     fontSize: 13,
     fontWeight: '600',
-  },
-  dropoffInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 12,
-  },
-  dropoffInfoCard: {
-    flex: 1,
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.15)' : '#e2e8f0',
-  },
-  dropoffInfoLabel: {
-    fontSize: 12,
-    color: isDarkMode ? '#94a3b8' : '#64748b',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  dropoffInfoValue: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: isDarkMode ? '#f1f5f9' : '#0f172a',
-  },
-  dropoffInfoValueAccent: {
-    color: isDarkMode ? '#60a5fa' : '#2563eb',
-    fontWeight: '800',
-  },
-  dropoffAddressCard: {
-    backgroundColor: isDarkMode ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.05)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.15)',
-  },
-  dropoffAddressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  dropoffDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
-    marginRight: 8,
-  },
-  dropoffAddressLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#ef4444',
-  },
-  dropoffAddressValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: isDarkMode ? '#f1f5f9' : '#1e293b',
-    lineHeight: 22,
-    marginLeft: 16,
-  },
-  stopAddressCard: {
-    backgroundColor: isDarkMode ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.15)',
-  },
-  stopAddressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  stopDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#6366f1',
-    marginRight: 8,
-  },
-  stopAddressLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6366f1',
-  },
-  stopAddressValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: isDarkMode ? '#f1f5f9' : '#1e293b',
-    lineHeight: 22,
-    marginLeft: 16,
   },
   meterPriceContainer: {
     backgroundColor: isDarkMode ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.05)',

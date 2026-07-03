@@ -40,7 +40,7 @@ const c = (isDark: boolean) => ({
   menuBorder: isDark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.08)',
 });
 
-export const getStyles = (isDarkMode: boolean, isRTL: boolean, isScheduledOffer: boolean) => {
+export const getStyles = (isDarkMode: boolean, isRTL = false, isScheduledOffer = false) => {
 const t = c(isDarkMode);
 return StyleSheet.create({
   container: {

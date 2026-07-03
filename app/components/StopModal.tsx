@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'rea
 import * as Linking from 'expo-linking';
 import { useSettings } from '../../src/context/SettingsContext';
 import { useTranslation } from '../../src/hooks/useTranslation';
+import { getStyles as getDashboardStyles } from '../../src/styles/dashboard.styles';
 
 type ActiveRide = {
   id: number;
@@ -39,7 +40,9 @@ export default function StopModal({
 }: Props) {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
-  const styles = React.useMemo(() => getStyles(isDarkMode), [isDarkMode]);
+  const dashboardStyles = React.useMemo(() => getDashboardStyles(isDarkMode), [isDarkMode]);
+  const modalStyles = React.useMemo(() => getModalStyles(isDarkMode), [isDarkMode]);
+  const styles = { ...dashboardStyles, ...modalStyles };
 
   if (!visible || !activeRide) return null;
 
@@ -144,7 +147,7 @@ export default function StopModal({
   );
 }
 
-const getStyles = (isDarkMode: boolean) => StyleSheet.create({
+const getModalStyles = (isDarkMode: boolean) => StyleSheet.create({
   rideModalContainer: {
     position: 'absolute',
     top: 0,
@@ -218,34 +221,6 @@ const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   callIconText: {
     fontSize: 16,
-  },
-  pickupInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 12,
-  },
-  pickupInfoCard: {
-    flex: 1,
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.15)' : '#e2e8f0',
-  },
-  pickupInfoLabel: {
-    fontSize: 12,
-    color: isDarkMode ? '#94a3b8' : '#64748b',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  pickupInfoValue: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: isDarkMode ? '#f1f5f9' : '#0f172a',
-  },
-  pickupInfoValueAccent: {
-    color: '#22c55e',
   },
   stopAddressCard: {
     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
