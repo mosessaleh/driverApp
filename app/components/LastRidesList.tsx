@@ -4,7 +4,7 @@ import { useTranslation } from '../../src/hooks/useTranslation';
 
 type RideItem = {
   id?: number | string;
-  startTime?: string; // ISO or hh:mm
+  startTime?: string;
   from?: string;
   to?: string;
   price?: number | string;
@@ -14,6 +14,7 @@ type RideItem = {
 type Props = {
   rides: RideItem[];
   maxItems?: number;
+  isDarkMode?: boolean;
 };
 
 function formatTime(ts?: string) {
@@ -76,9 +77,10 @@ function getStatusLabel(status: string | undefined, t: (key: string) => string) 
   return status || '';
 }
 
-export default function LastRidesList({ rides, maxItems = 6 }: Props) {
+export default function LastRidesList({ rides, maxItems = 6, isDarkMode = false }: Props) {
   const { t } = useTranslation();
   const data = rides ? rides.slice(0, maxItems) : [];
+  const styles = React.useMemo(() => getStyles(isDarkMode), [isDarkMode]);
 
   return (
     <View style={styles.container}>
@@ -128,9 +130,9 @@ export default function LastRidesList({ rides, maxItems = 6 }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDarkMode: boolean) => StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
+    backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
     borderRadius: 16,
     padding: 14,
     elevation: 4,
@@ -139,7 +141,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 8 },
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
   },
   headerRow: {
     flexDirection: 'row',
@@ -147,17 +149,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  header: { fontWeight: '800', fontSize: 16, color: '#0f172a' },
-  sub: { fontSize: 12, color: '#64748b', marginTop: 4, lineHeight: 16 },
+  header: { fontWeight: '800', fontSize: 16, color: isDarkMode ? '#f1f5f9' : '#0f172a' },
+  sub: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b', marginTop: 4, lineHeight: 16 },
   badge: {
-    backgroundColor: '#e0f2fe',
+    backgroundColor: isDarkMode ? '#0c4a6e' : '#e0f2fe',
     borderRadius: 12,
     paddingVertical: 4,
     paddingHorizontal: 10,
     alignSelf: 'flex-start',
   },
   badgeText: {
-    color: '#0c4a6e',
+    color: isDarkMode ? '#7dd3fc' : '#0c4a6e',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -166,7 +168,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    color: '#64748b',
+    color: isDarkMode ? '#94a3b8' : '#64748b',
     fontSize: 13,
     textAlign: 'center',
   },
@@ -175,10 +177,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 12,
   },
-  rowEven: { backgroundColor: '#f8fafc' },
-  rowOdd: { backgroundColor: '#ffffff' },
+  rowEven: { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' },
+  rowOdd: { backgroundColor: isDarkMode ? '#0f172a' : '#ffffff' },
   lineText: {
-    color: '#0f172a',
+    color: isDarkMode ? '#e2e8f0' : '#0f172a',
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '500',
@@ -190,10 +192,10 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   statusTextActive: {
-    color: '#0369a1',
+    color: isDarkMode ? '#38bdf8' : '#0369a1',
   },
   statusTextMuted: {
-    color: '#475569',
+    color: isDarkMode ? '#94a3b8' : '#475569',
   },
-  sep: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 0 },
+  sep: { height: 1, backgroundColor: isDarkMode ? '#334155' : '#e2e8f0', marginVertical: 0 },
 });

@@ -921,6 +921,17 @@ return StyleSheet.create({
     borderTopColor: 'transparent',
     borderRadius: 15,
   },
+  loadingOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+  },
+  loadingOverlayText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: isDarkMode ? '#94a3b8' : '#64748b',
+  },
   endShiftMenu: {
     backgroundColor: isDarkMode ? '#333' : '#fff',
     margin: 20,

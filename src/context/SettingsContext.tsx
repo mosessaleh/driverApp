@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from '../i18n';
 
@@ -127,6 +128,20 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const savedSettings = await AsyncStorage.getItem('driverSettings');
       if (savedSettings) {
         setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
+      } else {
+        // First launch: detect system color scheme
+        try {
+          const systemScheme = Appearance.getColorScheme();
+          setSettings({
+            ...defaultSettings,
+            appearance: {
+              ...defaultSettings.appearance,
+              darkMode: systemScheme === 'dark',
+            },
+          });
+        } catch {
+          setSettings(defaultSettings);
+        }
       }
     } catch (error) {
       console.error('Error loading settings:', error);

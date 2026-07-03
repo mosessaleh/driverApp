@@ -91,7 +91,9 @@ export default function DashboardScreen() {
    const [isTracking, setIsTracking] = useState(false);
    const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
    const [lastStatusCheck, setLastStatusCheck] = useState(0);
-   const [refreshing, setRefreshing] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+    const hasInitialLoadedRef = useRef(false);
    const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
    const [showMenu, setShowMenu] = useState(false);
    const [menuMounted, setMenuMounted] = useState(false);
@@ -776,6 +778,10 @@ export default function DashboardScreen() {
         await loadUpcomingRides();
         await loadRecentRides();
         await flushQueuedLocations();
+        if (!hasInitialLoadedRef.current) {
+          hasInitialLoadedRef.current = true;
+          setIsInitialLoading(false);
+        }
       };
       loadInitialStatus();
 
@@ -2609,6 +2615,27 @@ export default function DashboardScreen() {
     ]
   );
 
+  const floatingBottoms = useMemo(() => {
+    const hasSearching = driverOnline && !driverBusy && !activeRide && !restrictedOffers;
+    const hasScheduleHint = (!driverOnline && scheduleEligibility?.eligible === false && !!scheduleReasonMessage) || (driverOnline && restrictedOffers);
+    const hasSmartAlerts = driverOnline && !activeRide && smartAlerts.length > 0;
+
+    const SEARCHING_H = 90;
+    const SCHEDULE_HINT_H = 52;
+    const SMART_ALERTS_H = 24 + Math.min(smartAlerts.length, 3) * 54 + 6;
+
+    let currentBottom = 20;
+    const searchingBottom = hasSearching ? currentBottom : null;
+    if (hasSearching) currentBottom += SEARCHING_H + 8;
+
+    const scheduleHintBottom = hasScheduleHint ? currentBottom : null;
+    if (hasScheduleHint) currentBottom += SCHEDULE_HINT_H + 6;
+
+    const smartAlertsBottom = hasSmartAlerts ? currentBottom : null;
+
+    return { searchingBottom, scheduleHintBottom, smartAlertsBottom };
+  }, [driverOnline, driverBusy, activeRide, restrictedOffers, smartAlerts.length, scheduleEligibility, scheduleReasonMessage]);
+
   useEffect(() => {
     if (!authState.token) return;
 
@@ -2705,6 +2732,14 @@ export default function DashboardScreen() {
         onEndShift={() => { setShowMenu(false); setShowEndKMModal(true); }}
       />
 
+      {isInitialLoading ? (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingOverlayText}>{t('loading')}</Text>
+        </View>
+      ) : (
+        <>
+
       {/* Compact recent rides box */}
       <ScrollView
         style={[styles.mapContainer, { padding: 12 }]}
@@ -2722,6 +2757,7 @@ export default function DashboardScreen() {
             price: r.price ?? r.fare ?? undefined,
             status: r.status,
           }))}
+          isDarkMode={isDarkMode}
         />
       </ScrollView>
 
@@ -3193,13 +3229,13 @@ export default function DashboardScreen() {
       )}
 
       {!driverOnline && scheduleEligibility && scheduleEligibility.eligible === false && !!scheduleReasonMessage && (
-        <View style={styles.scheduleHintBar}>
+        <View style={[styles.scheduleHintBar, floatingBottoms.scheduleHintBottom != null && { bottom: floatingBottoms.scheduleHintBottom }]}>
           <Text style={styles.scheduleHintText}>{scheduleReasonMessage}</Text>
         </View>
       )}
 
       {driverOnline && restrictedOffers && (
-        <View style={[styles.scheduleHintBar, { backgroundColor: '#b91c1c' }]}> 
+        <View style={[styles.scheduleHintBar, { backgroundColor: '#b91c1c' }, floatingBottoms.scheduleHintBottom != null && { bottom: floatingBottoms.scheduleHintBottom }]}> 
           <Text style={styles.scheduleHintText}>
             {t('restricted_offers_active')}
             {restrictedOffersUntil ? ` (${restrictedOffersUntil.toLocaleTimeString()})` : ''}
@@ -3208,7 +3244,7 @@ export default function DashboardScreen() {
       )}
 
       {driverOnline && !activeRide && smartAlerts.length > 0 && (
-        <View style={styles.smartAlertsContainer}>
+        <View style={[styles.smartAlertsContainer, floatingBottoms.smartAlertsBottom != null && { bottom: floatingBottoms.smartAlertsBottom }]}>
           <Text style={styles.smartAlertsTitle}>{t('smart_alerts_title')}</Text>
           {smartAlerts.map((alert) => {
             const accent =
@@ -3243,14 +3279,32 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Searching for Trips Card */}
-      <SearchingCard
-        visible={driverOnline && !driverBusy && !activeRide && !restrictedOffers}
-        letterAnimValues={letterAnimValues}
-        dot1Anim={dot1Anim}
-        dot2Anim={dot2Anim}
-        dot3Anim={dot3Anim}
-      />
+      {/* Searching for Trips Card / Restricted Notice */}
+      {driverOnline && !driverBusy && !activeRide && restrictedOffers ? (
+        <View style={[styles.searchingBar, floatingBottoms.searchingBottom != null && { bottom: floatingBottoms.searchingBottom }]}>
+          <Text style={[styles.searchingLetter, { color: '#ef4444', fontSize: 22 }]}>🚫</Text>
+          <Text style={[styles.searchingSubText, { color: '#ef4444', fontWeight: '600' }]}>
+            {t('restricted_offers_active')}
+          </Text>
+          {restrictedOffersUntil ? (
+            <Text style={[styles.searchingSubText, { fontSize: 12, marginTop: 4 }]}>
+              ({restrictedOffersUntil.toLocaleTimeString()})
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <SearchingCard
+          visible={driverOnline && !driverBusy && !activeRide && !restrictedOffers}
+          letterAnimValues={letterAnimValues}
+          dot1Anim={dot1Anim}
+          dot2Anim={dot2Anim}
+          dot3Anim={dot3Anim}
+          bottomOffset={floatingBottoms.searchingBottom != null ? floatingBottoms.searchingBottom - 20 : 0}
+        />
+      )}
+
+        </>
+      )}
 
       {/* Status Bar Expanded Modal */}
       <StatusBarExpanded

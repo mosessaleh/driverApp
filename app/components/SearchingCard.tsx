@@ -9,9 +9,10 @@ type Props = {
   dot1Anim: Animated.Value;
   dot2Anim: Animated.Value;
   dot3Anim: Animated.Value;
+  bottomOffset?: number;
 };
 
-export default function SearchingCard({ visible, letterAnimValues, dot1Anim, dot2Anim, dot3Anim }: Props) {
+export default function SearchingCard({ visible, letterAnimValues, dot1Anim, dot2Anim, dot3Anim, bottomOffset = 0 }: Props) {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
   const searchText = t('searching_trips');
@@ -21,7 +22,7 @@ export default function SearchingCard({ visible, letterAnimValues, dot1Anim, dot
   if (!visible) return null;
 
   return (
-    <View style={styles.searchingBar}>
+    <View style={[styles.searchingBar, { bottom: 20 + bottomOffset }]}>
       <Text style={styles.searchingText}>
         {searchLetters.map((letter, index) => (
           <Animated.Text
