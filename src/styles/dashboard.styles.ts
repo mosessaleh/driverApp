@@ -233,8 +233,6 @@ return StyleSheet.create({
     right: 0,
     minHeight: 300,
     maxHeight: 440,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
     backgroundColor: isDarkMode ? 'rgba(15,23,42,0.96)' : '#f8fafc',
     borderRadius: 0,
     borderTopLeftRadius: 24,

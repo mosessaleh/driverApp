@@ -1756,13 +1756,14 @@ export default function DashboardScreen() {
     setIsTracking(false);
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    // Show end shift menu after a short delay
-    setTimeout(() => {
-      setRefreshing(false);
-      setShowEndShiftMenu(true);
-    }, 500);
+    try {
+      await loadDriverStatus();
+      await loadUpcomingRides();
+      await loadRecentRides();
+    } catch {}
+    setRefreshing(false);
   };
 
   const handleEndShift = async () => {
@@ -2705,7 +2706,13 @@ export default function DashboardScreen() {
       />
 
       {/* Compact recent rides box */}
-      <View style={[styles.mapContainer, { padding: 12 }]}> 
+      <ScrollView
+        style={[styles.mapContainer, { padding: 12 }]}
+        contentContainerStyle={{ justifyContent: 'flex-start', alignItems: 'stretch' }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <LastRidesList
           rides={recentRides.map(r => ({
             id: r.id,
@@ -2716,7 +2723,7 @@ export default function DashboardScreen() {
             status: r.status,
           }))}
         />
-      </View>
+      </ScrollView>
 
       <EndKMModal
         visible={showEndKMModal}
