@@ -6,6 +6,7 @@ export interface User {
   shiftId?: number;
   shiftStartTime?: string;
   rating?: number;
+  fiveStarCount?: number;
   schedule?: DriverScheduleSnapshot;
   // Add other user properties as needed
 }

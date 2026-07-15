@@ -67,11 +67,7 @@ const formatDateForInput = (date: Date) => {
 
 const buildIsoFromDateParts = (year: number, month: number, day: number): string | null => {
   const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
     return null;
   }
 
@@ -117,6 +113,9 @@ export default function HistoryScreen() {
     shiftId?: string | string[];
     shiftStart?: string | string[];
     shiftEnd?: string | string[];
+    fromAnalytics?: string | string[];
+    analyticsStart?: string | string[];
+    analyticsEnd?: string | string[];
   }>();
   const { t, getCurrentLanguage } = useTranslation();
 
@@ -144,7 +143,7 @@ export default function HistoryScreen() {
       { key: 'thisWeek' as const, label: t('filter_this_week') },
       { key: 'allTime' as const, label: t('filter_all_time') },
     ],
-    [t]
+    [t],
   );
 
   const clearRetryTimeout = useCallback(() => {
@@ -170,7 +169,10 @@ export default function HistoryScreen() {
             ? response.rides.filter((ride: RideItem) => {
                 const createdAtMs = new Date(ride.createdAt || '').getTime();
                 if (!Number.isFinite(createdAtMs)) return false;
-                return createdAtMs >= currentShiftWindow.startMs && createdAtMs <= currentShiftWindow.endMs;
+                return (
+                  createdAtMs >= currentShiftWindow.startMs &&
+                  createdAtMs <= currentShiftWindow.endMs
+                );
               })
             : response.rides;
 
@@ -212,7 +214,7 @@ export default function HistoryScreen() {
         }
       }
     },
-    [authState.token, clearRetryTimeout, t]
+    [authState.token, clearRetryTimeout, t],
   );
 
   useEffect(() => {
@@ -228,12 +230,45 @@ export default function HistoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (authState.token) {
-        loadHistory(appliedRangeRef.current);
+      if (!authState.token) return;
+
+      const fromAnalytics = getSingleParam(params.fromAnalytics);
+      const analyticsStart = getSingleParam(params.analyticsStart);
+      const analyticsEnd = getSingleParam(params.analyticsEnd);
+
+      if (fromAnalytics === '1' && analyticsStart && analyticsEnd) {
+        const startMs = new Date(analyticsStart + 'T00:00:00').getTime();
+        const endMs = new Date(analyticsEnd + 'T23:59:59').getTime();
+
+        if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+          shiftWindowRef.current = null;
+          setActiveShiftWindow(null);
+
+          const range: DateRange = {
+            startDate: analyticsStart,
+            endDate: analyticsEnd,
+          };
+
+          appliedRangeRef.current = range;
+          setStartDate(formatDateForInput(new Date(startMs)));
+          setEndDate(formatDateForInput(new Date(endMs)));
+          setActiveQuickFilter('custom');
+          setFilterVisible(false);
+
+          loadHistory(range);
+          return () => {};
+        }
       }
 
+      loadHistory(appliedRangeRef.current);
       return () => {};
-    }, [authState.token, loadHistory])
+    }, [
+      authState.token,
+      loadHistory,
+      params.fromAnalytics,
+      params.analyticsStart,
+      params.analyticsEnd,
+    ]),
   );
 
   useEffect(() => {
@@ -279,7 +314,14 @@ export default function HistoryScreen() {
 
     shiftWindowRef.current = null;
     setActiveShiftWindow(null);
-  }, [authState.token, loadHistory, params.fromShift, params.shiftEnd, params.shiftId, params.shiftStart]);
+  }, [
+    authState.token,
+    loadHistory,
+    params.fromShift,
+    params.shiftEnd,
+    params.shiftId,
+    params.shiftStart,
+  ]);
 
   const onRefreshData = useCallback(async () => {
     setRefreshing(true);
@@ -301,7 +343,7 @@ export default function HistoryScreen() {
         year: 'numeric',
       });
     },
-    [locale, t]
+    [locale, t],
   );
 
   const formatTime = useCallback(
@@ -315,21 +357,23 @@ export default function HistoryScreen() {
         minute: '2-digit',
       });
     },
-    [locale]
+    [locale],
   );
 
   const formatAmount = useCallback(
     (amount?: number | null) => {
       const numeric = Number(amount ?? 0);
       return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
-        Number.isFinite(numeric) ? numeric : 0
+        Number.isFinite(numeric) ? numeric : 0,
       );
     },
-    [locale]
+    [locale],
   );
 
   const buildQuickFilterRange = useCallback(
-    (filterKey: Exclude<QuickFilterKey, 'custom'>): { range: DateRange; startInput: string; endInput: string } => {
+    (
+      filterKey: Exclude<QuickFilterKey, 'custom'>,
+    ): { range: DateRange; startInput: string; endInput: string } => {
       const now = new Date();
 
       if (filterKey === 'today') {
@@ -368,7 +412,7 @@ export default function HistoryScreen() {
         endInput: '',
       };
     },
-    []
+    [],
   );
 
   const handleQuickFilter = useCallback(
@@ -383,7 +427,7 @@ export default function HistoryScreen() {
       appliedRangeRef.current = range;
       await loadHistory(range);
     },
-    [buildQuickFilterRange, loadHistory]
+    [buildQuickFilterRange, loadHistory],
   );
 
   const validateFilterInputs = useCallback((): DateRange | null => {
@@ -486,13 +530,13 @@ export default function HistoryScreen() {
           <View style={styles.rideHeaderRow}>
             <Text style={styles.rideId}>#{item.id}</Text>
             <View style={[styles.statusBadge, statusBadgeStyle]}>
-              <Text style={[styles.statusBadgeText, statusTextStyle]}>
-                {statusText}
-              </Text>
+              <Text style={[styles.statusBadgeText, statusTextStyle]}>{statusText}</Text>
             </View>
           </View>
 
-          <Text style={styles.rideDateTime}>{formatDate(item.createdAt)} • {formatTime(item.createdAt)}</Text>
+          <Text style={styles.rideDateTime}>
+            {formatDate(item.createdAt)} • {formatTime(item.createdAt)}
+          </Text>
 
           <View style={styles.addressBlock}>
             <Text style={styles.addressLabel}>{t('pickup')}</Text>
@@ -514,10 +558,14 @@ export default function HistoryScreen() {
           {isCanceled && (item.cancellationReason || item.canceledBy) && (
             <View style={styles.cancellationBox}>
               {item.cancellationReason ? (
-                <Text style={styles.cancellationText}>{`${t('cancellation_reason')}: ${t(item.cancellationReason)}`}</Text>
+                <Text
+                  style={styles.cancellationText}
+                >{`${t('cancellation_reason')}: ${t(item.cancellationReason)}`}</Text>
               ) : null}
               {item.canceledBy ? (
-                <Text style={styles.cancellationText}>{`${t('canceled_by')}: ${t(`canceled_by_${item.canceledBy}`)}`}</Text>
+                <Text
+                  style={styles.cancellationText}
+                >{`${t('canceled_by')}: ${t(`canceled_by_${item.canceledBy}`)}`}</Text>
               ) : null}
             </View>
           )}
@@ -529,14 +577,16 @@ export default function HistoryScreen() {
         </TouchableOpacity>
       );
     },
-    [formatAmount, formatDate, formatTime, router, t]
+    [formatAmount, formatDate, formatTime, router, t],
   );
 
   const renderEmptyState = useCallback(() => {
     return (
       <View style={styles.emptyState}>
         {loading ? <ActivityIndicator size="large" color="#1d4ed8" /> : null}
-        <Text style={styles.emptyText}>{loading ? t('history_loading') : t('history_no_rides')}</Text>
+        <Text style={styles.emptyText}>
+          {loading ? t('history_loading') : t('history_no_rides')}
+        </Text>
       </View>
     );
   }, [loading, t]);
@@ -552,7 +602,12 @@ export default function HistoryScreen() {
           style={[styles.filterToggleButton, filterVisible && styles.filterToggleButtonActive]}
           onPress={() => setFilterVisible((prev) => !prev)}
         >
-          <Text style={[styles.filterToggleButtonText, filterVisible && styles.filterToggleButtonTextActive]}>
+          <Text
+            style={[
+              styles.filterToggleButtonText,
+              filterVisible && styles.filterToggleButtonTextActive,
+            ]}
+          >
             {t('filter')}
           </Text>
         </TouchableOpacity>
@@ -588,15 +643,24 @@ export default function HistoryScreen() {
               <View style={styles.shiftFilterBanner}>
                 <View style={styles.shiftFilterBannerTextWrap}>
                   <Text style={styles.shiftFilterBannerTitle}>
-                    {t('history_shift_filter_label', { shiftId: activeShiftWindow.shiftId || '--' })}
+                    {t('history_shift_filter_label', {
+                      shiftId: activeShiftWindow.shiftId || '--',
+                    })}
                   </Text>
-                  <Text style={styles.shiftFilterBannerSubtitle}>{t('history_shift_filter_active')}</Text>
+                  <Text style={styles.shiftFilterBannerSubtitle}>
+                    {t('history_shift_filter_active')}
+                  </Text>
                   <Text style={styles.shiftFilterBannerRange}>
-                    {formatDate(activeShiftWindow.startIso)} • {formatTime(activeShiftWindow.startIso)} - {formatDate(activeShiftWindow.endIso)} • {formatTime(activeShiftWindow.endIso)}
+                    {formatDate(activeShiftWindow.startIso)} •{' '}
+                    {formatTime(activeShiftWindow.startIso)} -{' '}
+                    {formatDate(activeShiftWindow.endIso)} • {formatTime(activeShiftWindow.endIso)}
                   </Text>
                 </View>
 
-                <TouchableOpacity style={styles.shiftFilterBannerAction} onPress={handleShowAllHistory}>
+                <TouchableOpacity
+                  style={styles.shiftFilterBannerAction}
+                  onPress={handleShowAllHistory}
+                >
                   <Text style={styles.shiftFilterBannerActionText}>{t('history_show_all')}</Text>
                 </TouchableOpacity>
               </View>
@@ -619,7 +683,12 @@ export default function HistoryScreen() {
                         ]}
                         onPress={() => handleQuickFilter(option.key)}
                       >
-                        <Text style={[styles.quickFilterChipText, isActive && styles.quickFilterChipTextActive]}>
+                        <Text
+                          style={[
+                            styles.quickFilterChipText,
+                            isActive && styles.quickFilterChipTextActive,
+                          ]}
+                        >
                           {option.label}
                         </Text>
                       </TouchableOpacity>
@@ -658,11 +727,17 @@ export default function HistoryScreen() {
                 </View>
 
                 <View style={styles.filterActionsRow}>
-                  <TouchableOpacity style={[styles.filterActionButton, styles.applyButton]} onPress={handleFilter}>
+                  <TouchableOpacity
+                    style={[styles.filterActionButton, styles.applyButton]}
+                    onPress={handleFilter}
+                  >
                     <Text style={styles.applyButtonText}>{t('filter')}</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={[styles.filterActionButton, styles.clearButton]} onPress={handleClearFilter}>
+                  <TouchableOpacity
+                    style={[styles.filterActionButton, styles.clearButton]}
+                    onPress={handleClearFilter}
+                  >
                     <Text style={styles.clearButtonText}>{t('clear')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -671,7 +746,9 @@ export default function HistoryScreen() {
           </View>
         }
         ListEmptyComponent={renderEmptyState}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshData} tintColor="#1d4ed8" />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefreshData} tintColor="#1d4ed8" />
+        }
       />
     </View>
   );

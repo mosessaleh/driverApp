@@ -22,59 +22,34 @@ function formatTime(ts?: string) {
   if (/^\d{2}:\d{2}$/.test(ts)) return ts;
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts;
-  return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+  return (
+    d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0')
+  );
 }
-
-const COUNTRY_NAMES = new Set([
-  'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'antigua and barbuda', 'argentina', 'armenia', 'australia', 'austria', 'azerbaijan',
-  'bahamas', 'bahrain', 'bangladesh', 'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia', 'bosnia and herzegovina', 'botswana', 'brazil', 'brunei', 'bulgaria', 'burkina faso', 'burundi',
-  'cabo verde', 'cambodia', 'cameroon', 'canada', 'central african republic', 'chad', 'chile', 'china', 'colombia', 'comoros', 'costa rica', 'côte d’ivoire', 'croatia', 'cuba', 'cyprus', 'czech republic',
-  'democratic republic of the congo', 'denmark', 'djibouti', 'dominica', 'dominican republic',
-  'ecuador', 'egypt', 'el salvador', 'equatorial guinea', 'eritrea', 'estonia', 'eswatini', 'ethiopia',
-  'fiji', 'finland', 'france',
-  'gabon', 'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada', 'guatemala', 'guinea', 'guinea-bissau', 'guyana',
-  'haiti', 'honduras', 'hungary',
-  'iceland', 'india', 'indonesia', 'iran', 'iraq', 'ireland', 'israel', 'italy',
-  'jamaica', 'japan', 'jordan',
-  'kazakhstan', 'kenya', 'kiribati', 'kosovo', 'kuwait', 'kyrgyzstan',
-  'laos', 'latvia', 'lebanon', 'lesotho', 'liberia', 'libya', 'liechtenstein', 'lithuania', 'luxembourg',
-  'madagascar', 'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'marshall islands', 'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco', 'mongolia', 'montenegro', 'morocco', 'mozambique',
-  'myanmar',
-  'namibia', 'nauru', 'nepal', 'netherlands', 'new zealand', 'nicaragua', 'niger', 'nigeria', 'north korea', 'north macedonia', 'norway',
-  'oman',
-  'pakistan', 'palau', 'panama', 'papua new guinea', 'paraguay', 'peru', 'philippines', 'poland', 'portugal',
-  'qatar',
-  'romania', 'russia', 'rwanda',
-  'saint kitts and nevis', 'saint lucia', 'saint vincent and the grenadines', 'samoa', 'san marino', 'são tomé and príncipe', 'saudi arabia', 'senegal', 'serbia', 'seychelles', 'sierra leone', 'singapore', 'slovakia', 'slovenia', 'solomon islands', 'somalia', 'south africa', 'south korea', 'south sudan', 'spain', 'sri lanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria',
-  'taiwan', 'tajikistan', 'tanzania', 'thailand', 'timor-leste', 'togo', 'tonga', 'trinidad and tobago', 'tunisia', 'turkey', 'turkmenistan', 'tuvalu',
-  'uganda', 'ukraine', 'united arab emirates', 'united kingdom', 'united states', 'uruguay', 'uzbekistan',
-  'vanuatu', 'vatican city', 'venezuela', 'vietnam',
-  'yemen', 'zambia', 'zimbabwe'
-]);
 
 function shortenAddress(address?: string) {
   if (!address) return 'Unknown';
   const cleaned = address.trim();
-  const parts = cleaned.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = cleaned
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (!parts.length) return 'Unknown';
-
-  const lastPart = parts[parts.length - 1].replace(/^\d{3,4}\s*/g, '').trim();
-  const lastLower = lastPart.toLowerCase();
-
-  if (COUNTRY_NAMES.has(lastLower) && parts.length > 1) {
-    const previousPart = parts[parts.length - 2].replace(/^\d{3,4}\s*/g, '').trim();
-    return previousPart || lastPart || cleaned;
-  }
-
-  return lastPart || cleaned;
+  return parts[0] || cleaned;
 }
 
-function getStatusLabel(status: string | undefined, t: (key: string) => string) {
+function getStatusInfo(status: string | undefined, t: (key: string) => string) {
   const normalized = String(status || '').toUpperCase();
-  if (['DISPATCHED', 'ONGOING', 'PICKED_UP', 'IN_PROGRESS'].includes(normalized)) return t('status_on_ride');
-  if (normalized === 'COMPLETED') return t('ride_status_completed');
-  if (normalized === 'CANCELED' || normalized === 'CANCELLED') return t('ride_status_cancelled');
-  return status || '';
+  if (['DISPATCHED', 'ONGOING', 'PICKED_UP', 'IN_PROGRESS'].includes(normalized)) {
+    return { label: t('status_on_ride'), color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' };
+  }
+  if (normalized === 'COMPLETED') {
+    return { label: t('ride_status_completed'), color: '#22c55e', bg: 'rgba(34,197,94,0.12)' };
+  }
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED') {
+    return { label: t('ride_status_cancelled'), color: '#ef4444', bg: 'rgba(239,68,68,0.12)' };
+  }
+  return null;
 }
 
 export default function LastRidesList({ rides, maxItems = 6, isDarkMode = false }: Props) {
@@ -84,118 +59,173 @@ export default function LastRidesList({ rides, maxItems = 6, isDarkMode = false 
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.header}>Recent Rides</Text>
-          <Text style={styles.sub}>Latest ride data from your dashboard</Text>
-        </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{data.length}/{maxItems}</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{t('recent_rides') || 'Recent Rides'}</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeText}>{data.length}</Text>
         </View>
       </View>
 
       {data.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No recent rides available yet.</Text>
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyText}>{t('no_recent_rides') || 'No rides yet'}</Text>
         </View>
       ) : (
-        <FlatList
-          data={data}
-          keyExtractor={(item, idx) => (item.id != null ? String(item.id) : String(idx))}
-          renderItem={({ item, index }) => (
-            <View style={[styles.row, index % 2 === 0 ? styles.rowEven : styles.rowOdd]}>
-              {!!getStatusLabel(item.status, t) && (
-                <Text
+        data.map((item, index) => {
+          const statusInfo = getStatusInfo(item.status, t);
+          const isLast = index === data.length - 1;
+          return (
+            <View key={item.id != null ? String(item.id) : String(index)}>
+              <View style={styles.rideCard}>
+                <View
                   style={[
-                    styles.statusText,
-                    ['DISPATCHED', 'ONGOING', 'PICKED_UP', 'IN_PROGRESS'].includes(String(item.status || '').toUpperCase())
-                      ? styles.statusTextActive
-                      : styles.statusTextMuted,
+                    styles.statusLine,
+                    statusInfo ? { backgroundColor: statusInfo.color } : null,
                   ]}
-                  numberOfLines={1}
-                >
-                  {getStatusLabel(item.status, t)}
-                </Text>
-              )}
-              <Text style={styles.lineText} numberOfLines={1} ellipsizeMode="tail">
-                {formatTime(item.startTime)} • {shortenAddress(item.from)} → {shortenAddress(item.to)} • {item.price != null ? `${item.price} DKK` : '--'}
-              </Text>
+                />
+                <View style={styles.rideContent}>
+                  <View style={styles.rideTop}>
+                    <Text style={styles.rideTime}>{formatTime(item.startTime)}</Text>
+                    {statusInfo && (
+                      <View style={[styles.statusChip, { backgroundColor: statusInfo.bg }]}>
+                        <View style={[styles.statusDot, { backgroundColor: statusInfo.color }]} />
+                        <Text style={[styles.statusChipText, { color: statusInfo.color }]}>
+                          {statusInfo.label}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.ridePrice}>
+                      {item.price != null ? `${item.price} DKK` : '--'}
+                    </Text>
+                  </View>
+                  <Text style={styles.rideRoute} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.routeFrom}>{shortenAddress(item.from)}</Text>
+                    <Text style={styles.routeArrow}> → </Text>
+                    <Text style={styles.routeTo}>{shortenAddress(item.to)}</Text>
+                  </Text>
+                </View>
+              </View>
+              {!isLast && <View style={styles.sep} />}
             </View>
-          )}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
-          scrollEnabled={false}
-        />
+          );
+        })
       )}
     </View>
   );
 }
 
-const getStyles = (isDarkMode: boolean) => StyleSheet.create({
-  container: {
-    backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 8 },
-    borderWidth: 1,
-    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  header: { fontWeight: '800', fontSize: 16, color: isDarkMode ? '#f1f5f9' : '#0f172a' },
-  sub: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b', marginTop: 4, lineHeight: 16 },
-  badge: {
-    backgroundColor: isDarkMode ? '#0c4a6e' : '#e0f2fe',
-    borderRadius: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    alignSelf: 'flex-start',
-  },
-  badgeText: {
-    color: isDarkMode ? '#7dd3fc' : '#0c4a6e',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  emptyState: {
-    paddingVertical: 24,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: isDarkMode ? '#94a3b8' : '#64748b',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  row: {
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-  },
-  rowEven: { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' },
-  rowOdd: { backgroundColor: isDarkMode ? '#0f172a' : '#ffffff' },
-  lineText: {
-    color: isDarkMode ? '#e2e8f0' : '#0f172a',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-  statusText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-    marginBottom: 3,
-  },
-  statusTextActive: {
-    color: isDarkMode ? '#38bdf8' : '#0369a1',
-  },
-  statusTextMuted: {
-    color: isDarkMode ? '#94a3b8' : '#475569',
-  },
-  sep: { height: 1, backgroundColor: isDarkMode ? '#334155' : '#e2e8f0', marginVertical: 0 },
-});
+const getStyles = (isDarkMode: boolean) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    headerTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+    },
+    countBadge: {
+      backgroundColor: isDarkMode ? 'rgba(148,163,184,0.15)' : '#f1f5f9',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    countBadgeText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: isDarkMode ? '#94a3b8' : '#64748b',
+    },
+    empty: {
+      alignItems: 'center',
+      paddingVertical: 28,
+    },
+    emptyIcon: {
+      fontSize: 28,
+      marginBottom: 8,
+    },
+    emptyText: {
+      fontSize: 13,
+      color: isDarkMode ? '#64748b' : '#94a3b8',
+    },
+    rideCard: {
+      flexDirection: 'row',
+      paddingVertical: 12,
+      minHeight: 52,
+    },
+    statusLine: {
+      width: 3,
+      borderRadius: 2,
+      marginRight: 12,
+      backgroundColor: 'transparent',
+    },
+    rideContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    rideTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+      gap: 8,
+    },
+    rideTime: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDarkMode ? '#94a3b8' : '#64748b',
+      fontVariant: ['tabular-nums'],
+    },
+    statusChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 6,
+      gap: 4,
+    },
+    statusDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 3,
+    },
+    statusChipText: {
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    ridePrice: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: isDarkMode ? '#e2e8f0' : '#0f172a',
+      marginLeft: 'auto',
+    },
+    rideRoute: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    routeFrom: {
+      color: isDarkMode ? '#cbd5e1' : '#334155',
+      fontWeight: '500',
+    },
+    routeArrow: {
+      color: isDarkMode ? '#475569' : '#94a3b8',
+      fontWeight: '600',
+    },
+    routeTo: {
+      color: isDarkMode ? '#cbd5e1' : '#334155',
+      fontWeight: '500',
+    },
+    sep: {
+      height: 1,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    },
+  });

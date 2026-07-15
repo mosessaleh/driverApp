@@ -1,11 +1,40 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform, Image, ScrollView, RefreshControl, TextInput, Animated, PanResponder, ActivityIndicator, AppState, Alert, BackHandler } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  Platform,
+  Image,
+  ScrollView,
+  RefreshControl,
+  TextInput,
+  Animated,
+  PanResponder,
+  ActivityIndicator,
+  AppState,
+  Alert,
+  BackHandler,
+} from 'react-native';
 // Load react-native-maps dynamically only on native builds to avoid native module init in Expo Go
 // (we'll require it inside the component when needed)
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
-import { toggleDriverOnline, toggleDriverBusy, getDriverStatus, updateDriverLocation, getRide, api, endShift, getDriverUpcoming, getDriverSchedule, normalizeScheduledPendingOffers, getDriverHistory } from '../src/services/api';
+import {
+  toggleDriverOnline,
+  toggleDriverBusy,
+  getDriverStatus,
+  updateDriverLocation,
+  getRide,
+  api,
+  endShift,
+  getDriverUpcoming,
+  getDriverSchedule,
+  normalizeScheduledPendingOffers,
+  getDriverHistory,
+} from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
 import type { DriverStatus } from '../src/components/StatusBar';
@@ -16,18 +45,44 @@ import * as Linking from 'expo-linking';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
-import { onDriverStatusUpdate, offDriverStatusUpdate, onRideOffer, offRideOffer, onRideOfferTimeout, offRideOfferTimeout, onRideOfferRejected, offRideOfferRejected, onScheduledOfferResult, offScheduledOfferResult, onRideCancelled, offRideCancelled, sendRideTimeout, acceptRide, rejectRide, joinChat, sendMessage, onNewMessage, offNewMessage, onPickupProximity, offPickupProximity, onPickupCountdownExpired, offPickupCountdownExpired, onScheduledLateWarning, offScheduledLateWarning, onScheduledUpcomingOffersUpdate, offScheduledUpcomingOffersUpdate, getSocket } from '../src/services/socket';
+import {
+  onDriverStatusUpdate,
+  offDriverStatusUpdate,
+  onRideOffer,
+  offRideOffer,
+  onRideOfferTimeout,
+  offRideOfferTimeout,
+  onRideOfferRejected,
+  offRideOfferRejected,
+  onScheduledOfferResult,
+  offScheduledOfferResult,
+  onRideCancelled,
+  offRideCancelled,
+  sendRideTimeout,
+  acceptRide,
+  rejectRide,
+  joinChat,
+  sendMessage,
+  onNewMessage,
+  offNewMessage,
+  onPickupProximity,
+  offPickupProximity,
+  onPickupCountdownExpired,
+  offPickupCountdownExpired,
+  onScheduledLateWarning,
+  offScheduledLateWarning,
+  onScheduledUpcomingOffersUpdate,
+  offScheduledUpcomingOffersUpdate,
+  getSocket,
+} from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
-import {
-  devLog,
-  getGoogleMapsApiKey,
-  requireGoogleMapsApiKey,
-} from '../src/config/security';
+import { devLog, getGoogleMapsApiKey, requireGoogleMapsApiKey } from '../src/config/security';
 import MapPlaceholder from './components/MapPlaceholder';
 import LastRidesList from './components/LastRidesList';
 import SearchingCard from './components/SearchingCard';
 import EndKMModal from './components/EndKMModal';
+import RatingInfoModal from './components/RatingInfoModal';
 import ShiftWarningModal from './components/ShiftWarningModal';
 import HamburgerMenu from './components/HamburgerMenu';
 import ChatModal from './components/ChatModal';
@@ -72,65 +127,68 @@ export const options = {
 };
 
 export default function DashboardScreen() {
-    const { authState, logout } = useAuth();
-    const { settings, isDarkMode, isRTL } = useSettings();
-    const { t, getCurrentLanguage } = useTranslation();
-    const router = useRouter();
-    const googleMapsApiKey = getGoogleMapsApiKey();
-    const [driverOnline, setDriverOnline] = useState(false);
-    const [driverBusy, setDriverBusy] = useState(false);
-    const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
-    const [banCountdown, setBanCountdown] = useState(0);
-    const [restrictedOffers, setRestrictedOffers] = useState(false);
-    const [restrictedOffersUntil, setRestrictedOffersUntil] = useState<Date | null>(null);
-   const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
-   const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
-   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-   const [locationPermission, setLocationPermission] = useState(false);
-   const [locationSubscription, setLocationSubscription] = useState<any>(null);
-   const [isTracking, setIsTracking] = useState(false);
-   const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
-   const [lastStatusCheck, setLastStatusCheck] = useState(0);
-    const [refreshing, setRefreshing] = useState(false);
-    const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const hasInitialLoadedRef = useRef(false);
-   const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
-   const [showMenu, setShowMenu] = useState(false);
-   const [menuMounted, setMenuMounted] = useState(false);
-   const [showEndKMModal, setShowEndKMModal] = useState(false);
-   const [endKM, setEndKM] = useState('');
-   const [activeRide, setActiveRide] = useState<any>(null);
-   const [currentRideId, setCurrentRideId] = useState<number | null>(null);
-   const [showPickupModal, setShowPickupModal] = useState(false);
-   const [showDropoffModal, setShowDropoffModal] = useState(false);
-   const [showStopModal, setShowStopModal] = useState(false);
-   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
-   const [isPickupLoading, setIsPickupLoading] = useState(false);
-   const [isContinueLoading, setIsContinueLoading] = useState(false);
-   const [isDropoffLoading, setIsDropoffLoading] = useState(false);
-   const [rideOffer, setRideOffer] = useState<any>(null);
-   const [offerCountdown, setOfferCountdown] = useState(0);
-   const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
-   const [offerTimeout, setOfferTimeout] = useState<ReturnType<typeof setInterval> | null>(null);
-   const [rideOfferSound, setRideOfferSound] = useState<any>(null);
-   const [lateWarningSound, setLateWarningSound] = useState<any>(null);
-   const [scheduledBanner, setScheduledBanner] = useState<{
-     rideId: number;
-     message: string;
-     pickupTime?: string | null;
-     selected?: boolean | null;
-   } | null>(null);
-   const scheduledBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-   const rideOfferSoundRef = useRef<any>(null);
-   const lateWarningSoundRef = useRef<any>(null);
-   const beepSoundRef = useRef<any>(null);
-   const isAudioModeReadyRef = useRef(false);
-   const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
+  const { authState, logout } = useAuth();
+  const { settings, isDarkMode, isRTL } = useSettings();
+  const { t, getCurrentLanguage } = useTranslation();
+  const router = useRouter();
+  const googleMapsApiKey = getGoogleMapsApiKey();
+  const [driverOnline, setDriverOnline] = useState(false);
+  const [driverBusy, setDriverBusy] = useState(false);
+  const [bannedUntil, setBannedUntil] = useState<Date | null>(null);
+  const [banCountdown, setBanCountdown] = useState(0);
+  const [restrictedOffers, setRestrictedOffers] = useState(false);
+  const [restrictedOffersUntil, setRestrictedOffersUntil] = useState<Date | null>(null);
+  const [shiftStartTime, setShiftStartTime] = useState<string | null>(null);
+  const [shiftElapsedTime, setShiftElapsedTime] = useState('00:00:00');
+  const [currentLocation, setCurrentLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [locationPermission, setLocationPermission] = useState(false);
+  const [locationSubscription, setLocationSubscription] = useState<any>(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const [lastLocationUpdate, setLastLocationUpdate] = useState(0);
+  const [lastStatusCheck, setLastStatusCheck] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const hasInitialLoadedRef = useRef(false);
+  const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuMounted, setMenuMounted] = useState(false);
+  const [showEndKMModal, setShowEndKMModal] = useState(false);
+  const [endKM, setEndKM] = useState('');
+  const [activeRide, setActiveRide] = useState<any>(null);
+  const [currentRideId, setCurrentRideId] = useState<number | null>(null);
+  const [showPickupModal, setShowPickupModal] = useState(false);
+  const [showDropoffModal, setShowDropoffModal] = useState(false);
+  const [showStopModal, setShowStopModal] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
+  const [isPickupLoading, setIsPickupLoading] = useState(false);
+  const [isContinueLoading, setIsContinueLoading] = useState(false);
+  const [isDropoffLoading, setIsDropoffLoading] = useState(false);
+  const [rideOffer, setRideOffer] = useState<any>(null);
+  const [offerCountdown, setOfferCountdown] = useState(0);
+  const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
+  const [offerTimeout, setOfferTimeout] = useState<ReturnType<typeof setInterval> | null>(null);
+  const [rideOfferSound, setRideOfferSound] = useState<any>(null);
+  const [lateWarningSound, setLateWarningSound] = useState<any>(null);
+  const [scheduledBanner, setScheduledBanner] = useState<{
+    rideId: number;
+    message: string;
+    pickupTime?: string | null;
+    selected?: boolean | null;
+  } | null>(null);
+  const scheduledBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rideOfferSoundRef = useRef<any>(null);
+  const lateWarningSoundRef = useRef<any>(null);
+  const beepSoundRef = useRef<any>(null);
+  const isAudioModeReadyRef = useRef(false);
+  const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
   const [recentRides, setRecentRides] = useState<any[]>([]);
-   const [pendingScheduledOffers, setPendingScheduledOffers] = useState<ScheduledPendingOffer[]>([]);
-   const [scheduledNow, setScheduledNow] = useState(Date.now());
-   const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
-   const latestLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const [pendingScheduledOffers, setPendingScheduledOffers] = useState<ScheduledPendingOffer[]>([]);
+  const [scheduledNow, setScheduledNow] = useState(Date.now());
+  const [scheduledEtaMinutes, setScheduledEtaMinutes] = useState<number | null>(null);
+  const latestLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   const loadRecentRides = async (retryCount = 0) => {
     if (!authState.token) return;
@@ -143,7 +201,7 @@ export default function DashboardScreen() {
         formatDate(startDate),
         formatDate(endDate),
         false,
-        true
+        true,
       );
 
       if (response && response.ok && Array.isArray(response.rides)) {
@@ -160,367 +218,379 @@ export default function DashboardScreen() {
       }
     }
   };
-   const nextScheduledRideRef = useRef<any>(null);
-   const pendingScheduledOffersRef = useRef<ScheduledPendingOffer[]>([]);
-   const [showChat, setShowChat] = useState(false);
-   const [chatMessages, setChatMessages] = useState<any[]>([]);
-   const [chatInput, setChatInput] = useState('');
-   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
-   const [isSocketConnected, setIsSocketConnected] = useState(false);
-   const [networkMode, setNetworkMode] = useState<NetworkMode>('online');
-   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
-   const [lastCachedRidePreview, setLastCachedRidePreview] = useState<{ id: number; status: string } | null>(null);
-   const [showShiftWarning, setShowShiftWarning] = useState(false);
-   const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
-   const [cancelCountdown, setCancelCountdown] = useState(0);
-   const [showCancelText, setShowCancelText] = useState(false);
-   const [showCancelModal, setShowCancelModal] = useState(false);
-   const [cancelStep, setCancelStep] = useState<'reason' | 'confirm' | 'loading' | 'success' | 'error'>('reason');
-   const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
-   const [cancelFeeEstimate, setCancelFeeEstimate] = useState<number>(0);
-   const [cancelTimeElapsed, setCancelTimeElapsed] = useState<number>(0);
-   const [cancelDistanceEstimate, setCancelDistanceEstimate] = useState<number>(0);
-   const [cancelErrorMessage, setCancelErrorMessage] = useState<string>('');
-   const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
-   const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
-   const [showStatusExpanded, setShowStatusExpanded] = useState(false);
-   const [totalRidesToday, setTotalRidesToday] = useState(0);
-   const [earningsToday, setEarningsToday] = useState(0);
-   const [scheduleEligibility, setScheduleEligibility] = useState<any>(null);
-   const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
-   const driverOnlineRef = useRef(false);
-   const driverBusyRef = useRef(false);
-   const isSocketConnectedRef = useRef(false);
-   const networkModeRef = useRef<NetworkMode>('online');
-   const isFlushingQueueRef = useRef(false);
+  const nextScheduledRideRef = useRef<any>(null);
+  const pendingScheduledOffersRef = useRef<ScheduledPendingOffer[]>([]);
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [networkMode, setNetworkMode] = useState<NetworkMode>('online');
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [lastCachedRidePreview, setLastCachedRidePreview] = useState<{
+    id: number;
+    status: string;
+  } | null>(null);
+  const [showShiftWarning, setShowShiftWarning] = useState(false);
+  const [suppressShiftWarning, setSuppressShiftWarning] = useState(false);
+  const [cancelCountdown, setCancelCountdown] = useState(0);
+  const [showCancelText, setShowCancelText] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelStep, setCancelStep] = useState<
+    'reason' | 'confirm' | 'loading' | 'success' | 'error'
+  >('reason');
+  const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
+  const [cancelFeeEstimate, setCancelFeeEstimate] = useState<number>(0);
+  const [cancelTimeElapsed, setCancelTimeElapsed] = useState<number>(0);
+  const [cancelDistanceEstimate, setCancelDistanceEstimate] = useState<number>(0);
+  const [cancelErrorMessage, setCancelErrorMessage] = useState<string>('');
+  const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
+  const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
+  const [showStatusExpanded, setShowStatusExpanded] = useState(false);
+  const [showRatingInfo, setShowRatingInfo] = useState(false);
+  const [totalRidesToday, setTotalRidesToday] = useState(0);
+  const [earningsToday, setEarningsToday] = useState(0);
+  const [scheduleEligibility, setScheduleEligibility] = useState<any>(null);
+  const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
+  const driverOnlineRef = useRef(false);
+  const driverBusyRef = useRef(false);
+  const isSocketConnectedRef = useRef(false);
+  const networkModeRef = useRef<NetworkMode>('online');
+  const isFlushingQueueRef = useRef(false);
 
-   const quickReplies = useMemo(
-     () => [
-       t('quick_reply_on_my_way'),
-       t('quick_reply_arrived'),
-       t('quick_reply_traffic'),
-       t('quick_reply_arriving'),
-     ],
-     [t]
-   );
+  const quickReplies = useMemo(
+    () => [
+      t('quick_reply_on_my_way'),
+      t('quick_reply_arrived'),
+      t('quick_reply_traffic'),
+      t('quick_reply_arriving'),
+    ],
+    [t],
+  );
 
-   const waitFor = (ms: number) =>
-     new Promise(resolve => setTimeout(resolve, ms));
+  const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-   const readQueuedLocations = async (): Promise<QueuedLocationUpdate[]> => {
-     try {
-       const raw = await AsyncStorage.getItem(OFFLINE_LOCATION_QUEUE_KEY);
-       if (!raw) return [];
-       const parsed = JSON.parse(raw);
-       if (!Array.isArray(parsed)) return [];
+  const readQueuedLocations = async (): Promise<QueuedLocationUpdate[]> => {
+    try {
+      const raw = await AsyncStorage.getItem(OFFLINE_LOCATION_QUEUE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
 
-       return parsed.filter((entry: any) => {
-         const latitude = Number(entry?.latitude);
-         const longitude = Number(entry?.longitude);
-         return Number.isFinite(latitude) && Number.isFinite(longitude) && typeof entry?.timestamp === 'string';
-       });
-     } catch (error) {
-       console.error('Error reading queued offline locations:', error);
-       return [];
-     }
-   };
+      return parsed.filter((entry: any) => {
+        const latitude = Number(entry?.latitude);
+        const longitude = Number(entry?.longitude);
+        return (
+          Number.isFinite(latitude) &&
+          Number.isFinite(longitude) &&
+          typeof entry?.timestamp === 'string'
+        );
+      });
+    } catch (error) {
+      console.error('Error reading queued offline locations:', error);
+      return [];
+    }
+  };
 
-   const persistQueuedLocations = async (queue: QueuedLocationUpdate[]) => {
-     const sanitized = queue.slice(-MAX_OFFLINE_LOCATION_QUEUE);
-     if (sanitized.length === 0) {
-       await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
-       setOfflineQueueCount(0);
-       return;
-     }
+  const persistQueuedLocations = async (queue: QueuedLocationUpdate[]) => {
+    const sanitized = queue.slice(-MAX_OFFLINE_LOCATION_QUEUE);
+    if (sanitized.length === 0) {
+      await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
+      setOfflineQueueCount(0);
+      return;
+    }
 
-     await AsyncStorage.setItem(OFFLINE_LOCATION_QUEUE_KEY, JSON.stringify(sanitized));
-     setOfflineQueueCount(sanitized.length);
-   };
+    await AsyncStorage.setItem(OFFLINE_LOCATION_QUEUE_KEY, JSON.stringify(sanitized));
+    setOfflineQueueCount(sanitized.length);
+  };
 
-   const enqueueLocationForSync = async (
-     location: { latitude: number; longitude: number },
-     timestamp: string
-   ) => {
-     const queued = await readQueuedLocations();
-     queued.push({
-       latitude: location.latitude,
-       longitude: location.longitude,
-       timestamp,
-     });
-     await persistQueuedLocations(queued);
-   };
+  const enqueueLocationForSync = async (
+    location: { latitude: number; longitude: number },
+    timestamp: string,
+  ) => {
+    const queued = await readQueuedLocations();
+    queued.push({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      timestamp,
+    });
+    await persistQueuedLocations(queued);
+  };
 
-   const flushQueuedLocations = async () => {
-     if (!authState.token || isFlushingQueueRef.current) return;
+  const flushQueuedLocations = async () => {
+    if (!authState.token || isFlushingQueueRef.current) return;
 
-     isFlushingQueueRef.current = true;
+    isFlushingQueueRef.current = true;
 
-     try {
-       const queued = await readQueuedLocations();
-       if (!queued.length) {
-         setOfflineQueueCount(0);
-         if (networkModeRef.current !== 'online') {
-           setNetworkMode('online');
-         }
-         return;
-       }
+    try {
+      const queued = await readQueuedLocations();
+      if (!queued.length) {
+        setOfflineQueueCount(0);
+        if (networkModeRef.current !== 'online') {
+          setNetworkMode('online');
+        }
+        return;
+      }
 
-       setNetworkMode('syncing');
-       networkModeRef.current = 'syncing';
+      setNetworkMode('syncing');
+      networkModeRef.current = 'syncing';
 
-       let index = 0;
-       for (; index < queued.length; index += 1) {
-         const point = queued[index];
-         try {
-           await updateDriverLocation(point.latitude, point.longitude, authState.token, point.timestamp);
-         } catch (error) {
-           console.error('Error flushing queued location point:', error);
-           break;
-         }
-       }
+      let index = 0;
+      for (; index < queued.length; index += 1) {
+        const point = queued[index];
+        try {
+          await updateDriverLocation(
+            point.latitude,
+            point.longitude,
+            authState.token,
+            point.timestamp,
+          );
+        } catch (error) {
+          console.error('Error flushing queued location point:', error);
+          break;
+        }
+      }
 
-       if (index >= queued.length) {
-         await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
-         setOfflineQueueCount(0);
-         setNetworkMode('online');
-         networkModeRef.current = 'online';
-       } else {
-         const remaining = queued.slice(index);
-         await persistQueuedLocations(remaining);
-         setNetworkMode('offline');
-         networkModeRef.current = 'offline';
-       }
-     } catch (error) {
-       console.error('Error while flushing offline queue:', error);
-       setNetworkMode('offline');
-       networkModeRef.current = 'offline';
-     } finally {
-       isFlushingQueueRef.current = false;
-     }
-   };
+      if (index >= queued.length) {
+        await AsyncStorage.removeItem(OFFLINE_LOCATION_QUEUE_KEY);
+        setOfflineQueueCount(0);
+        setNetworkMode('online');
+        networkModeRef.current = 'online';
+      } else {
+        const remaining = queued.slice(index);
+        await persistQueuedLocations(remaining);
+        setNetworkMode('offline');
+        networkModeRef.current = 'offline';
+      }
+    } catch (error) {
+      console.error('Error while flushing offline queue:', error);
+      setNetworkMode('offline');
+      networkModeRef.current = 'offline';
+    } finally {
+      isFlushingQueueRef.current = false;
+    }
+  };
 
-   const loadDashboardSnapshot = async () => {
-     try {
-       const rawSnapshot = await AsyncStorage.getItem(DASHBOARD_SNAPSHOT_KEY);
-       if (!rawSnapshot) return;
+  const loadDashboardSnapshot = async () => {
+    try {
+      const rawSnapshot = await AsyncStorage.getItem(DASHBOARD_SNAPSHOT_KEY);
+      if (!rawSnapshot) return;
 
-       const snapshot: DashboardSnapshot = JSON.parse(rawSnapshot);
+      const snapshot: DashboardSnapshot = JSON.parse(rawSnapshot);
 
-       if (!currentLocation && snapshot?.currentLocation) {
-         setCurrentLocation(snapshot.currentLocation);
-       }
+      if (!currentLocation && snapshot?.currentLocation) {
+        setCurrentLocation(snapshot.currentLocation);
+      }
 
-       if (!upcomingRides.length && Array.isArray(snapshot?.upcomingRides)) {
-         setUpcomingRides(snapshot.upcomingRides);
-       }
+      if (!upcomingRides.length && Array.isArray(snapshot?.upcomingRides)) {
+        setUpcomingRides(snapshot.upcomingRides);
+      }
 
-       if (!pendingScheduledOffers.length && Array.isArray(snapshot?.pendingScheduledOffers)) {
-         setPendingScheduledOffers(snapshot.pendingScheduledOffers);
-       }
+      if (!pendingScheduledOffers.length && Array.isArray(snapshot?.pendingScheduledOffers)) {
+        setPendingScheduledOffers(snapshot.pendingScheduledOffers);
+      }
 
-       if (typeof snapshot?.totalRidesToday === 'number' && totalRidesToday === 0) {
-         setTotalRidesToday(snapshot.totalRidesToday);
-       }
+      if (typeof snapshot?.totalRidesToday === 'number' && totalRidesToday === 0) {
+        setTotalRidesToday(snapshot.totalRidesToday);
+      }
 
-       if (typeof snapshot?.earningsToday === 'number' && earningsToday === 0) {
-         setEarningsToday(snapshot.earningsToday);
-       }
+      if (typeof snapshot?.earningsToday === 'number' && earningsToday === 0) {
+        setEarningsToday(snapshot.earningsToday);
+      }
 
-       if (snapshot?.lastRidePreview) {
-         setLastCachedRidePreview(snapshot.lastRidePreview);
-       }
-     } catch (error) {
-       console.error('Error loading dashboard snapshot cache:', error);
-     }
-   };
+      if (snapshot?.lastRidePreview) {
+        setLastCachedRidePreview(snapshot.lastRidePreview);
+      }
+    } catch (error) {
+      console.error('Error loading dashboard snapshot cache:', error);
+    }
+  };
 
   useEffect(() => {
-     driverOnlineRef.current = driverOnline;
-     driverBusyRef.current = driverBusy;
+    driverOnlineRef.current = driverOnline;
+    driverBusyRef.current = driverBusy;
   }, [driverOnline, driverBusy]);
 
-   useEffect(() => {
-     isSocketConnectedRef.current = isSocketConnected;
-   }, [isSocketConnected]);
+  useEffect(() => {
+    isSocketConnectedRef.current = isSocketConnected;
+  }, [isSocketConnected]);
 
-   useEffect(() => {
-     networkModeRef.current = networkMode;
-   }, [networkMode]);
+  useEffect(() => {
+    networkModeRef.current = networkMode;
+  }, [networkMode]);
 
-   useEffect(() => {
-     loadDashboardSnapshot();
-     readQueuedLocations()
-       .then((queued) => {
-         setOfflineQueueCount(queued.length);
-         if (queued.length > 0) {
-           setNetworkMode('offline');
-         }
-       })
-       .catch((error) => {
-         console.error('Error loading queued locations on mount:', error);
-       });
-   }, []);
+  useEffect(() => {
+    loadDashboardSnapshot();
+    readQueuedLocations()
+      .then((queued) => {
+        setOfflineQueueCount(queued.length);
+        if (queued.length > 0) {
+          setNetworkMode('offline');
+        }
+      })
+      .catch((error) => {
+        console.error('Error loading queued locations on mount:', error);
+      });
+  }, []);
 
-   const getAudioMode = () => ({
-     allowsRecordingIOS: false,
-     playsInSilentModeIOS: true,
-     staysActiveInBackground: true,
-     interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-     shouldDuckAndroid: true,
-     interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-     playThroughEarpieceAndroid: false,
-   });
+  const getAudioMode = () => ({
+    allowsRecordingIOS: false,
+    playsInSilentModeIOS: true,
+    staysActiveInBackground: true,
+    interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+    shouldDuckAndroid: true,
+    interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+    playThroughEarpieceAndroid: false,
+  });
 
-   const ensureAudioMode = async () => {
-     try {
-       await Audio.setAudioModeAsync(getAudioMode());
-       isAudioModeReadyRef.current = true;
-       return true;
-     } catch (error) {
-       isAudioModeReadyRef.current = false;
-       console.error('Error setting audio mode:', error);
-       return false;
-     }
-   };
+  const ensureAudioMode = async () => {
+    try {
+      await Audio.setAudioModeAsync(getAudioMode());
+      isAudioModeReadyRef.current = true;
+      return true;
+    } catch (error) {
+      isAudioModeReadyRef.current = false;
+      console.error('Error setting audio mode:', error);
+      return false;
+    }
+  };
 
-   const isAudioFocusException = (error: any) => {
-     const errorMessage = String(error?.message || error || '');
-     return errorMessage.includes('AudioFocusNotAcquiredException');
-   };
+  const isAudioFocusException = (error: any) => {
+    const errorMessage = String(error?.message || error || '');
+    return errorMessage.includes('AudioFocusNotAcquiredException');
+  };
 
-   const runWithAudioFocusRetry = async (
-     operation: () => Promise<any>,
-     context: string,
-     maxAttempts = 3
-   ) => {
-     let lastError: any = null;
+  const runWithAudioFocusRetry = async (
+    operation: () => Promise<any>,
+    context: string,
+    maxAttempts = 3,
+  ) => {
+    let lastError: any = null;
 
-     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-       try {
-         if (!isAudioModeReadyRef.current || attempt > 1) {
-           await ensureAudioMode();
-         }
-         return await operation();
-       } catch (error) {
-         lastError = error;
-         if (!isAudioFocusException(error) || attempt === maxAttempts) {
-           throw error;
-         }
-         const retryDelayMs = 140 * attempt;
-         console.warn(
-           `[Audio] ${context} failed to acquire focus (attempt ${attempt}/${maxAttempts}), retrying in ${retryDelayMs}ms`
-         );
-         await waitFor(retryDelayMs);
-       }
-     }
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (!isAudioModeReadyRef.current || attempt > 1) {
+          await ensureAudioMode();
+        }
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (!isAudioFocusException(error) || attempt === maxAttempts) {
+          throw error;
+        }
+        const retryDelayMs = 140 * attempt;
+        console.warn(
+          `[Audio] ${context} failed to acquire focus (attempt ${attempt}/${maxAttempts}), retrying in ${retryDelayMs}ms`,
+        );
+        await waitFor(retryDelayMs);
+      }
+    }
 
-     throw lastError;
-   };
+    throw lastError;
+  };
 
-   const safelyUnloadSound = async (sound: any, context: string) => {
-     if (!sound) return;
-     try {
-       await sound.stopAsync();
-     } catch {
-       // noop - sound might already be stopped/unloaded
-     }
-     try {
-       await sound.unloadAsync();
-     } catch (error) {
-       console.warn(`Error unloading ${context}:`, error);
-     }
-   };
+  const safelyUnloadSound = async (sound: any, context: string) => {
+    if (!sound) return;
+    try {
+      await sound.stopAsync();
+    } catch {
+      // noop - sound might already be stopped/unloaded
+    }
+    try {
+      await sound.unloadAsync();
+    } catch (error) {
+      console.warn(`Error unloading ${context}:`, error);
+    }
+  };
 
-   const setRideOfferSoundSafe = (sound: any | null) => {
-     rideOfferSoundRef.current = sound;
-     setRideOfferSound(sound);
-   };
+  const setRideOfferSoundSafe = (sound: any | null) => {
+    rideOfferSoundRef.current = sound;
+    setRideOfferSound(sound);
+  };
 
-   const setLateWarningSoundSafe = (sound: any | null) => {
-     lateWarningSoundRef.current = sound;
-     setLateWarningSound(sound);
-   };
+  const setLateWarningSoundSafe = (sound: any | null) => {
+    lateWarningSoundRef.current = sound;
+    setLateWarningSound(sound);
+  };
 
-   const stopBeepSound = async () => {
-     const currentBeep = beepSoundRef.current;
-     if (!currentBeep) return;
-     beepSoundRef.current = null;
-     await safelyUnloadSound(currentBeep, 'beep sound');
-   };
+  const stopBeepSound = async () => {
+    const currentBeep = beepSoundRef.current;
+    if (!currentBeep) return;
+    beepSoundRef.current = null;
+    await safelyUnloadSound(currentBeep, 'beep sound');
+  };
 
-   // Helper function to determine driver status
-   const getDriverStatusType = (): DriverStatus => {
-     if (bannedUntil && banCountdown > 0) return 'banned';
-     if (activeRide) return 'on_ride';
-     if (!driverOnline) return 'offline';
-     if (driverBusy) return 'busy';
-     return 'online';
-   };
+  // Helper function to determine driver status
+  const getDriverStatusType = (): DriverStatus => {
+    if (bannedUntil && banCountdown > 0) return 'banned';
+    if (activeRide) return 'on_ride';
+    if (!driverOnline) return 'offline';
+    if (driverBusy) return 'busy';
+    return 'online';
+  };
 
-   const getCurrentLocale = () => {
-     const language = getCurrentLanguage();
-     if (language === 'ar') return 'ar';
-     if (language === 'da') return 'da-DK';
-     return 'en-GB';
-   };
+  const getCurrentLocale = () => {
+    const language = getCurrentLanguage();
+    if (language === 'ar') return 'ar';
+    if (language === 'da') return 'da-DK';
+    return 'en-GB';
+  };
 
-   const formatScheduledDateTime = (value?: string | null) => {
-     if (!value) return null;
-     const date = new Date(value);
-     if (Number.isNaN(date.getTime())) return null;
-      return date.toLocaleString(getCurrentLocale());
-   };
+  const formatScheduledDateTime = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString(getCurrentLocale());
+  };
 
   const formatCountdown = (totalSeconds: number) => {
-     const safeSeconds = Math.max(0, Math.floor(totalSeconds));
-     const hours = Math.floor(safeSeconds / 3600);
-     const minutes = Math.floor((safeSeconds % 3600) / 60);
-     const seconds = safeSeconds % 60;
-     return `${hours.toString().padStart(2, '0')}:${minutes
-       .toString()
-       .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-   };
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
 
-   const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number) => {
-     const byExpiry = Number.isFinite(offer?.expiresAtMs)
-       ? Number(offer.expiresAtMs) - nowMs
-       : 0;
-     const fallback = Number(offer?.timeLeftMs || 0);
-     return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
-   };
+  const getPendingOfferRemainingMs = (offer: ScheduledPendingOffer, nowMs: number) => {
+    const byExpiry = Number.isFinite(offer?.expiresAtMs) ? Number(offer.expiresAtMs) - nowMs : 0;
+    const fallback = Number(offer?.timeLeftMs || 0);
+    return Math.max(0, Number.isFinite(byExpiry) && byExpiry > 0 ? byExpiry : fallback);
+  };
 
-   const getPendingOfferTimeoutMs = (offer: ScheduledPendingOffer) => {
-     const stage = Number((offer as any)?.stage || 1);
-     if (stage === 3) return 10 * 60 * 1000;
-     return 3 * 60 * 1000;
-   };
+  const getPendingOfferTimeoutMs = (offer: ScheduledPendingOffer) => {
+    const stage = Number((offer as any)?.stage || 1);
+    if (stage === 3) return 10 * 60 * 1000;
+    return 3 * 60 * 1000;
+  };
 
-   const getScheduledUrgencyColor = (remainingMs: number, totalMs: number = 3 * 60 * 1000) => {
-     const safeTotalMs = Math.max(1, Number(totalMs || 3 * 60 * 1000));
-     const progress = Math.max(0, Math.min(1, remainingMs / safeTotalMs));
-     const start = { r: 59, g: 130, b: 246 }; // blue
-     const end = { r: 239, g: 68, b: 68 }; // red
-     const r = Math.round(end.r + (start.r - end.r) * progress);
-     const g = Math.round(end.g + (start.g - end.g) * progress);
-     const b = Math.round(end.b + (start.b - end.b) * progress);
-     return `rgb(${r}, ${g}, ${b})`;
-   };
+  const getScheduledUrgencyColor = (remainingMs: number, totalMs: number = 3 * 60 * 1000) => {
+    const safeTotalMs = Math.max(1, Number(totalMs || 3 * 60 * 1000));
+    const progress = Math.max(0, Math.min(1, remainingMs / safeTotalMs));
+    const start = { r: 59, g: 130, b: 246 }; // blue
+    const end = { r: 239, g: 68, b: 68 }; // red
+    const r = Math.round(end.r + (start.r - end.r) * progress);
+    const g = Math.round(end.g + (start.g - end.g) * progress);
+    const b = Math.round(end.b + (start.b - end.b) * progress);
+    return `rgb(${r}, ${g}, ${b})`;
+  };
 
   const showScheduledBanner = (payload: {
-     rideId: number;
-     message: string;
-     pickupTime?: string | null;
-     selected?: boolean | null;
-   }) => {
-     setScheduledBanner(payload);
-     if (scheduledBannerTimeoutRef.current) {
-       clearTimeout(scheduledBannerTimeoutRef.current);
-     }
-      scheduledBannerTimeoutRef.current = setTimeout(() => {
-        setScheduledBanner(null);
-        scheduledBannerTimeoutRef.current = null;
-      }, 5000);
-   };
+    rideId: number;
+    message: string;
+    pickupTime?: string | null;
+    selected?: boolean | null;
+  }) => {
+    setScheduledBanner(payload);
+    if (scheduledBannerTimeoutRef.current) {
+      clearTimeout(scheduledBannerTimeoutRef.current);
+    }
+    scheduledBannerTimeoutRef.current = setTimeout(() => {
+      setScheduledBanner(null);
+      scheduledBannerTimeoutRef.current = null;
+    }, 5000);
+  };
 
   // Animation for GO button text
   const textOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -535,7 +605,7 @@ export default function DashboardScreen() {
   const searchLetters = useMemo(() => Array.from(searchText), [searchText]);
   const letterAnimValues = useMemo(
     () => searchLetters.map(() => new Animated.Value(1)),
-    [searchLetters]
+    [searchLetters],
   );
 
   // Slider refs and state
@@ -550,12 +620,16 @@ export default function DashboardScreen() {
       // Optional: start animation
     },
     onPanResponderMove: (evt, gestureState) => {
-      const newPosition = Math.max(0, Math.min(sliderWidth, sliderPositionRef.current + gestureState.dx));
+      const newPosition = Math.max(
+        0,
+        Math.min(sliderWidth, sliderPositionRef.current + gestureState.dx),
+      );
       setSliderPosition(newPosition);
       sliderPositionRef.current = newPosition;
     },
     onPanResponderRelease: () => {
-      if (sliderPosition >= sliderWidth * 0.8) { // If slid far enough
+      if (sliderPosition >= sliderWidth * 0.8) {
+        // If slid far enough
         handlePickupConfirm();
       } else {
         // Reset slider
@@ -572,7 +646,6 @@ export default function DashboardScreen() {
     ensureAudioMode();
   }, []);
 
-
   useEffect(() => {
     if (!driverOnline) {
       // Text opacity animation
@@ -588,7 +661,7 @@ export default function DashboardScreen() {
             duration: 1000,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
       textFade.start();
       return () => textFade.stop();
@@ -611,7 +684,7 @@ export default function DashboardScreen() {
               duration: 600,
               useNativeDriver: true,
             }),
-          ])
+          ]),
         ).start();
       };
       setTimeout(() => animateDot(dot1Anim, 0), 0);
@@ -713,11 +786,11 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (!isSearching || letterAnimValues.length === 0) {
-      letterAnimValues.forEach(anim => anim.setValue(1));
+      letterAnimValues.forEach((anim) => anim.setValue(1));
       return;
     }
 
-    const animations = letterAnimValues.map(anim =>
+    const animations = letterAnimValues.map((anim) =>
       Animated.sequence([
         Animated.timing(anim, {
           toValue: 1.28,
@@ -729,21 +802,18 @@ export default function DashboardScreen() {
           duration: 160,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
 
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.stagger(70, animations),
-        Animated.delay(200),
-      ])
+      Animated.sequence([Animated.stagger(70, animations), Animated.delay(200)]),
     );
 
     loop.start();
 
     return () => {
       loop.stop();
-      letterAnimValues.forEach(anim => anim.setValue(1));
+      letterAnimValues.forEach((anim) => anim.setValue(1));
     };
   }, [isSearching, letterAnimValues]);
 
@@ -773,7 +843,7 @@ export default function DashboardScreen() {
       // Load driver status after a short delay to ensure socket connection
       const loadInitialStatus = async () => {
         // Wait for socket connection
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await loadDriverStatus();
         await loadUpcomingRides();
         await loadRecentRides();
@@ -786,7 +856,15 @@ export default function DashboardScreen() {
       loadInitialStatus();
 
       // Listen for real-time driver status updates
-      const handleDriverStatusUpdate = (data: { currentRideId: number | null; isBusy: boolean; rideAccepted: number | null; isOnline?: boolean; bannedUntil?: string; restrictedOffers?: boolean; restrictedOffersUntil?: string | null }) => {
+      const handleDriverStatusUpdate = (data: {
+        currentRideId: number | null;
+        isBusy: boolean;
+        rideAccepted: number | null;
+        isOnline?: boolean;
+        bannedUntil?: string;
+        restrictedOffers?: boolean;
+        restrictedOffersUntil?: string | null;
+      }) => {
         // Update driver status based on WebSocket data
         if (data.isOnline !== undefined && data.isOnline !== driverOnlineRef.current) {
           driverOnlineRef.current = data.isOnline;
@@ -825,7 +903,11 @@ export default function DashboardScreen() {
       const handleRideOffer = async (data: any) => {
         devLog('Ride offer received');
 
-        const isScheduledOffer = !!(data?.scheduled || data?.offerType === 'scheduled' || data?.type === 'scheduled');
+        const isScheduledOffer = !!(
+          data?.scheduled ||
+          data?.offerType === 'scheduled' ||
+          data?.type === 'scheduled'
+        );
 
         try {
           // Stop any existing sound first
@@ -851,16 +933,16 @@ export default function DashboardScreen() {
 
         // Start countdown
         const timeout = setInterval(() => {
-          setOfferCountdown(prev => {
-              if (prev <= 1) {
-                // Timeout - automatically reject the ride like clicking reject button
-                devLog('Ride offer timed out, auto rejecting');
-                if (!isScheduledOffer && authState.token) {
-                  // Automatically reject the ride
-                  rejectRide(data.rideId);
-                } else if (isScheduledOffer && authState.token) {
-                  rejectRide(data.rideId);
-                }
+          setOfferCountdown((prev) => {
+            if (prev <= 1) {
+              // Timeout - automatically reject the ride like clicking reject button
+              devLog('Ride offer timed out, auto rejecting');
+              if (!isScheduledOffer && authState.token) {
+                // Automatically reject the ride
+                rejectRide(data.rideId);
+              } else if (isScheduledOffer && authState.token) {
+                rejectRide(data.rideId);
+              }
               setRideOffer(null);
               setOfferCountdown(0);
               stopRideOfferSound().then(() => devLog('Offer sound stopped after timeout'));
@@ -920,15 +1002,25 @@ export default function DashboardScreen() {
 
       onRideOfferRejected(handleRideOfferRejected);
 
-      const handleScheduledOfferResult = (data: { rideId: number; selected: boolean; message?: string; pickupTime?: string; rideData?: any }) => {
+      const handleScheduledOfferResult = (data: {
+        rideId: number;
+        selected: boolean;
+        message?: string;
+        pickupTime?: string;
+        rideData?: any;
+      }) => {
         devLog('Scheduled offer result received');
-        const fallbackMessage = data.selected ? t('scheduled_ride_selected') : t('scheduled_ride_not_selected');
+        const fallbackMessage = data.selected
+          ? t('scheduled_ride_selected')
+          : t('scheduled_ride_not_selected');
         showScheduledBanner({
           rideId: data.rideId,
           message: fallbackMessage,
           pickupTime: data.pickupTime || data?.rideData?.pickupTime || null,
-          selected: data.selected
+          selected: data.selected,
         });
+        loadUpcomingRides().catch(() => {});
+        loadRecentRides().catch(() => {});
       };
 
       onScheduledOfferResult(handleScheduledOfferResult);
@@ -956,11 +1048,11 @@ export default function DashboardScreen() {
       // Listen for chat messages
       const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
         devLog('Chat message event received');
-        setChatMessages(prev => [...prev, data]);
+        setChatMessages((prev) => [...prev, data]);
 
         // If message is from client (passenger), increment unread count and play sound
         if (data.sender !== 'driver') {
-          setUnreadMessagesCount(prev => prev + 1);
+          setUnreadMessagesCount((prev) => prev + 1);
           if (settings.sound.messageSound) {
             playMessageSound();
           }
@@ -970,22 +1062,33 @@ export default function DashboardScreen() {
       onNewMessage(handleNewMessage);
 
       // Listen for pickup proximity notifications
-      const handlePickupProximity = async (data: { rideId: number; distanceMeters: number; countdownStart: number; countdownDuration: number }) => {
+      const handlePickupProximity = async (data: {
+        rideId: number;
+        distanceMeters: number;
+        countdownStart: number;
+        countdownDuration: number;
+      }) => {
         devLog('Pickup proximity event received');
         // Only show countdown text, NOT the cancel button yet
         setShowCancelText(true);
         setPickupCountdownStart(data.countdownStart);
         setPickupCountdownDuration(data.countdownDuration);
-        const initialRemaining = Math.max(0, data.countdownDuration - Math.floor((Date.now() - data.countdownStart) / 1000));
+        const initialRemaining = Math.max(
+          0,
+          data.countdownDuration - Math.floor((Date.now() - data.countdownStart) / 1000),
+        );
         setCancelCountdown(initialRemaining);
 
         // Save to AsyncStorage to persist across app restarts
         try {
-          await AsyncStorage.setItem(`pickupCountdown_${data.rideId}`, JSON.stringify({
-            countdownStart: data.countdownStart,
-            countdownDuration: data.countdownDuration,
-            expired: false
-          }));
+          await AsyncStorage.setItem(
+            `pickupCountdown_${data.rideId}`,
+            JSON.stringify({
+              countdownStart: data.countdownStart,
+              countdownDuration: data.countdownDuration,
+              expired: false,
+            }),
+          );
         } catch (error) {
           console.error('Error saving pickup countdown to AsyncStorage:', error);
         }
@@ -1009,7 +1112,7 @@ export default function DashboardScreen() {
                     countdownDuration: data.countdownDuration,
                     expired: true,
                     expiredAt: Date.now(),
-                  })
+                  }),
                 ).catch(console.error);
                 return 0;
               }
@@ -1037,7 +1140,7 @@ export default function DashboardScreen() {
               ...parsedCountdown,
               expired: true,
               expiredAt: Date.now(),
-            })
+            }),
           );
         } catch (error) {
           console.error('Error saving expired pickup countdown:', error);
@@ -1050,7 +1153,14 @@ export default function DashboardScreen() {
       onPickupCountdownExpired(handlePickupCountdownExpired);
 
       // Listen for scheduled late warnings
-      const handleScheduledLateWarning = async (data: { rideId: number; lateMinutes: number; remainingMinutes: number; etaMinutes?: number; minutesBeforePickup?: number; pickupTime?: string }) => {
+      const handleScheduledLateWarning = async (data: {
+        rideId: number;
+        lateMinutes: number;
+        remainingMinutes: number;
+        etaMinutes?: number;
+        minutesBeforePickup?: number;
+        pickupTime?: string;
+      }) => {
         try {
           devLog('Scheduled late warning received');
           if (!settings.notifications.rideUpdates) {
@@ -1066,8 +1176,8 @@ export default function DashboardScreen() {
             t('scheduled_late_warning_title'),
             t('scheduled_late_warning_body', {
               lateMinutes,
-              remainingMinutes
-            })
+              remainingMinutes,
+            }),
           );
         } catch (error) {
           console.error('Error handling scheduled late warning:', error);
@@ -1080,9 +1190,13 @@ export default function DashboardScreen() {
         try {
           const normalizedRaw = normalizeScheduledPendingOffers(payload?.pendingOffers) as any[];
           const normalized: ScheduledPendingOffer[] = normalizedRaw.filter(
-            (offer) => offer && Number.isFinite(Number(offer.rideId))
+            (offer) => offer && Number.isFinite(Number(offer.rideId)),
           );
-          const previousIds = new Set((pendingScheduledOffersRef.current || []).map((offer: ScheduledPendingOffer) => offer.rideId));
+          const previousIds = new Set(
+            (pendingScheduledOffersRef.current || []).map(
+              (offer: ScheduledPendingOffer) => offer.rideId,
+            ),
+          );
           const hasNewOffer = normalized.some((offer) => !previousIds.has(offer.rideId));
 
           setPendingScheduledOffers(normalized);
@@ -1092,6 +1206,9 @@ export default function DashboardScreen() {
               console.error('Error playing scheduled offer sound twice:', error);
             });
           }
+
+          loadUpcomingRides().catch(() => {});
+          loadRecentRides().catch(() => {});
         } catch (error) {
           console.error('Error handling scheduled upcoming offers update:', error);
         }
@@ -1168,24 +1285,34 @@ export default function DashboardScreen() {
     };
   }, [authState.token]);
 
-
   // Handle back button press on Android
   useEffect(() => {
     const backAction = () => {
-      if (showMenu) { setShowMenu(false); return true; }
-      if (showEndKMModal) { setShowEndKMModal(false); return true; }
-      if (showCancelModal) { setShowCancelModal(false); return true; }
-      if (showStatusExpanded) { setShowStatusExpanded(false); return true; }
-      if (showShiftWarning) { setShowShiftWarning(false); return true; }
+      if (showMenu) {
+        setShowMenu(false);
+        return true;
+      }
+      if (showEndKMModal) {
+        setShowEndKMModal(false);
+        return true;
+      }
+      if (showCancelModal) {
+        setShowCancelModal(false);
+        return true;
+      }
+      if (showStatusExpanded) {
+        setShowStatusExpanded(false);
+        return true;
+      }
+      if (showShiftWarning) {
+        setShowShiftWarning(false);
+        return true;
+      }
 
-      Alert.alert(
-        t('app_warning'),
-        t('app_exit_warning'),
-        [
-          { text: t('app_exit_cancel'), style: 'cancel', onPress: () => null },
-          { text: t('app_exit'), style: 'destructive', onPress: () => BackHandler.exitApp() }
-        ]
-      );
+      Alert.alert(t('app_warning'), t('app_exit_warning'), [
+        { text: t('app_exit_cancel'), style: 'cancel', onPress: () => null },
+        { text: t('app_exit'), style: 'destructive', onPress: () => BackHandler.exitApp() },
+      ]);
       return true;
     };
 
@@ -1244,12 +1371,15 @@ export default function DashboardScreen() {
   // Animate map to current location when it changes
   useEffect(() => {
     if (currentLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+      mapRef.current.animateToRegion(
+        {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        1000,
+      );
     }
   }, [currentLocation]);
 
@@ -1288,7 +1418,7 @@ export default function DashboardScreen() {
         if (elapsedHours >= 11 && !showShiftWarning && !suppressShiftWarning && !activeRide) {
           setShowShiftWarning(true);
           if (!driverBusy && authState.token) {
-            toggleDriverBusy(true, authState.token).then(res => {
+            toggleDriverBusy(true, authState.token).then((res) => {
               if (res.success) {
                 setDriverBusy(true);
               }
@@ -1309,14 +1439,17 @@ export default function DashboardScreen() {
   // Fit map to show pickup, stop, and dropoff when ride modals are shown
   useEffect(() => {
     if ((showPickupModal || showDropoffModal || showStopModal) && activeRide && mapRef.current) {
-      const stopCoordinate = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
-        ? { latitude: activeRide.stopLatLon.lat, longitude: activeRide.stopLatLon.lon }
-        : null;
+      const stopCoordinate =
+        activeRide?.stopLatLon &&
+        typeof activeRide.stopLatLon.lat === 'number' &&
+        typeof activeRide.stopLatLon.lon === 'number'
+          ? { latitude: activeRide.stopLatLon.lat, longitude: activeRide.stopLatLon.lon }
+          : null;
       let coordinates: { latitude: number; longitude: number }[] = [];
       if (showPickupModal) {
         coordinates = [
           { latitude: currentLocation?.latitude || 0, longitude: currentLocation?.longitude || 0 },
-          { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon }
+          { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
         ];
       } else if (showStopModal) {
         if (stopCoordinate) {
@@ -1327,14 +1460,14 @@ export default function DashboardScreen() {
         } else {
           coordinates = [
             { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
-            { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
+            { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon },
           ];
         }
       } else {
         coordinates = [
           { latitude: activeRide.startLatLon.lat, longitude: activeRide.startLatLon.lon },
           ...(stopCoordinate ? [stopCoordinate] : []),
-          { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon }
+          { latitude: activeRide.endLatLon.lat, longitude: activeRide.endLatLon.lon },
         ];
       }
       mapRef.current.fitToCoordinates(coordinates, {
@@ -1410,7 +1543,7 @@ export default function DashboardScreen() {
         if (elapsedHours >= 11 && !suppressShiftWarning && !activeRide) {
           setShowShiftWarning(true);
           if (!driverBusy && authState.token) {
-            toggleDriverBusy(true, authState.token).then(res => {
+            toggleDriverBusy(true, authState.token).then((res) => {
               if (res.success) {
                 setDriverBusy(true);
               }
@@ -1453,7 +1586,7 @@ export default function DashboardScreen() {
               if (currentLocation) {
                 fetchDirections(
                   { lat: currentLocation.latitude, lng: currentLocation.longitude },
-                  { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon }
+                  { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
                 );
               }
             }, 1000);
@@ -1466,7 +1599,10 @@ export default function DashboardScreen() {
                 if (countdownPayload?.expired) {
                   setShowCancelText(true);
                   setCancelCountdown(0);
-                } else if (typeof countdownPayload?.countdownStart === 'number' && typeof countdownPayload?.countdownDuration === 'number') {
+                } else if (
+                  typeof countdownPayload?.countdownStart === 'number' &&
+                  typeof countdownPayload?.countdownDuration === 'number'
+                ) {
                   const { countdownStart, countdownDuration } = countdownPayload;
                   const now = Date.now();
                   const elapsed = Math.floor((now - countdownStart) / 1000);
@@ -1493,7 +1629,7 @@ export default function DashboardScreen() {
                               ...countdownPayload,
                               expired: true,
                               expiredAt: Date.now(),
-                            })
+                            }),
                           ).catch(console.error);
                           return 0;
                         }
@@ -1511,7 +1647,7 @@ export default function DashboardScreen() {
                         ...countdownPayload,
                         expired: true,
                         expiredAt: Date.now(),
-                      })
+                      }),
                     ).catch(console.error);
                   }
                 }
@@ -1537,9 +1673,12 @@ export default function DashboardScreen() {
               }
             }
 
-            const stopWaypoint = ride?.stopLatLon && typeof ride.stopLatLon.lat === 'number' && typeof ride.stopLatLon.lon === 'number'
-              ? { lat: ride.stopLatLon.lat, lng: ride.stopLatLon.lon }
-              : null;
+            const stopWaypoint =
+              ride?.stopLatLon &&
+              typeof ride.stopLatLon.lat === 'number' &&
+              typeof ride.stopLatLon.lon === 'number'
+                ? { lat: ride.stopLatLon.lat, lng: ride.stopLatLon.lon }
+                : null;
 
             if (hasStop && !stopCompleted) {
               setShowStopModal(true);
@@ -1548,13 +1687,13 @@ export default function DashboardScreen() {
                 if (stopWaypoint) {
                   fetchDirections(
                     { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng }
+                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
                   );
                 } else {
                   fetchDirections(
                     { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
                     { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
-                    stopWaypoint
+                    stopWaypoint,
                   );
                 }
               }, 1000);
@@ -1565,13 +1704,13 @@ export default function DashboardScreen() {
                 if (stopWaypoint && hasStop && stopCompleted) {
                   fetchDirections(
                     { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon }
+                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
                   );
                 } else {
                   fetchDirections(
                     { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
                     { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
-                    stopWaypoint
+                    stopWaypoint,
                   );
                 }
               }, 1000);
@@ -1590,8 +1729,8 @@ export default function DashboardScreen() {
         // Clean up any remaining countdown data
         try {
           const keys = await AsyncStorage.getAllKeys();
-          const countdownKeys = keys.filter(key => key.startsWith('pickupCountdown_'));
-          const stopKeys = keys.filter(key => key.startsWith('stopCompleted_'));
+          const countdownKeys = keys.filter((key) => key.startsWith('pickupCountdown_'));
+          const stopKeys = keys.filter((key) => key.startsWith('stopCompleted_'));
           await AsyncStorage.multiRemove([...countdownKeys, ...stopKeys]);
         } catch (error) {
           console.error('Error cleaning up countdown data:', error);
@@ -1608,15 +1747,15 @@ export default function DashboardScreen() {
     }
   };
 
-   const stopLateWarningSound = async () => {
-     const currentSound = lateWarningSoundRef.current || lateWarningSound;
-     if (!currentSound) return;
-     await safelyUnloadSound(currentSound, 'late warning sound');
-     if (lateWarningSoundRef.current === currentSound) {
-       lateWarningSoundRef.current = null;
-     }
-     setLateWarningSound(null);
-   };
+  const stopLateWarningSound = async () => {
+    const currentSound = lateWarningSoundRef.current || lateWarningSound;
+    if (!currentSound) return;
+    await safelyUnloadSound(currentSound, 'late warning sound');
+    if (lateWarningSoundRef.current === currentSound) {
+      lateWarningSoundRef.current = null;
+    }
+    setLateWarningSound(null);
+  };
 
   const loadUpcomingRides = async (retryCount = 0) => {
     if (!authState.token) {
@@ -1632,7 +1771,7 @@ export default function DashboardScreen() {
 
       const normalizedRaw = normalizeScheduledPendingOffers(response?.pendingOffers) as any[];
       const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
-        (offer) => offer && Number.isFinite(Number(offer.rideId))
+        (offer) => offer && Number.isFinite(Number(offer.rideId)),
       );
       setPendingScheduledOffers(normalizedPending);
     } catch (error) {
@@ -1693,7 +1832,7 @@ export default function DashboardScreen() {
                   newLocation.latitude,
                   newLocation.longitude,
                   authState.token,
-                  timestamp
+                  timestamp,
                 );
                 setLastLocationUpdate(now);
 
@@ -1713,7 +1852,7 @@ export default function DashboardScreen() {
                 networkModeRef.current = 'offline';
               }
             }
-          }
+          },
         );
 
         setLocationSubscription(subscription);
@@ -1757,7 +1896,10 @@ export default function DashboardScreen() {
         }
       } catch (error: any) {
         // Check if the error is because the task was not found (never started or already stopped)
-        if (error.message && (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))) {
+        if (
+          error.message &&
+          (error.message.includes('TaskNotFoundException') || error.message.includes('not found'))
+        ) {
           devLog('Background location task not found while stopping');
         } else {
           console.error('Failed to stop background location tracking:', error);
@@ -1800,7 +1942,7 @@ export default function DashboardScreen() {
             workTime: data.shiftData.workTime.toFixed(2),
             totalSalary: data.shiftData.totalSalary,
             hourSalary: data.shiftData.hourSalary.toFixed(2),
-          })
+          }),
         );
 
         // Logout after ending shift
@@ -1835,7 +1977,7 @@ export default function DashboardScreen() {
       console.error('Error toggling online status:', e);
       Alert.alert(
         t('schedule_locked_title') as any,
-        (e as any)?.message || t('schedule_locked_default')
+        (e as any)?.message || t('schedule_locked_default'),
       );
     }
   };
@@ -1858,7 +2000,6 @@ export default function DashboardScreen() {
     Linking.openURL(url);
   };
 
-
   const handlePickupConfirm = async () => {
     const rideId = activeRide?.id || currentRideId;
     if (!rideId) {
@@ -1871,7 +2012,7 @@ export default function DashboardScreen() {
     }
     setIsPickupLoading(true);
     // Update ride status locally for immediate UI update
-    setActiveRide((prev: any) => prev ? { ...prev, status: 'PICKED_UP' } : null);
+    setActiveRide((prev: any) => (prev ? { ...prev, status: 'PICKED_UP' } : null));
     setShowPickupModal(false);
     if (hasStop) {
       setShowStopModal(true);
@@ -1897,30 +2038,37 @@ export default function DashboardScreen() {
     }
     // Clear previous route and fetch new route from pickup to dropoff
     setRouteCoordinates([]);
-    const stopWaypoint = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
-      ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
-      : null;
+    const stopWaypoint =
+      activeRide?.stopLatLon &&
+      typeof activeRide.stopLatLon.lat === 'number' &&
+      typeof activeRide.stopLatLon.lon === 'number'
+        ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
+        : null;
     if (hasStop && stopWaypoint) {
       fetchDirections(
         { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
-        { lat: stopWaypoint.lat, lng: stopWaypoint.lng }
+        { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
       );
     } else {
       fetchDirections(
         { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
         { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
-        stopWaypoint
+        stopWaypoint,
       );
     }
     try {
       // Update ride status to PICKED_UP and set pickedAt timestamp
-      const res = await api.put(`/api/driver/rides/${rideId}/status`, {
-        status: 'PICKED_UP',
-        pickedAt: new Date().toISOString()
-      }, authState.token!);
+      const res = await api.put(
+        `/api/driver/rides/${rideId}/status`,
+        {
+          status: 'PICKED_UP',
+          pickedAt: new Date().toISOString(),
+        },
+        authState.token!,
+      );
       if (!res.ok) {
         // If API fails, revert the local changes
-        setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
+        setActiveRide((prev: any) => (prev ? { ...prev, status: 'DISPATCHED' } : null));
         setShowPickupModal(true);
         setShowStopModal(false);
         setShowDropoffModal(false);
@@ -1930,7 +2078,7 @@ export default function DashboardScreen() {
     } catch (e) {
       console.error('Error picking up ride:', e);
       // Revert on error
-      setActiveRide((prev: any) => prev ? { ...prev, status: 'DISPATCHED' } : null);
+      setActiveRide((prev: any) => (prev ? { ...prev, status: 'DISPATCHED' } : null));
       setShowPickupModal(true);
       setShowStopModal(false);
       setShowDropoffModal(false);
@@ -1951,19 +2099,22 @@ export default function DashboardScreen() {
       setShowStopModal(false);
       setShowDropoffModal(true);
       setRouteCoordinates([]);
-      const stopWaypoint = activeRide?.stopLatLon && typeof activeRide.stopLatLon.lat === 'number' && typeof activeRide.stopLatLon.lon === 'number'
-        ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
-        : null;
+      const stopWaypoint =
+        activeRide?.stopLatLon &&
+        typeof activeRide.stopLatLon.lat === 'number' &&
+        typeof activeRide.stopLatLon.lon === 'number'
+          ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
+          : null;
       if (stopWaypoint) {
         await fetchDirections(
           { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon }
+          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
         );
       } else {
         await fetchDirections(
           { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
           { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
-          stopWaypoint
+          stopWaypoint,
         );
       }
     } catch (error) {
@@ -1985,7 +2136,7 @@ export default function DashboardScreen() {
     try {
       const body: any = {
         status: 'COMPLETED',
-        droppedAt: new Date().toISOString()
+        droppedAt: new Date().toISOString(),
       };
       if (meterPrice !== undefined && meterPrice > 0) {
         body.meterPrice = meterPrice;
@@ -2005,12 +2156,15 @@ export default function DashboardScreen() {
         await loadDriverStatus();
         // Animate map back to driver's current location
         if (currentLocation && mapRef.current) {
-          mapRef.current.animateToRegion({
-            latitude: currentLocation.latitude,
-            longitude: currentLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 1000);
+          mapRef.current.animateToRegion(
+            {
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            },
+            1000,
+          );
         }
         if (res.paymentResult && !res.paymentResult.success) {
           alert(t('ride_completed_payment_failed', { error: res.paymentResult.error }));
@@ -2031,39 +2185,43 @@ export default function DashboardScreen() {
   // Calculate cancellation fee estimate based on time and distance
   const calculateCancelFeeEstimate = () => {
     if (!activeRide?.acceptedAt) return { fee: 0, timeMin: 0, distanceKm: 0 };
-    
+
     const acceptedAt = new Date(activeRide.acceptedAt).getTime();
     const now = Date.now();
     const timeDiffMs = now - acceptedAt;
     const timeDiffMin = Math.floor(timeDiffMs / (1000 * 60));
-    
+
     // Estimate distance based on average speed of 30 km/h
     const averageSpeedKmh = 30;
     const distanceKm = (timeDiffMin / 60) * averageSpeedKmh;
-    
+
     // Calculate approximate fee (base + per km + per min)
     // Using approximate rates: base 30 DKK, 15 DKK/km, 2 DKK/min
     const basePrice = 30;
     const perKmPrice = 15;
     const perMinPrice = 2;
-    
-    const fee = Math.round(basePrice + (distanceKm * perKmPrice) + (timeDiffMin * perMinPrice));
-    
+
+    const fee = Math.round(basePrice + distanceKm * perKmPrice + timeDiffMin * perMinPrice);
+
     return { fee, timeMin: timeDiffMin, distanceKm: Math.round(distanceKm * 10) / 10 };
   };
 
   const handleCancelRide = async (reason: string) => {
     const rideId = activeRide?.id;
     if (!rideId) return;
-    
+
     setCancelStep('loading');
-    
+
     try {
-      const res = await api.put(`/api/driver/rides/${rideId}/cancel`, {
-        reason: reason,
-        canceledBy: 'driver'
-      }, authState.token!);
-      
+      const res = await api.put(
+        `/api/driver/rides/${rideId}/cancel`,
+        {
+          reason: reason,
+          canceledBy: 'driver',
+        },
+        authState.token!,
+      );
+
       if (res.ok) {
         setCancelStep('success');
         // Wait a bit then close and reset
@@ -2080,7 +2238,7 @@ export default function DashboardScreen() {
           setShowCancelText(false);
           setCancelCountdown(0);
           setPickupCountdownStart(null);
-          
+
           // Clean up AsyncStorage
           try {
             await AsyncStorage.removeItem(`pickupCountdown_${rideId}`);
@@ -2092,7 +2250,7 @@ export default function DashboardScreen() {
           } catch (error) {
             console.error('Error removing stop completion from AsyncStorage:', error);
           }
-          
+
           // Reload driver status to update busy state
           await loadDriverStatus();
         }, 2000);
@@ -2115,7 +2273,8 @@ export default function DashboardScreen() {
         setCancelTimeElapsed(fallback.timeMin);
         setCancelDistanceEstimate(fallback.distanceKm);
       } else {
-        api.get(`/api/driver/rides/${activeRide.id}/cancel-estimate`, authState.token)
+        api
+          .get(`/api/driver/rides/${activeRide.id}/cancel-estimate`, authState.token)
           .then((res: any) => {
             if (res?.ok && res?.data) {
               setCancelFeeEstimate(res.data.cost);
@@ -2176,7 +2335,7 @@ export default function DashboardScreen() {
   const fetchDirections = async (
     origin: { lat: number; lng: number },
     destination: { lat: number; lng: number },
-    waypoint?: { lat: number; lng: number } | null
+    waypoint?: { lat: number; lng: number } | null,
   ) => {
     try {
       const googleMapsApiKey = getGoogleMapsApiKey();
@@ -2221,17 +2380,21 @@ export default function DashboardScreen() {
 
   const decodePolyline = (encoded: string) => {
     const poly = [];
-    let index = 0, len = encoded.length;
-    let lat = 0, lng = 0;
+    let index = 0,
+      len = encoded.length;
+    let lat = 0,
+      lng = 0;
 
     while (index < len) {
-      let b, shift = 0, result = 0;
+      let b,
+        shift = 0,
+        result = 0;
       do {
         b = encoded.charCodeAt(index++) - 63;
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+      const dlat = result & 1 ? ~(result >> 1) : result >> 1;
       lat += dlat;
 
       shift = 0;
@@ -2241,7 +2404,7 @@ export default function DashboardScreen() {
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+      const dlng = result & 1 ? ~(result >> 1) : result >> 1;
       lng += dlng;
 
       poly.push({
@@ -2300,10 +2463,13 @@ export default function DashboardScreen() {
     try {
       await stopRideOfferSound();
       const sound = await runWithAudioFocusRetry(async () => {
-        const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'), {
-          isLooping: true,
-          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
-        });
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/music/rideGetting.mp3'),
+          {
+            isLooping: true,
+            volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+          },
+        );
         try {
           await sound.playAsync();
           return sound;
@@ -2323,10 +2489,13 @@ export default function DashboardScreen() {
     try {
       await stopRideOfferSound();
       const sound = await runWithAudioFocusRetry(async () => {
-        const { sound } = await Audio.Sound.createAsync(require('../assets/music/rideGetting.mp3'), {
-          isLooping: false,
-          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
-        });
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/music/rideGetting.mp3'),
+          {
+            isLooping: false,
+            volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+          },
+        );
         try {
           await sound.playAsync();
           return sound;
@@ -2425,7 +2594,7 @@ export default function DashboardScreen() {
     const message = {
       message: chatInput.trim(),
       sender: 'driver',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     sendMessage(activeRide.id, message.message, message.sender);
@@ -2438,14 +2607,15 @@ export default function DashboardScreen() {
     const message = {
       message: reply,
       sender: 'driver',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     sendMessage(activeRide.id, message.message, message.sender);
   };
 
   const getStatusText = () => {
-    if (bannedUntil && banCountdown > 0) return `${t('banned')} - ${banCountdown}${t('seconds_short')}`;
+    if (bannedUntil && banCountdown > 0)
+      return `${t('banned')} - ${banCountdown}${t('seconds_short')}`;
     if (!driverOnline) return t('offline');
     if (driverBusy) return `${t('online')} - ${t('busy')}`;
     return `${t('online')} - ${t('available')}`;
@@ -2476,7 +2646,7 @@ export default function DashboardScreen() {
 
   const calculateEtaMinutes = (
     from: { latitude: number; longitude: number },
-    to: { lat: number; lon: number }
+    to: { lat: number; lon: number },
   ) => {
     const toRad = (value: number) => (value * Math.PI) / 180;
     const R = 6371; // km
@@ -2484,9 +2654,9 @@ export default function DashboardScreen() {
     const dLon = toRad(to.lon - from.longitude);
     const lat1 = toRad(from.latitude);
     const lat2 = toRad(to.lat);
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = R * c;
     return Math.max(1, Math.ceil(distanceKm * 2)); // ~30km/h average
@@ -2534,7 +2704,7 @@ export default function DashboardScreen() {
     if (Number.isNaN(departMs)) return null;
     return new Date(departMs).toLocaleTimeString(getCurrentLocale(), {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   }, [nextScheduledRide?.pickupTime, scheduledEtaMinutes, getCurrentLanguage]);
 
@@ -2580,28 +2750,36 @@ export default function DashboardScreen() {
     ? Math.max(0, Math.ceil(scheduledCountdownSeconds / 60))
     : null;
   const pendingScheduledCount = pendingScheduledOffers.length;
-  const nextPendingScheduledOffer = pendingScheduledOffers.length ? pendingScheduledOffers[0] : null;
+  const nextPendingScheduledOffer = pendingScheduledOffers.length
+    ? pendingScheduledOffers[0]
+    : null;
   const pendingUrgencyColor = nextPendingScheduledOffer
     ? getScheduledUrgencyColor(
         getPendingOfferRemainingMs(nextPendingScheduledOffer, scheduledNow),
-        getPendingOfferTimeoutMs(nextPendingScheduledOffer)
+        getPendingOfferTimeoutMs(nextPendingScheduledOffer),
       )
     : '#3b82f6';
-  const isScheduledOffer = !!(rideOffer?.scheduled || rideOffer?.offerType === 'scheduled' || rideOffer?.type === 'scheduled');
+  const isScheduledOffer = !!(
+    rideOffer?.scheduled ||
+    rideOffer?.offerType === 'scheduled' ||
+    rideOffer?.type === 'scheduled'
+  );
   const scheduledOfferTime = isScheduledOffer
     ? formatScheduledDateTime(rideOffer?.rideData?.pickupTime || rideOffer?.pickupTime)
     : null;
   const scheduledBannerTime = scheduledBanner?.pickupTime
     ? formatScheduledDateTime(scheduledBanner.pickupTime)
     : null;
-  const scheduledBannerAccent = scheduledBanner?.selected === true
-    ? '#22c55e'
-    : scheduledBanner?.selected === false
-      ? '#dc3545'
-      : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#e2e8f0');
-  const offerProgress = offerTotalSeconds > 0
-    ? Math.max(0, Math.min(1, offerCountdown / offerTotalSeconds))
-    : 0;
+  const scheduledBannerAccent =
+    scheduledBanner?.selected === true
+      ? '#22c55e'
+      : scheduledBanner?.selected === false
+        ? '#dc3545'
+        : isDarkMode
+          ? 'rgba(255,255,255,0.12)'
+          : '#e2e8f0';
+  const offerProgress =
+    offerTotalSeconds > 0 ? Math.max(0, Math.min(1, offerCountdown / offerTotalSeconds)) : 0;
 
   const smartAlerts = useMemo<SmartAlert[]>(
     () =>
@@ -2618,12 +2796,14 @@ export default function DashboardScreen() {
       scheduledCountdownMinutes,
       scheduledEtaMinutes,
       restrictedOffers,
-    ]
+    ],
   );
 
   const floatingBottoms = useMemo(() => {
     const hasSearching = driverOnline && !driverBusy && !activeRide && !restrictedOffers;
-    const hasScheduleHint = (!driverOnline && scheduleEligibility?.eligible === false && !!scheduleReasonMessage) || (driverOnline && restrictedOffers);
+    const hasScheduleHint =
+      (!driverOnline && scheduleEligibility?.eligible === false && !!scheduleReasonMessage) ||
+      (driverOnline && restrictedOffers);
     const hasSmartAlerts = driverOnline && !activeRide && smartAlerts.length > 0;
 
     const SEARCHING_H = 90;
@@ -2640,7 +2820,15 @@ export default function DashboardScreen() {
     const smartAlertsBottom = hasSmartAlerts ? currentBottom : null;
 
     return { searchingBottom, scheduleHintBottom, smartAlertsBottom };
-  }, [driverOnline, driverBusy, activeRide, restrictedOffers, smartAlerts.length, scheduleEligibility, scheduleReasonMessage]);
+  }, [
+    driverOnline,
+    driverBusy,
+    activeRide,
+    restrictedOffers,
+    smartAlerts.length,
+    scheduleEligibility,
+    scheduleReasonMessage,
+  ]);
 
   useEffect(() => {
     if (!authState.token) return;
@@ -2690,12 +2878,18 @@ export default function DashboardScreen() {
       {showScheduledInfoBar && (
         <View style={styles.scheduledInfoBar} pointerEvents="none">
           <View style={styles.scheduledInfoColumn}>
-            <Text style={[styles.scheduledInfoText, styles.scheduledInfoTextLeft]} numberOfLines={1}>
+            <Text
+              style={[styles.scheduledInfoText, styles.scheduledInfoTextLeft]}
+              numberOfLines={1}
+            >
               {t('scheduled_countdown_label')}: {scheduledCountdownText}
             </Text>
           </View>
           <View style={styles.scheduledInfoColumn}>
-            <Text style={[styles.scheduledInfoText, styles.scheduledInfoTextRight]} numberOfLines={1}>
+            <Text
+              style={[styles.scheduledInfoText, styles.scheduledInfoTextRight]}
+              numberOfLines={1}
+            >
               {t('driver_departure_time_label')}: {scheduledDepartureText}
             </Text>
           </View>
@@ -2703,10 +2897,21 @@ export default function DashboardScreen() {
       )}
 
       {scheduledBanner && (
-        <View style={[styles.scheduledBannerContainer, showScheduledInfoBar && styles.scheduledBannerContainerWithInfoBar]} pointerEvents="none">
-          <View style={[styles.scheduledBannerCard, { borderColor: scheduledBannerAccent }]}> 
+        <View
+          style={[
+            styles.scheduledBannerContainer,
+            showScheduledInfoBar && styles.scheduledBannerContainerWithInfoBar,
+          ]}
+          pointerEvents="none"
+        >
+          <View style={[styles.scheduledBannerCard, { borderColor: scheduledBannerAccent }]}>
             <Text style={styles.scheduledBannerTitle}>{t('scheduled_ride_title')}</Text>
-            <Text style={styles.scheduledBannerMessage}>{scheduledBanner.message || (scheduledBanner.selected ? t('scheduled_ride_selected') : t('scheduled_ride_not_selected'))}</Text>
+            <Text style={styles.scheduledBannerMessage}>
+              {scheduledBanner.message ||
+                (scheduledBanner.selected
+                  ? t('scheduled_ride_selected')
+                  : t('scheduled_ride_not_selected'))}
+            </Text>
             {scheduledBannerTime && (
               <Text style={styles.scheduledBannerTime}>{scheduledBannerTime}</Text>
             )}
@@ -2727,15 +2932,42 @@ export default function DashboardScreen() {
         pendingUrgencyColor={pendingUrgencyColor}
         onToggle={() => setShowMenu(!showMenu)}
         onClose={() => setShowMenu(false)}
-        onProfile={() => { setShowMenu(false); goToProfile(); }}
-        onHistory={() => { setShowMenu(false); router.push('/history'); }}
-        onShifts={() => { setShowMenu(false); router.push('/shifts'); }}
-        onUpcoming={() => { setShowMenu(false); router.push('/upcoming'); }}
-        onAnalytics={() => { setShowMenu(false); router.push('/analytics'); }}
-        onSettings={() => { setShowMenu(false); goToSettings(); }}
-        onSchedule={() => { setShowMenu(false); goToSchedule(); }}
-        onToggleBusy={() => { setShowMenu(false); handleToggleBusy(); }}
-        onEndShift={() => { setShowMenu(false); setShowEndKMModal(true); }}
+        onProfile={() => {
+          setShowMenu(false);
+          goToProfile();
+        }}
+        onHistory={() => {
+          setShowMenu(false);
+          router.push('/history');
+        }}
+        onShifts={() => {
+          setShowMenu(false);
+          router.push('/shifts');
+        }}
+        onUpcoming={() => {
+          setShowMenu(false);
+          router.push('/upcoming');
+        }}
+        onAnalytics={() => {
+          setShowMenu(false);
+          router.push('/analytics');
+        }}
+        onSettings={() => {
+          setShowMenu(false);
+          goToSettings();
+        }}
+        onSchedule={() => {
+          setShowMenu(false);
+          goToSchedule();
+        }}
+        onToggleBusy={() => {
+          setShowMenu(false);
+          handleToggleBusy();
+        }}
+        onEndShift={() => {
+          setShowMenu(false);
+          setShowEndKMModal(true);
+        }}
       />
 
       {isInitialLoading ? (
@@ -2745,570 +2977,764 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <>
-
-      {/* Compact recent rides box */}
-      <ScrollView
-        style={[styles.mapContainer, { padding: 12 }]}
-        contentContainerStyle={{ justifyContent: 'flex-start', alignItems: 'stretch' }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        <LastRidesList
-          rides={recentRides.map(r => ({
-            id: r.id,
-            startTime: r.createdAt || r.pickupTime || undefined,
-            from: r.pickupAddress || r.startName || 'Unknown',
-            to: r.dropoffAddress || r.stopAddress || r.endName || 'Unknown',
-            price: r.price ?? r.fare ?? undefined,
-            status: r.status,
-          }))}
-          isDarkMode={isDarkMode}
-        />
-      </ScrollView>
-
-      <EndKMModal
-        visible={showEndKMModal}
-        endKM={endKM}
-        onChangeKM={setEndKM}
-        onCancel={() => {
-          setSuppressShiftWarning(false);
-          setShowEndKMModal(false);
-          setEndKM('');
-        }}
-        onConfirm={handleEndShift}
-      />
-
-      {/* Pickup Modal */}
-      {showPickupModal && activeRide && (
-        <View style={styles.rideModalContainer}>
-          <View style={styles.pickupModalCard}>
-            <View style={styles.pickupHandle} />
-            <View style={styles.pickupHeaderRow}>
-              <View style={styles.pickupBadge}>
-                <Text style={styles.pickupBadgeText}>{t('pickup')}</Text>
-              </View>
-              <View style={styles.pickupHeaderMeta}>
-                <View style={styles.pickupIdPill}>
-                  <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
-                </View>
-                {activeRide.riderPhone && (
-                  <TouchableOpacity
-                    style={styles.callIconInModal}
-                    onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
-                  >
-                    <Text style={styles.callIconText}>📞</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-            <View style={styles.pickupInfoRow}>
-              <View style={styles.pickupInfoCard}>
-                <Text style={styles.pickupInfoLabel}>
-                  {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
-                    ? t('approximate_price')
-                    : t('price')}
-                </Text>
-                {(activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash') ? (
-                  <>
-                    <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent, { color: '#f59e0b' }]}>
-                      ~{activeRide.price} DKK
+          {/* ── Main Content (below status bar) ── */}
+          <ScrollView
+            style={styles.mainContent}
+            contentContainerStyle={{ paddingBottom: 120 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ── Upcoming Ride Card ── */}
+            <View
+              style={[
+                styles.upcomingCard,
+                nextScheduledRide
+                  ? scheduledBanner?.selected !== false
+                    ? styles.upcomingCardSelected
+                    : styles.upcomingCardPending
+                  : styles.upcomingCardEmpty,
+              ]}
+            >
+              {nextScheduledRide ? (
+                <>
+                  <View style={styles.upcomingHeader}>
+                    <Text style={styles.upcomingIcon}>📅</Text>
+                    <Text style={styles.upcomingTitle}>
+                      {t('scheduled_ride_title') || 'Upcoming Ride'}
                     </Text>
-                    <Text style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
-                      {t('meter_runs_on_meter')}
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>{activeRide.price} DKK</Text>
-                )}
-              </View>
-              <View style={styles.pickupInfoCard}>
-                <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
-                <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
-              </View>
-            </View>
-            <View style={styles.pickupAddressCard}>
-              <View style={styles.pickupAddressHeader}>
-                <View style={styles.pickupDot} />
-                <Text style={styles.pickupAddressLabel}>{t('pickup')}</Text>
-              </View>
-              <Text style={styles.pickupAddressValue} numberOfLines={2} ellipsizeMode="tail">
-                {activeRide.pickupAddress}
-              </Text>
-            </View>
-            {!!activeRide.stopAddress && (
-              <View style={styles.stopAddressCard}>
-                <View style={styles.stopAddressHeader}>
-                  <View style={styles.stopDot} />
-                  <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
-                </View>
-                <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
-                  {activeRide.stopAddress}
-                </Text>
-              </View>
-            )}
-            {activeRide.vehicleTypeName ? (
-              <View style={styles.rideTypeBadge}>
-                <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
-              </View>
-            ) : null}
-            <View style={styles.pickupActions}>
-              <View style={styles.pickupActionRow}>
-                <TouchableOpacity
-                  style={[styles.pickupNavButton, styles.pickupActionButton]}
-                  onPress={() => handleNav(`${currentLocation?.latitude},${currentLocation?.longitude}`, activeRide.pickupAddress)}
-                >
-                  <Text style={styles.pickupNavText}>{t('nav')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pickupChatButton, styles.pickupActionButton]}
-                  onPress={() => {
-                    setShowChat(true);
-                    setUnreadMessagesCount(0);
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
-                    {unreadMessagesCount > 0 && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+                  </View>
+                  <View style={styles.upcomingBody}>
+                    <View style={styles.upcomingTimeRow}>
+                      <Text style={styles.upcomingCountdown}>{scheduledCountdownText}</Text>
+                      {scheduledDepartureTime && (
+                        <Text style={styles.upcomingDeparture}>🚗 {scheduledDepartureTime}</Text>
+                      )}
+                    </View>
+                    <View style={styles.upcomingRoute}>
+                      <View style={styles.upcomingRouteDot} />
+                      <Text style={styles.upcomingAddress} numberOfLines={1}>
+                        {nextScheduledRide.pickupAddress}
+                      </Text>
+                    </View>
+                    <View style={styles.upcomingRouteLine} />
+                    <View style={styles.upcomingRoute}>
+                      <View style={[styles.upcomingRouteDot, styles.upcomingRouteDotEnd]} />
+                      <Text style={styles.upcomingAddress} numberOfLines={1}>
+                        {nextScheduledRide.dropoffAddress}
+                      </Text>
+                    </View>
+                    {(nextScheduledRide.price != null || nextScheduledRide.distanceKm != null) && (
+                      <View style={styles.upcomingFooter}>
+                        {nextScheduledRide.price != null && (
+                          <Text style={styles.upcomingPrice}>~{nextScheduledRide.price} DKK</Text>
+                        )}
+                        {nextScheduledRide.distanceKm != null && (
+                          <Text style={styles.upcomingDistance}>
+                            {Math.round(nextScheduledRide.distanceKm * 10) / 10} km
+                          </Text>
+                        )}
                       </View>
                     )}
                   </View>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity style={styles.pickupButton} onLongPress={handlePickupConfirm} delayLongPress={1500} disabled={isPickupLoading}>
-                {isPickupLoading ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <ActivityIndicator size="small" color="#fff" />
-                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>{t('pickup_in_progress')}</Text>
+                  <View style={styles.upcomingProgressBar}>
+                    <View
+                      style={[
+                        styles.upcomingProgressFill,
+                        {
+                          width: `${scheduledCountdownSeconds > 0 ? Math.max(2, Math.min(100, 100 - (scheduledCountdownSeconds / (60 * 60)) * 100)) : 0}%`,
+                        },
+                      ]}
+                    />
                   </View>
-                ) : (
-                  <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
-                )}
-              </TouchableOpacity>
-              {showCancelText && cancelCountdown > 0 && (
-                <Text style={styles.cancelOnText}>
-                  {t('cancel_on')}: {Math.floor(cancelCountdown / 60)}:{(cancelCountdown % 60).toString().padStart(2, '0')}
-                </Text>
-              )}
-              {showCancelText && cancelCountdown === 0 && (
-                <TouchableOpacity style={styles.cancelRideButton} onPress={openCancelModal}>
-                  <Text style={styles.cancelRideButtonText}>{t('cancel_ride')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      )}
-
-      <StopModal
-        visible={showStopModal && !!activeRide}
-        activeRide={activeRide}
-        currentLocation={currentLocation}
-        isContinueLoading={isContinueLoading}
-        unreadMessagesCount={unreadMessagesCount}
-        onNav={handleNav}
-        onContinueTrip={handleContinueTrip}
-        onChat={() => {
-          setShowChat(true);
-          setUnreadMessagesCount(0);
-        }}
-      />
-
-      {/* Cancel Ride Modal - New Design */}
-      {showCancelModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.cancelModalCard}>
-            {/* Header */}
-            <View style={styles.cancelModalHeader}>
-              <Text style={styles.cancelModalTitle}>
-                {cancelStep === 'reason' && t('cancel_ride_title')}
-                {cancelStep === 'confirm' && t('cancel_ride_confirm_title')}
-                {cancelStep === 'loading' && t('cancel_ride_processing')}
-                {cancelStep === 'success' && t('cancel_ride_success')}
-                {cancelStep === 'error' && t('cancel_ride_error')}
-              </Text>
-              {cancelStep !== 'loading' && (
-                <TouchableOpacity onPress={closeCancelModal} style={styles.cancelModalCloseButton}>
-                  <Text style={styles.cancelModalCloseText}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView
-              style={styles.cancelModalScroll}
-              contentContainerStyle={styles.cancelModalScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* Step 1: Select Reason */}
-              {cancelStep === 'reason' && (
-                <View style={styles.cancelStepContainer}>
-                  <Text style={styles.cancelModalSubtitle}>{t('cancel_ride_subtitle')}</Text>
-                  
-                  {/* Warning Banner */}
-                  <View style={styles.cancelWarningBanner}>
-                    <Text style={styles.cancelWarningIcon}>⚠️</Text>
-                    <Text style={styles.cancelWarningText}>{t('cancel_ride_warning')}</Text>
-                  </View>
-
-                  {/* Fee Estimate Preview */}
-                  <View style={styles.cancelFeePreview}>
-                    <View style={styles.cancelFeeRow}>
-                      <Text style={styles.cancelFeeLabel}>{t('cancel_ride_time_elapsed')}</Text>
-                      <Text style={styles.cancelFeeValue}>{cancelTimeElapsed} {t('minutes_short')}</Text>
-                    </View>
-                    <View style={styles.cancelFeeRow}>
-                      <Text style={styles.cancelFeeLabel}>{t('cancel_ride_distance_traveled')}</Text>
-                      <Text style={styles.cancelFeeValue}>{cancelDistanceEstimate} {t('kilometers_short')}</Text>
-                    </View>
-                    <View style={[styles.cancelFeeRow, styles.cancelFeeTotal]}>
-                      <Text style={styles.cancelFeeTotalLabel}>{t('cancel_ride_fee_estimate')}</Text>
-                      <Text style={styles.cancelFeeTotalValue}>{cancelFeeEstimate} DKK</Text>
-                    </View>
-                  </View>
-
-                  {/* Reason Options */}
-                  <View style={styles.cancelReasonsList}>
-                    {[
-                      { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
-                      { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
-                      { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
-                      { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
-                      { key: 'emergency', icon: '🆘', color: '#dc3545' },
-                      { key: 'other_reason', icon: '📝', color: '#6c757d' },
-                    ].map((reason) => (
-                      <TouchableOpacity
-                        key={reason.key}
-                        style={[styles.cancelReasonOption, { borderLeftColor: reason.color }]}
-                        onPress={() => selectCancelReason(reason.key)}
-                      >
-                        <Text style={styles.cancelReasonIcon}>{reason.icon}</Text>
-                        <Text style={styles.cancelReasonOptionText}>{t(reason.key)}</Text>
-                        <Text style={styles.cancelReasonArrow}>›</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Step 2: Confirm Cancellation */}
-              {cancelStep === 'confirm' && (
-                <View style={styles.cancelStepContainer}>
-                  <View style={styles.cancelConfirmIconContainer}>
-                    <Text style={styles.cancelConfirmIcon}>⚠️</Text>
-                  </View>
-                  <Text style={styles.cancelConfirmMessage}>{t('cancel_ride_confirm_message')}</Text>
-                  
-                  {/* Selected Reason Display */}
-                  <View style={styles.cancelSelectedReason}>
-                    <Text style={styles.cancelSelectedReasonLabel}>{t('cancel_ride_select_reason')}</Text>
-                    <Text style={styles.cancelSelectedReasonValue}>{t(selectedCancelReason || '')}</Text>
-                  </View>
-
-                  {/* Final Fee Display */}
-                  <View style={styles.cancelFinalFee}>
-                    <Text style={styles.cancelFinalFeeLabel}>{t('cancel_ride_fee_estimate')}</Text>
-                    <Text style={styles.cancelFinalFeeValue}>{cancelFeeEstimate} DKK</Text>
-                  </View>
-
-                  {/* Action Buttons */}
-                  <View style={styles.cancelConfirmButtons}>
-                    <TouchableOpacity style={styles.cancelGoBackButton} onPress={goBackToReason}>
-                      <Text style={styles.cancelGoBackButtonText}>{t('cancel_ride_go_back')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.cancelConfirmButton} onPress={confirmCancelRide}>
-                      <Text style={styles.cancelConfirmButtonText}>{t('cancel_ride_confirm')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-
-              {/* Step 3: Loading */}
-              {cancelStep === 'loading' && (
-                <View style={styles.cancelStepContainer}>
-                  <View style={styles.cancelLoadingContainer}>
-                    <ActivityIndicator size="large" color="#dc3545" />
-                    <Text style={styles.cancelLoadingText}>{t('cancel_ride_processing')}</Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Step 4: Success */}
-              {cancelStep === 'success' && (
-                <View style={styles.cancelStepContainer}>
-                  <View style={styles.cancelSuccessContainer}>
-                    <View style={styles.cancelSuccessIcon}>
-                      <Text style={styles.cancelSuccessIconText}>✓</Text>
-                    </View>
-                    <Text style={styles.cancelSuccessTitle}>{t('cancel_ride_success')}</Text>
-                    <Text style={styles.cancelSuccessMessage}>{t('cancel_ride_success_message')}</Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Step 5: Error */}
-              {cancelStep === 'error' && (
-                <View style={styles.cancelStepContainer}>
-                  <View style={styles.cancelErrorContainer}>
-                    <View style={styles.cancelErrorIcon}>
-                      <Text style={styles.cancelErrorIconText}>✕</Text>
-                    </View>
-                    <Text style={styles.cancelErrorTitle}>{t('cancel_ride_error')}</Text>
-                    <Text style={styles.cancelErrorMessage}>{cancelErrorMessage}</Text>
-                    <TouchableOpacity style={styles.cancelRetryButton} onPress={goBackToReason}>
-                      <Text style={styles.cancelRetryButtonText}>{t('retry')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      )}
-
-      <DropoffModal
-        visible={showDropoffModal && !!activeRide}
-        activeRide={activeRide}
-        currentLocation={currentLocation}
-        isDropoffLoading={isDropoffLoading}
-        onNav={handleNav}
-        onDropoff={handleDropoffConfirm}
-      />
-
-      {/* Ride Offer Modal */}
-      {rideOffer && (
-        <View style={styles.rideOfferModal}>
-          <View style={styles.rideOfferSheet}>
-            <View style={styles.rideOfferHeader}>
-              <Text style={[styles.rideOfferTitle, isScheduledOffer && styles.scheduledOfferTitle]}>
-                {isScheduledOffer ? t('scheduled_ride_title') : t('ride_offer_title')}
-              </Text>
-              <View style={styles.rideOfferPill}>
-                <Text style={styles.rideOfferPillText}>#{rideOffer.rideId}</Text>
-              </View>
-            </View>
-
-            {isScheduledOffer && scheduledOfferTime && (
-              <View style={styles.scheduledOfferTimeRow}>
-                <Text style={styles.scheduledOfferTimeLabel}>{t('scheduled_ride_time_label')}</Text>
-                <Text style={styles.scheduledOfferTimeValue}>{scheduledOfferTime}</Text>
-              </View>
-            )}
-
-            {pickupEtaMinutes !== null && (
-              <View style={styles.rideOfferEtaBanner}>
-                <Text style={styles.rideOfferEtaBannerText}>
-                  🚗 {t('ride_offer_eta_to_pickup')}: {formatMinutesHuman(pickupEtaMinutes)}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.rideOfferMetaRow}>
-              <View style={styles.rideOfferMetaItem}>
-                <Text style={styles.rideOfferMetaLabel}>
-                  {rideOffer.rideData.paymentMethod === 'meter' || rideOffer.rideData.paymentMethod === 'cash'
-                    ? t('approximate_price')
-                    : t('price')}
-                </Text>
-                {(rideOffer.rideData.paymentMethod === 'meter' || rideOffer.rideData.paymentMethod === 'cash') ? (
-                  <>
-                    <Text style={[styles.rideOfferMetaValue, { color: '#f59e0b' }]}>
-                      ~{rideOffer.rideData.price} DKK
-                    </Text>
-                    <Text style={[styles.rideOfferMetaLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}>
-                      {t('meter_runs_on_meter')}
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
-                )}
-              </View>
-              <View style={styles.rideOfferMetaItem}>
-                <Text style={styles.rideOfferMetaLabel}>{t('distance')}</Text>
-                <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.distanceKm} km</Text>
-              </View>
-              {rideEtaMinutes !== null && (
-                <View style={styles.rideOfferMetaItem}>
-                  <Text style={styles.rideOfferMetaLabel}>{t('ride_offer_eta_trip')}</Text>
-                  <Text style={styles.rideOfferMetaValueHighlight}>{formatMinutesHuman(rideEtaMinutes)}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.rideOfferAddressBlock}>
-              <View style={styles.rideOfferAddressRow}>
-                <Text style={styles.rideOfferAddressLabel}>{t('from')}</Text>
-                <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
-                  {rideOffer.rideData.pickupAddress}
-                </Text>
-              </View>
-              {rideOffer.rideData.stopAddress && (
-                <View style={styles.rideOfferAddressRow}>
-                  <Text style={styles.rideOfferAddressLabel}>{t('stop')}</Text>
-                  <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
-                    {rideOffer.rideData.stopAddress}
+                </>
+              ) : (
+                <View style={styles.upcomingEmpty}>
+                  <Text style={styles.upcomingEmptyIcon}>📋</Text>
+                  <Text style={styles.upcomingEmptyText}>
+                    {t('no_upcoming_rides') || 'No upcoming rides'}
                   </Text>
                 </View>
               )}
-              <View style={styles.rideOfferAddressRow}>
-                <Text style={styles.rideOfferAddressLabel}>{t('to')}</Text>
-                <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
-                  {rideOffer.rideData.dropoffAddress}
-                </Text>
+            </View>
+
+            {/* ── Recent Rides ── */}
+            <LastRidesList
+              rides={recentRides.map((r) => ({
+                id: r.id,
+                startTime: r.createdAt || r.pickupTime || undefined,
+                from: r.pickupAddress || r.startName || 'Unknown',
+                to: r.dropoffAddress || r.stopAddress || r.endName || 'Unknown',
+                price: r.price ?? r.fare ?? undefined,
+                status: r.status,
+              }))}
+              isDarkMode={isDarkMode}
+            />
+          </ScrollView>
+
+          <EndKMModal
+            visible={showEndKMModal}
+            endKM={endKM}
+            onChangeKM={setEndKM}
+            onCancel={() => {
+              setSuppressShiftWarning(false);
+              setShowEndKMModal(false);
+              setEndKM('');
+            }}
+            onConfirm={handleEndShift}
+          />
+
+          {/* Pickup Modal */}
+          {showPickupModal && activeRide && (
+            <View style={styles.rideModalContainer}>
+              <View style={styles.pickupModalCard}>
+                <View style={styles.pickupHandle} />
+                <View style={styles.pickupHeaderRow}>
+                  <View style={styles.pickupBadge}>
+                    <Text style={styles.pickupBadgeText}>{t('pickup')}</Text>
+                  </View>
+                  <View style={styles.pickupHeaderMeta}>
+                    <View style={styles.pickupIdPill}>
+                      <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+                    </View>
+                    {activeRide.riderPhone && (
+                      <TouchableOpacity
+                        style={styles.callIconInModal}
+                        onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                      >
+                        <Text style={styles.callIconText}>📞</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.pickupInfoRow}>
+                  <View style={styles.pickupInfoCard}>
+                    <Text style={styles.pickupInfoLabel}>
+                      {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
+                        ? t('approximate_price')
+                        : t('price')}
+                    </Text>
+                    {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash' ? (
+                      <>
+                        <Text
+                          style={[
+                            styles.pickupInfoValue,
+                            styles.pickupInfoValueAccent,
+                            { color: '#f59e0b' },
+                          ]}
+                        >
+                          ~{activeRide.price} DKK
+                        </Text>
+                        <Text
+                          style={[
+                            styles.pickupInfoLabel,
+                            { fontSize: 11, marginTop: 2, color: '#f59e0b' },
+                          ]}
+                        >
+                          {t('meter_runs_on_meter')}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
+                        {activeRide.price} DKK
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.pickupInfoCard}>
+                    <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                    <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+                  </View>
+                </View>
+                <View style={styles.pickupAddressCard}>
+                  <View style={styles.pickupAddressHeader}>
+                    <View style={styles.pickupDot} />
+                    <Text style={styles.pickupAddressLabel}>{t('pickup')}</Text>
+                  </View>
+                  <Text style={styles.pickupAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                    {activeRide.pickupAddress}
+                  </Text>
+                </View>
+                {!!activeRide.stopAddress && (
+                  <View style={styles.stopAddressCard}>
+                    <View style={styles.stopAddressHeader}>
+                      <View style={styles.stopDot} />
+                      <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+                    </View>
+                    <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                      {activeRide.stopAddress}
+                    </Text>
+                  </View>
+                )}
+                {activeRide.vehicleTypeName ? (
+                  <View style={styles.rideTypeBadge}>
+                    <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.pickupActions}>
+                  <View style={styles.pickupActionRow}>
+                    <TouchableOpacity
+                      style={[styles.pickupNavButton, styles.pickupActionButton]}
+                      onPress={() =>
+                        handleNav(
+                          `${currentLocation?.latitude},${currentLocation?.longitude}`,
+                          activeRide.pickupAddress,
+                        )
+                      }
+                    >
+                      <Text style={styles.pickupNavText}>{t('nav')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pickupChatButton, styles.pickupActionButton]}
+                      onPress={() => {
+                        setShowChat(true);
+                        setUnreadMessagesCount(0);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
+                        {unreadMessagesCount > 0 && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pickupButton}
+                    onLongPress={handlePickupConfirm}
+                    delayLongPress={1500}
+                    disabled={isPickupLoading}
+                  >
+                    {isPickupLoading ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>
+                          {t('pickup_in_progress')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
+                    )}
+                  </TouchableOpacity>
+                  {showCancelText && cancelCountdown > 0 && (
+                    <Text style={styles.cancelOnText}>
+                      {t('cancel_on')}: {Math.floor(cancelCountdown / 60)}:
+                      {(cancelCountdown % 60).toString().padStart(2, '0')}
+                    </Text>
+                  )}
+                  {showCancelText && cancelCountdown === 0 && (
+                    <TouchableOpacity style={styles.cancelRideButton} onPress={openCancelModal}>
+                      <Text style={styles.cancelRideButtonText}>{t('cancel_ride')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
+          )}
 
-            <View style={styles.rideOfferCountdownRow}>
-              <View style={styles.rideOfferCountdownTrack}>
-                <View style={[styles.rideOfferCountdownFill, { width: `${offerProgress * 100}%` }]} />
+          <StopModal
+            visible={showStopModal && !!activeRide}
+            activeRide={activeRide}
+            currentLocation={currentLocation}
+            isContinueLoading={isContinueLoading}
+            unreadMessagesCount={unreadMessagesCount}
+            onNav={handleNav}
+            onContinueTrip={handleContinueTrip}
+            onChat={() => {
+              setShowChat(true);
+              setUnreadMessagesCount(0);
+            }}
+          />
+
+          {/* Cancel Ride Modal - New Design */}
+          {showCancelModal && (
+            <View style={styles.modalOverlay}>
+              <View style={styles.cancelModalCard}>
+                {/* Header */}
+                <View style={styles.cancelModalHeader}>
+                  <Text style={styles.cancelModalTitle}>
+                    {cancelStep === 'reason' && t('cancel_ride_title')}
+                    {cancelStep === 'confirm' && t('cancel_ride_confirm_title')}
+                    {cancelStep === 'loading' && t('cancel_ride_processing')}
+                    {cancelStep === 'success' && t('cancel_ride_success')}
+                    {cancelStep === 'error' && t('cancel_ride_error')}
+                  </Text>
+                  {cancelStep !== 'loading' && (
+                    <TouchableOpacity
+                      onPress={closeCancelModal}
+                      style={styles.cancelModalCloseButton}
+                    >
+                      <Text style={styles.cancelModalCloseText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <ScrollView
+                  style={styles.cancelModalScroll}
+                  contentContainerStyle={styles.cancelModalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* Step 1: Select Reason */}
+                  {cancelStep === 'reason' && (
+                    <View style={styles.cancelStepContainer}>
+                      <Text style={styles.cancelModalSubtitle}>{t('cancel_ride_subtitle')}</Text>
+
+                      {/* Warning Banner */}
+                      <View style={styles.cancelWarningBanner}>
+                        <Text style={styles.cancelWarningIcon}>⚠️</Text>
+                        <Text style={styles.cancelWarningText}>{t('cancel_ride_warning')}</Text>
+                      </View>
+
+                      {/* Fee Estimate Preview */}
+                      <View style={styles.cancelFeePreview}>
+                        <View style={styles.cancelFeeRow}>
+                          <Text style={styles.cancelFeeLabel}>{t('cancel_ride_time_elapsed')}</Text>
+                          <Text style={styles.cancelFeeValue}>
+                            {cancelTimeElapsed} {t('minutes_short')}
+                          </Text>
+                        </View>
+                        <View style={styles.cancelFeeRow}>
+                          <Text style={styles.cancelFeeLabel}>
+                            {t('cancel_ride_distance_traveled')}
+                          </Text>
+                          <Text style={styles.cancelFeeValue}>
+                            {cancelDistanceEstimate} {t('kilometers_short')}
+                          </Text>
+                        </View>
+                        <View style={[styles.cancelFeeRow, styles.cancelFeeTotal]}>
+                          <Text style={styles.cancelFeeTotalLabel}>
+                            {t('cancel_ride_fee_estimate')}
+                          </Text>
+                          <Text style={styles.cancelFeeTotalValue}>{cancelFeeEstimate} DKK</Text>
+                        </View>
+                      </View>
+
+                      {/* Reason Options */}
+                      <View style={styles.cancelReasonsList}>
+                        {[
+                          { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
+                          { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
+                          { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
+                          { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
+                          { key: 'emergency', icon: '🆘', color: '#dc3545' },
+                          { key: 'other_reason', icon: '📝', color: '#6c757d' },
+                        ].map((reason) => (
+                          <TouchableOpacity
+                            key={reason.key}
+                            style={[styles.cancelReasonOption, { borderLeftColor: reason.color }]}
+                            onPress={() => selectCancelReason(reason.key)}
+                          >
+                            <Text style={styles.cancelReasonIcon}>{reason.icon}</Text>
+                            <Text style={styles.cancelReasonOptionText}>{t(reason.key)}</Text>
+                            <Text style={styles.cancelReasonArrow}>›</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Step 2: Confirm Cancellation */}
+                  {cancelStep === 'confirm' && (
+                    <View style={styles.cancelStepContainer}>
+                      <View style={styles.cancelConfirmIconContainer}>
+                        <Text style={styles.cancelConfirmIcon}>⚠️</Text>
+                      </View>
+                      <Text style={styles.cancelConfirmMessage}>
+                        {t('cancel_ride_confirm_message')}
+                      </Text>
+
+                      {/* Selected Reason Display */}
+                      <View style={styles.cancelSelectedReason}>
+                        <Text style={styles.cancelSelectedReasonLabel}>
+                          {t('cancel_ride_select_reason')}
+                        </Text>
+                        <Text style={styles.cancelSelectedReasonValue}>
+                          {t(selectedCancelReason || '')}
+                        </Text>
+                      </View>
+
+                      {/* Final Fee Display */}
+                      <View style={styles.cancelFinalFee}>
+                        <Text style={styles.cancelFinalFeeLabel}>
+                          {t('cancel_ride_fee_estimate')}
+                        </Text>
+                        <Text style={styles.cancelFinalFeeValue}>{cancelFeeEstimate} DKK</Text>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View style={styles.cancelConfirmButtons}>
+                        <TouchableOpacity
+                          style={styles.cancelGoBackButton}
+                          onPress={goBackToReason}
+                        >
+                          <Text style={styles.cancelGoBackButtonText}>
+                            {t('cancel_ride_go_back')}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.cancelConfirmButton}
+                          onPress={confirmCancelRide}
+                        >
+                          <Text style={styles.cancelConfirmButtonText}>
+                            {t('cancel_ride_confirm')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Step 3: Loading */}
+                  {cancelStep === 'loading' && (
+                    <View style={styles.cancelStepContainer}>
+                      <View style={styles.cancelLoadingContainer}>
+                        <ActivityIndicator size="large" color="#dc3545" />
+                        <Text style={styles.cancelLoadingText}>{t('cancel_ride_processing')}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Step 4: Success */}
+                  {cancelStep === 'success' && (
+                    <View style={styles.cancelStepContainer}>
+                      <View style={styles.cancelSuccessContainer}>
+                        <View style={styles.cancelSuccessIcon}>
+                          <Text style={styles.cancelSuccessIconText}>✓</Text>
+                        </View>
+                        <Text style={styles.cancelSuccessTitle}>{t('cancel_ride_success')}</Text>
+                        <Text style={styles.cancelSuccessMessage}>
+                          {t('cancel_ride_success_message')}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Step 5: Error */}
+                  {cancelStep === 'error' && (
+                    <View style={styles.cancelStepContainer}>
+                      <View style={styles.cancelErrorContainer}>
+                        <View style={styles.cancelErrorIcon}>
+                          <Text style={styles.cancelErrorIconText}>✕</Text>
+                        </View>
+                        <Text style={styles.cancelErrorTitle}>{t('cancel_ride_error')}</Text>
+                        <Text style={styles.cancelErrorMessage}>{cancelErrorMessage}</Text>
+                        <TouchableOpacity style={styles.cancelRetryButton} onPress={goBackToReason}>
+                          <Text style={styles.cancelRetryButtonText}>{t('retry')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
               </View>
-              <Text style={styles.rideOfferCountdownText}>{t('ride_offer_time_left', { seconds: offerCountdown })}</Text>
             </View>
+          )}
 
-            <View style={styles.rideOfferButtons}>
-              <TouchableOpacity
-                style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
-                onPress={async () => {
-                  acceptRide(rideOffer.rideId);
-                  setRideOffer(null);
-                  setOfferCountdown(0);
-                  stopRideOfferSound().then(() => {
-                    devLog('Ride offer sound stopped after accept');
-                  });
-                  if (offerTimeout) {
-                    clearInterval(offerTimeout);
-                    setOfferTimeout(null);
-                  }
-                  await loadDriverStatus();
-                  loadUpcomingRides().catch(() => {});
-                }}
-              >
-                <Text style={styles.acceptButtonText}>{isScheduledOffer ? t('yes') : t('ride_offer_accept')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
-                onPress={async () => {
-                  rejectRide(rideOffer.rideId);
-                  setRideOffer(null);
-                  setOfferCountdown(0);
-                  await stopRideOfferSound();
-                  if (offerTimeout) {
-                    clearInterval(offerTimeout);
-                    setOfferTimeout(null);
-                  }
-                }}
-              >
-                <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>{isScheduledOffer ? t('no') : t('ride_offer_reject')}</Text>
-              </TouchableOpacity>
+          <DropoffModal
+            visible={showDropoffModal && !!activeRide}
+            activeRide={activeRide}
+            currentLocation={currentLocation}
+            isDropoffLoading={isDropoffLoading}
+            onNav={handleNav}
+            onDropoff={handleDropoffConfirm}
+          />
+
+          {/* Ride Offer Modal */}
+          {rideOffer && (
+            <View style={styles.rideOfferModal}>
+              <View style={styles.rideOfferSheet}>
+                <View style={styles.rideOfferHeader}>
+                  <Text
+                    style={[styles.rideOfferTitle, isScheduledOffer && styles.scheduledOfferTitle]}
+                  >
+                    {isScheduledOffer ? t('scheduled_ride_title') : t('ride_offer_title')}
+                  </Text>
+                  <View style={styles.rideOfferPill}>
+                    <Text style={styles.rideOfferPillText}>#{rideOffer.rideId}</Text>
+                  </View>
+                </View>
+
+                {isScheduledOffer && scheduledOfferTime && (
+                  <View style={styles.scheduledOfferTimeRow}>
+                    <Text style={styles.scheduledOfferTimeLabel}>
+                      {t('scheduled_ride_time_label')}
+                    </Text>
+                    <Text style={styles.scheduledOfferTimeValue}>{scheduledOfferTime}</Text>
+                  </View>
+                )}
+
+                {pickupEtaMinutes !== null && (
+                  <View style={styles.rideOfferEtaBanner}>
+                    <Text style={styles.rideOfferEtaBannerText}>
+                      🚗 {t('ride_offer_eta_to_pickup')}: {formatMinutesHuman(pickupEtaMinutes)}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.rideOfferMetaRow}>
+                  <View style={styles.rideOfferMetaItem}>
+                    <Text style={styles.rideOfferMetaLabel}>
+                      {rideOffer.rideData.paymentMethod === 'meter' ||
+                      rideOffer.rideData.paymentMethod === 'cash'
+                        ? t('approximate_price')
+                        : t('price')}
+                    </Text>
+                    {rideOffer.rideData.paymentMethod === 'meter' ||
+                    rideOffer.rideData.paymentMethod === 'cash' ? (
+                      <>
+                        <Text style={[styles.rideOfferMetaValue, { color: '#f59e0b' }]}>
+                          ~{rideOffer.rideData.price} DKK
+                        </Text>
+                        <Text
+                          style={[
+                            styles.rideOfferMetaLabel,
+                            { fontSize: 11, marginTop: 2, color: '#f59e0b' },
+                          ]}
+                        >
+                          {t('meter_runs_on_meter')}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.rideOfferMetaValue}>{rideOffer.rideData.price} DKK</Text>
+                    )}
+                  </View>
+                  <View style={styles.rideOfferMetaItem}>
+                    <Text style={styles.rideOfferMetaLabel}>{t('distance')}</Text>
+                    <Text style={styles.rideOfferMetaValue}>
+                      {rideOffer.rideData.distanceKm} km
+                    </Text>
+                  </View>
+                  {rideEtaMinutes !== null && (
+                    <View style={styles.rideOfferMetaItem}>
+                      <Text style={styles.rideOfferMetaLabel}>{t('ride_offer_eta_trip')}</Text>
+                      <Text style={styles.rideOfferMetaValueHighlight}>
+                        {formatMinutesHuman(rideEtaMinutes)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.rideOfferAddressBlock}>
+                  <View style={styles.rideOfferAddressRow}>
+                    <Text style={styles.rideOfferAddressLabel}>{t('from')}</Text>
+                    <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                      {rideOffer.rideData.pickupAddress}
+                    </Text>
+                  </View>
+                  {rideOffer.rideData.stopAddress && (
+                    <View style={styles.rideOfferAddressRow}>
+                      <Text style={styles.rideOfferAddressLabel}>{t('stop')}</Text>
+                      <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                        {rideOffer.rideData.stopAddress}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.rideOfferAddressRow}>
+                    <Text style={styles.rideOfferAddressLabel}>{t('to')}</Text>
+                    <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
+                      {rideOffer.rideData.dropoffAddress}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.rideOfferCountdownRow}>
+                  <View style={styles.rideOfferCountdownTrack}>
+                    <View
+                      style={[styles.rideOfferCountdownFill, { width: `${offerProgress * 100}%` }]}
+                    />
+                  </View>
+                  <Text style={styles.rideOfferCountdownText}>
+                    {t('ride_offer_time_left', { seconds: offerCountdown })}
+                  </Text>
+                </View>
+
+                <View style={styles.rideOfferButtons}>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
+                    onPress={async () => {
+                      acceptRide(rideOffer.rideId);
+                      setRideOffer(null);
+                      setOfferCountdown(0);
+                      stopRideOfferSound().then(() => {
+                        devLog('Ride offer sound stopped after accept');
+                      });
+                      if (offerTimeout) {
+                        clearInterval(offerTimeout);
+                        setOfferTimeout(null);
+                      }
+                      await loadDriverStatus();
+                      loadUpcomingRides().catch(() => {});
+                    }}
+                  >
+                    <Text style={styles.acceptButtonText}>
+                      {isScheduledOffer ? t('yes') : t('ride_offer_accept')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
+                    onPress={async () => {
+                      rejectRide(rideOffer.rideId);
+                      setRideOffer(null);
+                      setOfferCountdown(0);
+                      await stopRideOfferSound();
+                      if (offerTimeout) {
+                        clearInterval(offerTimeout);
+                        setOfferTimeout(null);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>
+                      {isScheduledOffer ? t('no') : t('ride_offer_reject')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
-        </View>
-      )}
+          )}
 
-      <ChatModal
-        visible={showChat}
-        messages={chatMessages}
-        quickReplies={quickReplies}
-        chatInput={chatInput}
-        onChangeInput={setChatInput}
-        onSend={handleSendMessage}
-        onQuickReply={handleQuickReply}
-        onClose={() => setShowChat(false)}
-      />
+          <ChatModal
+            visible={showChat}
+            messages={chatMessages}
+            quickReplies={quickReplies}
+            chatInput={chatInput}
+            onChangeInput={setChatInput}
+            onSend={handleSendMessage}
+            onQuickReply={handleQuickReply}
+            onClose={() => setShowChat(false)}
+          />
 
-      <ShiftWarningModal
-        visible={showShiftWarning}
-        onEndShift={() => {
-          setSuppressShiftWarning(true);
-          setShowShiftWarning(false);
-          setShowEndKMModal(true);
-        }}
-        onDismiss={() => setShowShiftWarning(false)}
-      />
+          <ShiftWarningModal
+            visible={showShiftWarning}
+            onEndShift={() => {
+              setSuppressShiftWarning(true);
+              setShowShiftWarning(false);
+              setShowEndKMModal(true);
+            }}
+            onDismiss={() => setShowShiftWarning(false)}
+          />
 
-      {/* Floating Go Button */}
-      {!driverOnline && (
-        <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
-          <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>{t('go')}</Animated.Text>
-        </TouchableOpacity>
-      )}
+          {/* Floating Go Button */}
+          {!driverOnline && (
+            <TouchableOpacity style={styles.floatingGoButton} onPress={handleToggleOnline}>
+              <Animated.Text style={[styles.floatingGoButtonText, { opacity: textOpacityAnim }]}>
+                {t('go')}
+              </Animated.Text>
+            </TouchableOpacity>
+          )}
 
-      {!driverOnline && scheduleEligibility && scheduleEligibility.eligible === false && !!scheduleReasonMessage && (
-        <View style={[styles.scheduleHintBar, floatingBottoms.scheduleHintBottom != null && { bottom: floatingBottoms.scheduleHintBottom }]}>
-          <Text style={styles.scheduleHintText}>{scheduleReasonMessage}</Text>
-        </View>
-      )}
-
-      {driverOnline && restrictedOffers && (
-        <View style={[styles.scheduleHintBar, { backgroundColor: '#b91c1c' }, floatingBottoms.scheduleHintBottom != null && { bottom: floatingBottoms.scheduleHintBottom }]}> 
-          <Text style={styles.scheduleHintText}>
-            {t('restricted_offers_active')}
-            {restrictedOffersUntil ? ` (${restrictedOffersUntil.toLocaleTimeString()})` : ''}
-          </Text>
-        </View>
-      )}
-
-      {driverOnline && !activeRide && smartAlerts.length > 0 && (
-        <View style={[styles.smartAlertsContainer, floatingBottoms.smartAlertsBottom != null && { bottom: floatingBottoms.smartAlertsBottom }]}>
-          <Text style={styles.smartAlertsTitle}>{t('smart_alerts_title')}</Text>
-          {smartAlerts.map((alert) => {
-            const accent =
-              alert.severity === 'high' ? '#dc2626' : alert.severity === 'medium' ? '#d97706' : '#0ea5e9';
-
-            const lightBackground =
-              alert.severity === 'high'
-                ? 'rgba(254, 226, 226, 0.95)'
-                : alert.severity === 'medium'
-                  ? 'rgba(255, 247, 237, 0.95)'
-                  : 'rgba(239, 246, 255, 0.95)';
-
-            return (
+          {!driverOnline &&
+            scheduleEligibility &&
+            scheduleEligibility.eligible === false &&
+            !!scheduleReasonMessage && (
               <View
-                key={alert.id}
                 style={[
-                  styles.smartAlertCard,
-                  {
-                    borderColor: accent,
-                    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.94)' : lightBackground,
+                  styles.scheduleHintBar,
+                  floatingBottoms.scheduleHintBottom != null && {
+                    bottom: floatingBottoms.scheduleHintBottom,
                   },
                 ]}
               >
-                <Text style={styles.smartAlertIcon}>{alert.icon}</Text>
-                <View style={styles.smartAlertTextWrap}>
-                  <Text style={[styles.smartAlertHeading, { color: accent }]}>{t(alert.titleKey)}</Text>
-                  <Text style={styles.smartAlertBody}>{t(alert.bodyKey, alert.values || {})}</Text>
-                </View>
+                <Text style={styles.scheduleHintText}>{scheduleReasonMessage}</Text>
               </View>
-            );
-          })}
-        </View>
-      )}
+            )}
 
-      {/* Searching for Trips Card / Restricted Notice */}
-      {driverOnline && !driverBusy && !activeRide && restrictedOffers ? (
-        <View style={[styles.searchingBar, floatingBottoms.searchingBottom != null && { bottom: floatingBottoms.searchingBottom }]}>
-          <Text style={[styles.searchingLetter, { color: '#ef4444', fontSize: 22 }]}>🚫</Text>
-          <Text style={[styles.searchingSubText, { color: '#ef4444', fontWeight: '600' }]}>
-            {t('restricted_offers_active')}
-          </Text>
-          {restrictedOffersUntil ? (
-            <Text style={[styles.searchingSubText, { fontSize: 12, marginTop: 4 }]}>
-              ({restrictedOffersUntil.toLocaleTimeString()})
-            </Text>
-          ) : null}
-        </View>
-      ) : (
-        <SearchingCard
-          visible={driverOnline && !driverBusy && !activeRide && !restrictedOffers}
-          letterAnimValues={letterAnimValues}
-          dot1Anim={dot1Anim}
-          dot2Anim={dot2Anim}
-          dot3Anim={dot3Anim}
-          bottomOffset={floatingBottoms.searchingBottom != null ? floatingBottoms.searchingBottom - 20 : 0}
-        />
-      )}
+          {driverOnline && restrictedOffers && (
+            <View
+              style={[
+                styles.scheduleHintBar,
+                { backgroundColor: '#b91c1c' },
+                floatingBottoms.scheduleHintBottom != null && {
+                  bottom: floatingBottoms.scheduleHintBottom,
+                },
+              ]}
+            >
+              <Text style={styles.scheduleHintText}>
+                {t('restricted_offers_active')}
+                {restrictedOffersUntil ? ` (${restrictedOffersUntil.toLocaleTimeString()})` : ''}
+              </Text>
+            </View>
+          )}
 
+          {driverOnline && !activeRide && smartAlerts.length > 0 && (
+            <View
+              style={[
+                styles.smartAlertsContainer,
+                floatingBottoms.smartAlertsBottom != null && {
+                  bottom: floatingBottoms.smartAlertsBottom,
+                },
+              ]}
+            >
+              <Text style={styles.smartAlertsTitle}>{t('smart_alerts_title')}</Text>
+              {smartAlerts.map((alert) => {
+                const accent =
+                  alert.severity === 'high'
+                    ? '#dc2626'
+                    : alert.severity === 'medium'
+                      ? '#d97706'
+                      : '#0ea5e9';
+
+                const lightBackground =
+                  alert.severity === 'high'
+                    ? 'rgba(254, 226, 226, 0.95)'
+                    : alert.severity === 'medium'
+                      ? 'rgba(255, 247, 237, 0.95)'
+                      : 'rgba(239, 246, 255, 0.95)';
+
+                return (
+                  <View
+                    key={alert.id}
+                    style={[
+                      styles.smartAlertCard,
+                      {
+                        borderColor: accent,
+                        backgroundColor: isDarkMode ? 'rgba(15,23,42,0.94)' : lightBackground,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.smartAlertIcon}>{alert.icon}</Text>
+                    <View style={styles.smartAlertTextWrap}>
+                      <Text style={[styles.smartAlertHeading, { color: accent }]}>
+                        {t(alert.titleKey)}
+                      </Text>
+                      <Text style={styles.smartAlertBody}>
+                        {t(alert.bodyKey, alert.values || {})}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Searching for Trips Card / Restricted Notice */}
+          {driverOnline && !driverBusy && !activeRide && restrictedOffers ? (
+            <View
+              style={[
+                styles.searchingBar,
+                floatingBottoms.searchingBottom != null && {
+                  bottom: floatingBottoms.searchingBottom,
+                },
+              ]}
+            >
+              <Text style={[styles.searchingLetter, { color: '#ef4444', fontSize: 22 }]}>🚫</Text>
+              <Text style={[styles.searchingSubText, { color: '#ef4444', fontWeight: '600' }]}>
+                {t('restricted_offers_active')}
+              </Text>
+              {restrictedOffersUntil ? (
+                <Text style={[styles.searchingSubText, { fontSize: 12, marginTop: 4 }]}>
+                  ({restrictedOffersUntil.toLocaleTimeString()})
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <SearchingCard
+              visible={driverOnline && !driverBusy && !activeRide && !restrictedOffers}
+              letterAnimValues={letterAnimValues}
+              dot1Anim={dot1Anim}
+              dot2Anim={dot2Anim}
+              dot3Anim={dot3Anim}
+              bottomOffset={
+                floatingBottoms.searchingBottom != null ? floatingBottoms.searchingBottom - 20 : 0
+              }
+            />
+          )}
         </>
       )}
 
@@ -3326,9 +3752,20 @@ export default function DashboardScreen() {
         totalRidesToday={totalRidesToday}
         earningsToday={earningsToday}
         rating={authState.user?.rating || 5.0}
+        fiveStarCount={authState.user?.fiveStarCount || 0}
+        onRatingPress={() => {
+          setShowStatusExpanded(false);
+          setTimeout(() => setShowRatingInfo(true), 300);
+        }}
       />
 
+      {/* Rating Info Modal */}
+      <RatingInfoModal
+        visible={showRatingInfo}
+        onClose={() => setShowRatingInfo(false)}
+        rating={authState.user?.rating || 5.0}
+        fiveStarCount={authState.user?.fiveStarCount || 0}
+      />
     </View>
   );
 }
-

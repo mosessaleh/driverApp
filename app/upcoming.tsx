@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
-import { getDriverUpcoming, normalizeScheduledPendingOffers } from '../src/services/api';
+import { getDriverUpcoming, normalizeScheduledPendingOffers, api } from '../src/services/api';
 import {
   onScheduledUpcomingOffersUpdate,
   offScheduledUpcomingOffersUpdate,
@@ -11,6 +20,37 @@ import {
 } from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
 import type { ScheduledPendingOffer } from '../src/types';
+
+const CANCEL_REASONS = [
+  {
+    key: 'cannot_make_time',
+    icon: '⏰',
+    color: '#dc3545',
+    label: {
+      en: 'Cannot make it on time',
+      ar: 'لا أستطيع الوصول في الوقت المحدد',
+      da: 'Kan ikke nå det til tiden',
+    },
+  },
+  {
+    key: 'car_problem',
+    icon: '🚗',
+    color: '#fd7e14',
+    label: { en: 'Car problem', ar: 'مشكلة في السيارة', da: 'Bilproblem' },
+  },
+  {
+    key: 'emergency',
+    icon: '🆘',
+    color: '#dc3545',
+    label: { en: 'Emergency', ar: 'حالة طارئة', da: 'Nødsituation' },
+  },
+  {
+    key: 'other_reason',
+    icon: '📝',
+    color: '#6c757d',
+    label: { en: 'Other reason', ar: 'سبب آخر', da: 'Anden årsag' },
+  },
+];
 
 const OFFER_TIMEOUT_MS = 3 * 60 * 1000;
 const OFFER_TIMEOUT_STAGE3_MS = 10 * 60 * 1000;
@@ -48,6 +88,13 @@ export default function UpcomingScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelRideId, setCancelRideId] = useState<number | null>(null);
+  const [cancelStep, setCancelStep] = useState<'reason' | 'loading' | 'success' | 'error'>(
+    'reason',
+  );
+  const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
+  const [cancelErrorMessage, setCancelErrorMessage] = useState('');
 
   useEffect(() => {
     loadUpcoming();
@@ -55,7 +102,7 @@ export default function UpcomingScreen() {
     const handleScheduledUpcomingOffersUpdate = (payload: any) => {
       const normalizedRaw = normalizeScheduledPendingOffers(payload?.pendingOffers) as any[];
       const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
-        (offer) => offer && Number.isFinite(Number(offer.rideId))
+        (offer) => offer && Number.isFinite(Number(offer.rideId)),
       );
       setPendingOffers(normalizedPending);
     };
@@ -89,7 +136,7 @@ export default function UpcomingScreen() {
 
       const normalizedRaw = normalizeScheduledPendingOffers(response?.pendingOffers) as any[];
       const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
-        (offer) => offer && Number.isFinite(Number(offer.rideId))
+        (offer) => offer && Number.isFinite(Number(offer.rideId)),
       );
       setPendingOffers(normalizedPending);
     } catch (error) {
@@ -111,7 +158,8 @@ export default function UpcomingScreen() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    const locale =
+      getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
     return date.toLocaleDateString(locale, {
       day: '2-digit',
       month: '2-digit',
@@ -121,7 +169,8 @@ export default function UpcomingScreen() {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    const locale =
+      getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
     return date.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
@@ -163,6 +212,51 @@ export default function UpcomingScreen() {
     router.back();
   };
 
+  const openCancelModal = (rideId: number) => {
+    setCancelRideId(rideId);
+    setCancelStep('reason');
+    setSelectedCancelReason(null);
+    setCancelErrorMessage('');
+    setShowCancelModal(true);
+  };
+
+  const handleCancelRide = async () => {
+    if (!cancelRideId || !selectedCancelReason || !authState.token) return;
+    setCancelStep('loading');
+    try {
+      const res = await api.put(
+        `/api/driver/rides/${cancelRideId}/cancel`,
+        {
+          reason: selectedCancelReason,
+          canceledBy: 'driver',
+        },
+        authState.token,
+      );
+      if (res.ok) {
+        setCancelStep('success');
+        setTimeout(() => {
+          setShowCancelModal(false);
+          setCancelRideId(null);
+          setRides((prev) => prev.filter((r) => r.id !== cancelRideId));
+          loadUpcoming();
+        }, 1500);
+      } else {
+        setCancelStep('error');
+        setCancelErrorMessage(res.error || t('cancel_ride_error_message'));
+      }
+    } catch (e: any) {
+      setCancelStep('error');
+      setCancelErrorMessage(e?.message || t('cancel_ride_error_message'));
+    }
+  };
+
+  const getCancelReasonLabel = (key: string) => {
+    const reason = CANCEL_REASONS.find((r) => r.key === key);
+    if (!reason) return key;
+    const lang = getCurrentLanguage();
+    return (reason.label as any)[lang] || reason.label.en;
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -179,13 +273,20 @@ export default function UpcomingScreen() {
       >
         {pendingOffersWithMeta.length > 0 && (
           <View style={styles.sectionBlock}>
-            <Text style={styles.sectionTitle}>{t('scheduled_ride_title')} • {t('scheduled_pending_offers')}</Text>
+            <Text style={styles.sectionTitle}>
+              {t('scheduled_ride_title')} • {t('scheduled_pending_offers')}
+            </Text>
             {pendingOffersWithMeta.map(({ offer, remainingSec, urgencyColor }) => (
-              <View key={`pending-${offer.rideId}`} style={[styles.offerCard, { borderLeftColor: urgencyColor }]}> 
+              <View
+                key={`pending-${offer.rideId}`}
+                style={[styles.offerCard, { borderLeftColor: urgencyColor }]}
+              >
                 <View style={styles.offerHeaderRow}>
                   <Text style={styles.rideId}>#{offer.rideId}</Text>
                   <View style={[styles.pendingCountBadge, { backgroundColor: urgencyColor }]}>
-                    <Text style={styles.pendingCountBadgeText}>{formatCountdown(remainingSec)}</Text>
+                    <Text style={styles.pendingCountBadgeText}>
+                      {formatCountdown(remainingSec)}
+                    </Text>
                   </View>
                 </View>
 
@@ -202,7 +303,8 @@ export default function UpcomingScreen() {
                 <Text style={styles.rideAddress}>{offer?.rideData?.dropoffAddress || '-'}</Text>
 
                 <View style={styles.offerFooterRow}>
-                  {(offer?.rideData?.paymentMethod === 'meter' || offer?.rideData?.paymentMethod === 'cash') ? (
+                  {offer?.rideData?.paymentMethod === 'meter' ||
+                  offer?.rideData?.paymentMethod === 'cash' ? (
                     <View>
                       <Text style={[styles.amountValue, { color: '#f59e0b' }]}>
                         ~{Number(offer?.rideData?.price || 0)} DKK
@@ -212,7 +314,9 @@ export default function UpcomingScreen() {
                       </Text>
                     </View>
                   ) : (
-                    <Text style={styles.amountValue}>{Number(offer?.rideData?.price || 0)} DKK</Text>
+                    <Text style={styles.amountValue}>
+                      {Number(offer?.rideData?.price || 0)} DKK
+                    </Text>
                   )}
                   <View style={styles.offerActionsRow}>
                     <TouchableOpacity
@@ -248,36 +352,128 @@ export default function UpcomingScreen() {
             <Text style={styles.noDataText}>{t('upcoming_no_rides')}</Text>
           ) : (
             rides.map((ride) => (
-              <TouchableOpacity
-                key={ride.id}
-                style={styles.rideCard}
-                onPress={() => router.push(`/ride-details?id=${ride.id}`)}
-              >
-                <View style={styles.rideInfo}>
-                  <View style={styles.rideHeaderRow}>
-                    <Text style={styles.rideId}>#{ride.id}</Text>
-                    <View style={styles.scheduledBadge}>
-                      <Text style={styles.scheduledBadgeText}>{t('scheduled_ride_title')}</Text>
+              <View key={ride.id} style={styles.rideCard}>
+                <TouchableOpacity
+                  style={styles.rideTouchArea}
+                  onPress={() => router.push(`/ride-details?id=${ride.id}`)}
+                >
+                  <View style={styles.rideInfo}>
+                    <View style={styles.rideHeaderRow}>
+                      <Text style={styles.rideId}>#{ride.id}</Text>
+                      <View style={styles.scheduledBadge}>
+                        <Text style={styles.scheduledBadgeText}>{t('scheduled_ride_title')}</Text>
+                      </View>
                     </View>
+                    <Text style={styles.rideDate}>
+                      {formatDate(ride.pickupTime)} • {formatTime(ride.pickupTime)}
+                    </Text>
+                    <Text style={styles.rideCountdown}>
+                      {t('scheduled_countdown_label')}:{' '}
+                      {formatCountdown(getCountdownSeconds(ride.pickupTime))}
+                    </Text>
+                    <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
+                    {!!ride.stopAddress && (
+                      <Text style={styles.rideAddress}>{ride.stopAddress}</Text>
+                    )}
+                    <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
                   </View>
-                  <Text style={styles.rideDate}>
-                    {formatDate(ride.pickupTime)} • {formatTime(ride.pickupTime)}
-                  </Text>
-                  <Text style={styles.rideCountdown}>
-                    {t('scheduled_countdown_label')}: {formatCountdown(getCountdownSeconds(ride.pickupTime))}
-                  </Text>
-                  <Text style={styles.rideAddress}>{ride.pickupAddress}</Text>
-                  {!!ride.stopAddress && <Text style={styles.rideAddress}>{ride.stopAddress}</Text>}
-                  <Text style={styles.rideAddress}>{ride.dropoffAddress}</Text>
-                </View>
-                <View style={styles.rideAmount}>
-                  <Text style={styles.amountValue}>{ride.price} DKK</Text>
-                </View>
-              </TouchableOpacity>
+                  <View style={styles.rideAmount}>
+                    <Text style={styles.amountValue}>{ride.price} DKK</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelRideBtn}
+                  onPress={() => openCancelModal(ride.id)}
+                >
+                  <Text style={styles.cancelRideBtnText}>{t('cancel')}</Text>
+                </TouchableOpacity>
+              </View>
             ))
           )}
         </View>
       </ScrollView>
+
+      <Modal visible={showCancelModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {cancelStep === 'reason' && (
+              <>
+                <Text style={styles.modalTitle}>{t('cancel_ride_title')}</Text>
+                <Text style={styles.modalSubtitle}>{t('cancel_ride_subtitle')}</Text>
+                <View style={styles.cancelReasonsList}>
+                  {CANCEL_REASONS.map((reason) => (
+                    <TouchableOpacity
+                      key={reason.key}
+                      style={[
+                        styles.cancelReasonItem,
+                        selectedCancelReason === reason.key && {
+                          borderColor: reason.color,
+                          backgroundColor: reason.color + '15',
+                        },
+                      ]}
+                      onPress={() => setSelectedCancelReason(reason.key)}
+                    >
+                      <Text style={styles.cancelReasonIcon}>{reason.icon}</Text>
+                      <Text style={styles.cancelReasonText}>
+                        {getCancelReasonLabel(reason.key)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={() => {
+                      setShowCancelModal(false);
+                      setCancelRideId(null);
+                    }}
+                  >
+                    <Text style={styles.modalCancelBtnText}>{t('cancel_ride_go_back')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalConfirmBtn,
+                      !selectedCancelReason && styles.modalConfirmBtnDisabled,
+                    ]}
+                    onPress={handleCancelRide}
+                    disabled={!selectedCancelReason}
+                  >
+                    <Text style={styles.modalConfirmBtnText}>{t('cancel_ride_confirm')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+            {cancelStep === 'loading' && (
+              <View style={styles.modalStatusBox}>
+                <ActivityIndicator size="large" color="#dc3545" />
+                <Text style={styles.modalStatusText}>{t('cancel_ride_processing')}</Text>
+              </View>
+            )}
+            {cancelStep === 'success' && (
+              <View style={styles.modalStatusBox}>
+                <Text style={styles.modalSuccessIcon}>✓</Text>
+                <Text style={styles.modalStatusTitle}>{t('cancel_ride_success')}</Text>
+              </View>
+            )}
+            {cancelStep === 'error' && (
+              <View style={styles.modalStatusBox}>
+                <Text style={styles.modalErrorIcon}>✗</Text>
+                <Text style={styles.modalStatusTitle}>{t('cancel_ride_error')}</Text>
+                <Text style={styles.modalErrorDetail}>{cancelErrorMessage}</Text>
+                <TouchableOpacity
+                  style={styles.modalRetryBtn}
+                  onPress={() => {
+                    setCancelStep('reason');
+                    setCancelErrorMessage('');
+                  }}
+                >
+                  <Text style={styles.modalRetryBtnText}>{t('cancel_ride_go_back')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -353,6 +549,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  rideTouchArea: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -460,5 +658,137 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  cancelRideBtn: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: '#dc3545',
+    alignSelf: 'flex-end',
+  },
+  cancelRideBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  cancelReasonsList: {
+    marginBottom: 16,
+  },
+  cancelReasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  cancelReasonIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  cancelReasonText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '500',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#dc3545',
+    alignItems: 'center',
+  },
+  modalConfirmBtnDisabled: {
+    backgroundColor: '#ccc',
+  },
+  modalConfirmBtnText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  modalStatusBox: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  modalStatusText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  modalStatusTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 12,
+  },
+  modalSuccessIcon: {
+    fontSize: 48,
+    color: '#28a745',
+  },
+  modalErrorIcon: {
+    fontSize: 48,
+    color: '#dc3545',
+  },
+  modalErrorDetail: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#dc3545',
+    textAlign: 'center',
+  },
+  modalRetryBtn: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#dc3545',
+  },
+  modalRetryBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

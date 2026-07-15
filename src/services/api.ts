@@ -30,6 +30,7 @@ export type DriverLoginSuccessResponse = {
     name: string;
     car: string;
     rating?: number;
+    fiveStarCount?: number;
     vehicleTypeId?: number;
   };
   shiftId: number;
@@ -52,7 +53,7 @@ export type DriverLoginSuccessResponse = {
 export type DriverLoginResponse = DriverLoginSuccessResponse | DriverLoginWarningResponse;
 
 export const isDriverLoginSuccessResponse = (
-  response: DriverLoginResponse
+  response: DriverLoginResponse,
 ): response is DriverLoginSuccessResponse => {
   const candidate = response as Partial<DriverLoginSuccessResponse>;
 
@@ -61,7 +62,7 @@ export const isDriverLoginSuccessResponse = (
     typeof candidate?.token === 'string' &&
     candidate?.driver &&
     typeof candidate.driver.id === 'number' &&
-    typeof candidate?.shiftId === 'number'
+    typeof candidate?.shiftId === 'number',
   );
 };
 
@@ -90,7 +91,7 @@ const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
       throw error;
     }
     if (retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       return retry(fn, retries - 1, delay * 2);
     }
     throw error;
@@ -143,7 +144,10 @@ export const api = {
         headers,
       });
       if (!response.ok) {
-        throw new HttpError(`API Error: ${response.status} ${response.statusText}`, response.status);
+        throw new HttpError(
+          `API Error: ${response.status} ${response.statusText}`,
+          response.status,
+        );
       }
       return response.json();
     });
@@ -187,7 +191,7 @@ export const loginDriver = async (
   username: string,
   password: string,
   startKM: number,
-  confirmOutsideSchedule: boolean = false
+  confirmOutsideSchedule: boolean = false,
 ): Promise<DriverLoginResponse> => {
   return api.post('/api/driver/login', { username, password, startKM, confirmOutsideSchedule });
 };
@@ -239,12 +243,16 @@ export const updateDriverScheduleTemplate = async (
       endMinute?: number;
       isActive?: boolean;
     }>;
-  }>
+  }>,
 ) => {
-  return api.post('/api/driver/schedule', {
-    action: 'setTemplate',
-    days,
-  }, token);
+  return api.post(
+    '/api/driver/schedule',
+    {
+      action: 'setTemplate',
+      days,
+    },
+    token,
+  );
 };
 
 export const updateDriverSchedulePreferences = async (
@@ -255,12 +263,16 @@ export const updateDriverSchedulePreferences = async (
     minRestMinutes?: number;
     lockMinutesBeforeStart?: number;
     allowEmergencyOverride?: boolean;
-  }
+  },
 ) => {
-  return api.post('/api/driver/schedule', {
-    action: 'setPreferences',
-    ...payload,
-  }, token);
+  return api.post(
+    '/api/driver/schedule',
+    {
+      action: 'setPreferences',
+      ...payload,
+    },
+    token,
+  );
 };
 
 export const upsertDriverScheduleException = async (
@@ -273,29 +285,46 @@ export const upsertDriverScheduleException = async (
     startMinute?: number;
     endMinute?: number;
     note?: string;
-  }
+  },
 ) => {
-  return api.post('/api/driver/schedule', {
-    action: 'setException',
-    ...payload,
-  }, token);
+  return api.post(
+    '/api/driver/schedule',
+    {
+      action: 'setException',
+      ...payload,
+    },
+    token,
+  );
 };
 
 export const deleteDriverScheduleException = async (token: string, date: string) => {
-  return api.post('/api/driver/schedule', {
-    action: 'deleteException',
-    date,
-  }, token);
+  return api.post(
+    '/api/driver/schedule',
+    {
+      action: 'deleteException',
+      date,
+    },
+    token,
+  );
 };
 
 export const applyDriverScheduleSuggestions = async (token: string, daysBack: number = 42) => {
-  return api.post('/api/driver/schedule', {
-    action: 'applySuggestions',
-    daysBack,
-  }, token);
+  return api.post(
+    '/api/driver/schedule',
+    {
+      action: 'applySuggestions',
+      daysBack,
+    },
+    token,
+  );
 };
 
-export const updateDriverLocation = async (latitude: number, longitude: number, token: string, timestamp?: string) => {
+export const updateDriverLocation = async (
+  latitude: number,
+  longitude: number,
+  token: string,
+  timestamp?: string,
+) => {
   return api.post('/api/driver/location-update', { latitude, longitude, timestamp }, token);
 };
 
@@ -312,7 +341,7 @@ export const getDriverHistory = async (
   startDate?: string,
   endDate?: string,
   allDrivers: boolean = false,
-  includeActive: boolean = false
+  includeActive: boolean = false,
 ) => {
   const params = new URLSearchParams();
   if (startDate) params.append('startDate', startDate);
@@ -365,7 +394,7 @@ const toFiniteNumber = (value: unknown, fallback = 0): number => {
 };
 
 const normalizeLatLon = (
-  value: { lat?: number; lon?: number } | null | undefined
+  value: { lat?: number; lon?: number } | null | undefined,
 ): { lat: number; lon: number } | null => {
   if (!value) return null;
 
@@ -380,7 +409,7 @@ const normalizeLatLon = (
 };
 
 export const normalizeScheduledPendingOffers = (
-  pendingOffers: ScheduledPendingOfferRaw[] | undefined | null
+  pendingOffers: ScheduledPendingOfferRaw[] | undefined | null,
 ): ScheduledPendingOffer[] => {
   if (!Array.isArray(pendingOffers)) return [];
 
@@ -440,22 +469,18 @@ export const updatePushToken = async (pushToken: string, token: string) => {
 
 export const getAnalytics = async (token: string, period: string = 'month') => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/driver/analytics?period=${period}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Cache-Control': 'no-cache',
-      },
-    });
-
-    const data = await response.json();
+    const data = await api.get(`/api/driver/analytics?period=${period}`, token);
     return {
-      ok: response.ok,
-      status: response.status,
-      data: data,
+      ok: true,
+      status: 200,
+      data,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Analytics fetch error:', error);
-    throw error;
+    return {
+      ok: false,
+      status: error.status || 0,
+      data: null,
+    };
   }
 };

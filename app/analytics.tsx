@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
 import { getAnalytics } from '../src/services/api';
@@ -9,6 +17,7 @@ import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { buildRatingRecommendations } from '../src/features/driverIntelligence';
+import RatingInfoModal from './components/RatingInfoModal';
 
 const { width } = Dimensions.get('window');
 
@@ -19,6 +28,7 @@ export default function AnalyticsScreen() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
+  const [showRatingInfo, setShowRatingInfo] = useState(false);
 
   useRideOfferRedirect(true);
 
@@ -133,8 +143,11 @@ export default function AnalyticsScreen() {
   const averageRating = Number(summary?.averageRating ?? 0);
   const acceptanceRate = Number(summary?.acceptanceRate ?? 0);
   const completionRate = Number(summary?.completionRate ?? 0);
+  const acceptedStreak = Number(summary?.acceptedStreak ?? 0);
   const peakHours: string[] = Array.isArray(insights?.peakHours)
-    ? insights.peakHours.map((entry: any) => entry?.hour).filter((hour: any) => typeof hour === 'string')
+    ? insights.peakHours
+        .map((entry: any) => entry?.hour)
+        .filter((hour: any) => typeof hour === 'string')
     : [];
   const topArea =
     Array.isArray(insights?.topPickupAreas) && insights.topPickupAreas.length > 0
@@ -181,16 +194,53 @@ export default function AnalyticsScreen() {
             <Text style={styles.summaryValue}>{summary.totalRides}</Text>
             <Text style={styles.summaryLabel}>{t('total_rides')}</Text>
           </View>
-          <View style={styles.summaryCard}>
+          <TouchableOpacity
+            style={styles.summaryCard}
+            activeOpacity={0.7}
+            onPress={() => {
+              const now = new Date();
+              let start: Date;
+              switch (period) {
+                case 'day':
+                  start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                  break;
+                case 'week':
+                  const dow = now.getDay();
+                  start = new Date(now);
+                  start.setDate(now.getDate() - dow + (dow === 0 ? -6 : 1));
+                  start.setHours(0, 0, 0, 0);
+                  break;
+                case 'month':
+                default:
+                  start = new Date(now.getFullYear(), now.getMonth(), 1);
+                  break;
+              }
+              const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+              const toIso = (d: Date) =>
+                `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              router.push({
+                pathname: '/history',
+                params: {
+                  fromAnalytics: '1',
+                  analyticsStart: toIso(start),
+                  analyticsEnd: toIso(end),
+                },
+              });
+            }}
+          >
             <Ionicons name="cash" size={24} color="#007bff" />
             <Text style={styles.summaryValue}>{summary.totalEarnings} DKK</Text>
             <Text style={styles.summaryLabel}>{t('earnings')}</Text>
-          </View>
-          <View style={styles.summaryCard}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.summaryCard}
+            activeOpacity={0.7}
+            onPress={() => setShowRatingInfo(true)}
+          >
             <Ionicons name="star" size={24} color="#ffc107" />
             <Text style={styles.summaryValue}>{summary.averageRating}</Text>
             <Text style={styles.summaryLabel}>{t('rating')}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Driver Rating Center */}
@@ -201,7 +251,9 @@ export default function AnalyticsScreen() {
             </View>
             <View style={styles.ratingCenterHeaderTextWrap}>
               <Text style={styles.ratingCenterTitle}>{t('rating_center_title')}</Text>
-              <Text style={styles.ratingCenterSubtitle}>{t('rating_center_subtitle', { target: '4.8' })}</Text>
+              <Text style={styles.ratingCenterSubtitle}>
+                {t('rating_center_subtitle', { target: '4.8' })}
+              </Text>
             </View>
           </View>
 
@@ -220,11 +272,35 @@ export default function AnalyticsScreen() {
             </View>
           </View>
 
+          {acceptedStreak > 0 && (
+            <View style={styles.streakContainer}>
+              <Text style={styles.streakLabel}>
+                {t('acceptance_streak')}: {acceptedStreak}/10
+              </Text>
+              <View style={styles.streakBarBg}>
+                <View
+                  style={[
+                    styles.streakBarFill,
+                    { width: `${Math.min(acceptedStreak * 10, 100)}%` },
+                  ]}
+                />
+              </View>
+              {acceptedStreak >= 10 && (
+                <Text style={styles.streakComplete}>{t('streak_reward')}</Text>
+              )}
+            </View>
+          )}
+
           <Text style={styles.ratingRecommendationsTitle}>{t('rating_recommendations_title')}</Text>
           {ratingRecommendations.map((recommendation, index) => (
-            <View key={`rating-recommendation-${recommendation.key}-${index}`} style={styles.ratingRecommendationRow}>
+            <View
+              key={`rating-recommendation-${recommendation.key}-${index}`}
+              style={styles.ratingRecommendationRow}
+            >
               <Text style={styles.ratingRecommendationIndex}>{index + 1}</Text>
-              <Text style={styles.ratingRecommendationText}>{t(recommendation.key, recommendation.values || {})}</Text>
+              <Text style={styles.ratingRecommendationText}>
+                {t(recommendation.key, recommendation.values || {})}
+              </Text>
             </View>
           ))}
         </View>
@@ -236,9 +312,11 @@ export default function AnalyticsScreen() {
             <LineChart
               data={{
                 labels: charts.daily.map((d: any) => d.date.slice(-2)), // Last 2 chars of date
-                datasets: [{
-                  data: charts.daily.map((d: any) => d.earnings),
-                }],
+                datasets: [
+                  {
+                    data: charts.daily.map((d: any) => d.earnings),
+                  },
+                ],
               }}
               width={width - 40}
               height={220}
@@ -255,9 +333,11 @@ export default function AnalyticsScreen() {
           <BarChart
             data={{
               labels: charts.hourly.slice(0, 12).map((h: any) => h.hour), // First 12 hours
-              datasets: [{
-                data: charts.hourly.slice(0, 12).map((h: any) => h.rides),
-              }],
+              datasets: [
+                {
+                  data: charts.hourly.slice(0, 12).map((h: any) => h.rides),
+                },
+              ],
             }}
             width={width - 40}
             height={220}
@@ -279,7 +359,10 @@ export default function AnalyticsScreen() {
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>{t('peak_hours')}</Text>
                 <Text style={styles.insightText}>
-                  {insights.peakHours.slice(0, 3).map((h: any) => h.hour).join(', ')}
+                  {insights.peakHours
+                    .slice(0, 3)
+                    .map((h: any) => h.hour)
+                    .join(', ')}
                 </Text>
               </View>
             </View>
@@ -291,7 +374,10 @@ export default function AnalyticsScreen() {
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>{t('top_areas')}</Text>
                 <Text style={styles.insightText}>
-                  {insights.topPickupAreas.slice(0, 3).map((a: any) => a.area).join(', ')}
+                  {insights.topPickupAreas
+                    .slice(0, 3)
+                    .map((a: any) => a.area)
+                    .join(', ')}
                 </Text>
               </View>
             </View>
@@ -308,6 +394,13 @@ export default function AnalyticsScreen() {
           )}
         </View>
       </ScrollView>
+
+      <RatingInfoModal
+        visible={showRatingInfo}
+        onClose={() => setShowRatingInfo(false)}
+        rating={Number(summary?.averageRating) || authState.user?.rating || 5.0}
+        fiveStarCount={authState.user?.fiveStarCount || 0}
+      />
     </View>
   );
 }
@@ -466,6 +559,35 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  streakContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  streakLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  streakBarBg: {
+    height: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  streakBarFill: {
+    height: '100%',
+    backgroundColor: '#28a745',
+    borderRadius: 3,
+  },
+  streakComplete: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#28a745',
+    fontWeight: '700',
   },
   ratingRecommendationsTitle: {
     fontSize: 13,

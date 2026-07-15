@@ -30,7 +30,7 @@ import {
   setStoredAuthUser,
   setStoredPushToken,
   setStoredRestrictedOffers,
-  setStoredRestrictedOffersUntil
+  setStoredRestrictedOffersUntil,
 } from '../services/secureStorage';
 import { LOCATION_BACKGROUND_TASK, SOCKET_BACKGROUND_TASK } from '../tasks/socketBackgroundTask';
 
@@ -40,7 +40,12 @@ type LoginOptions = {
 
 const AuthContext = createContext<{
   authState: AuthState;
-  login: (username: string, password: string, startKM: number, options?: LoginOptions) => Promise<DriverLoginResponse>;
+  login: (
+    username: string,
+    password: string,
+    startKM: number,
+    options?: LoginOptions,
+  ) => Promise<DriverLoginResponse>;
   logout: () => Promise<void>;
 } | null>(null);
 
@@ -51,7 +56,13 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [authState, setAuthState] = useState<AuthState>({ user: null, token: null, isLoading: true, restrictedOffers: false, restrictedOffersUntil: null });
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    token: null,
+    isLoading: true,
+    restrictedOffers: false,
+    restrictedOffersUntil: null,
+  });
   const DISABLE_BACKGROUND_TASKS = false;
 
   const registerBackgroundTasks = async () => {
@@ -81,14 +92,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const hasLocationTask = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+      const hasLocationTask =
+        await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
       if (!hasLocationTask) {
         const backgroundPermission = await Location.getBackgroundPermissionsAsync();
         if (backgroundPermission.status !== 'granted') {
           const requestedBackgroundPermission = await Location.requestBackgroundPermissionsAsync();
           if (requestedBackgroundPermission.status !== 'granted') {
             console.warn(
-              'Background location permission was not granted; skipping background location task registration.'
+              'Background location permission was not granted; skipping background location task registration.',
             );
             return;
           }
@@ -125,7 +137,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const hasLocationTask = await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
+      const hasLocationTask =
+        await Location.hasStartedLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
       if (hasLocationTask) {
         await Location.stopLocationUpdatesAsync(LOCATION_BACKGROUND_TASK);
       }
@@ -153,7 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 token,
                 isLoading: false,
                 restrictedOffers: Boolean(status?.restrictedOffers ?? restrictedOffers),
-                restrictedOffersUntil: status?.restrictedOffersUntil ?? restrictedOffersUntil ?? null
+                restrictedOffersUntil:
+                  status?.restrictedOffersUntil ?? restrictedOffersUntil ?? null,
               });
             } else {
               // No active shift, clear stored data
@@ -161,7 +175,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await removeStoredAuthUser();
               await removeStoredRestrictedOffers();
               await removeStoredRestrictedOffersUntil();
-              setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
+              setAuthState({
+                user: null,
+                token: null,
+                isLoading: false,
+                restrictedOffers: false,
+                restrictedOffersUntil: null,
+              });
             }
           } catch (error) {
             console.error('Token validation failed:', error);
@@ -170,14 +190,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await removeStoredAuthUser();
             await removeStoredRestrictedOffers();
             await removeStoredRestrictedOffersUntil();
-            setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
+            setAuthState({
+              user: null,
+              token: null,
+              isLoading: false,
+              restrictedOffers: false,
+              restrictedOffersUntil: null,
+            });
           }
         } else {
-          setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
+          setAuthState({
+            user: null,
+            token: null,
+            isLoading: false,
+            restrictedOffers: false,
+            restrictedOffersUntil: null,
+          });
         }
       } catch (error) {
         console.error('Error loading auth state:', error);
-        setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
+        setAuthState({
+          user: null,
+          token: null,
+          isLoading: false,
+          restrictedOffers: false,
+          restrictedOffersUntil: null,
+        });
       }
     };
     loadAuthState();
@@ -241,7 +279,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setStoredPushToken(pushToken);
       } catch (error) {
         // Push notifications may not be available
-        console.warn('Push notifications not available:', error instanceof Error ? error.message : String(error));
+        console.warn(
+          'Push notifications not available:',
+          error instanceof Error ? error.message : String(error),
+        );
         // Don't fail the login process due to push notification issues
       }
     };
@@ -272,14 +313,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     username: string,
     password: string,
     startKM: number,
-    options?: LoginOptions
+    options?: LoginOptions,
   ): Promise<DriverLoginResponse> => {
     try {
       const response = await loginDriver(
         username,
         password,
         startKM,
-        Boolean(options?.confirmOutsideSchedule)
+        Boolean(options?.confirmOutsideSchedule),
       );
 
       if (response.requiresConfirmation === true) {
@@ -297,7 +338,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           shiftId: response.shiftId,
           shiftStartTime: response.shiftStartTime || undefined,
           rating: response.driver.rating || 5.0,
-          schedule: response.schedule || null
+          fiveStarCount: response.driver.fiveStarCount || 0,
+          schedule: response.schedule || null,
         };
         await setAuthToken(response.token);
         await setStoredAuthUser(JSON.stringify(userData));
@@ -313,7 +355,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           token: response.token,
           isLoading: false,
           restrictedOffers,
-          restrictedOffersUntil
+          restrictedOffersUntil,
         });
         return response;
       } else {
@@ -340,12 +382,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await removeStoredRestrictedOffers();
     await removeStoredRestrictedOffersUntil();
     await unregisterBackgroundTasks();
-    setAuthState({ user: null, token: null, isLoading: false, restrictedOffers: false, restrictedOffersUntil: null });
+    setAuthState({
+      user: null,
+      token: null,
+      isLoading: false,
+      restrictedOffers: false,
+      restrictedOffersUntil: null,
+    });
   };
 
   return (
-    <AuthContext.Provider value={{ authState, login, logout }}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={{ authState, login, logout }}>{children}</AuthContext.Provider>
   );
 };

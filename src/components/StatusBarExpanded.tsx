@@ -32,6 +32,8 @@ interface StatusBarExpandedProps {
   totalRidesToday?: number;
   earningsToday?: number;
   rating?: number;
+  fiveStarCount?: number;
+  onRatingPress?: () => void;
 }
 
 const statusConfig = {
@@ -85,6 +87,8 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
   totalRidesToday = 0,
   earningsToday = 0,
   rating = 4.8,
+  fiveStarCount = 0,
+  onRatingPress,
 }) => {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
@@ -122,20 +126,13 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
           <View style={[styles.header, { backgroundColor: config.color }]}>
             <View style={styles.headerContent}>
-              <View style={styles.iconWrapper}>
-                {renderIcon(32)}
-              </View>
+              <View style={styles.iconWrapper}>{renderIcon(32)}</View>
               <View style={styles.headerText}>
                 <Text style={styles.headerTitle}>{t(config.labelKey)}</Text>
                 <Text style={styles.headerSubtitle}>{t(config.descriptionKey)}</Text>
@@ -147,7 +144,7 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
           </View>
 
           {/* Scrollable Content */}
-          <ScrollView 
+          <ScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={true}
@@ -166,12 +163,16 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
                 </View>
                 <Text style={styles.timerSeparator}>:</Text>
                 <View style={styles.timerItem}>
-                  <Text style={styles.timerValue}>{shiftDetails.minutes.toString().padStart(2, '0')}</Text>
+                  <Text style={styles.timerValue}>
+                    {shiftDetails.minutes.toString().padStart(2, '0')}
+                  </Text>
                   <Text style={styles.timerLabel}>{t('minutes')}</Text>
                 </View>
                 <Text style={styles.timerSeparator}>:</Text>
                 <View style={styles.timerItem}>
-                  <Text style={styles.timerValue}>{shiftDetails.seconds.toString().padStart(2, '0')}</Text>
+                  <Text style={styles.timerValue}>
+                    {shiftDetails.seconds.toString().padStart(2, '0')}
+                  </Text>
                   <Text style={styles.timerLabel}>{t('seconds')}</Text>
                 </View>
               </View>
@@ -180,7 +181,12 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
               <View style={styles.progressContainer}>
                 <View style={styles.progressHeader}>
                   <Text style={styles.progressLabel}>{t('shift_progress')}</Text>
-                  <Text style={[styles.progressValue, progressPercent >= 80 && { color: colors.warning[500] }]}>
+                  <Text
+                    style={[
+                      styles.progressValue,
+                      progressPercent >= 80 && { color: colors.warning[500] },
+                    ]}
+                  >
                     {Math.round(progressPercent)}%
                   </Text>
                 </View>
@@ -190,14 +196,17 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
                       styles.progressBarFill,
                       {
                         width: `${progressPercent}%`,
-                        backgroundColor: progressPercent >= 80 ? colors.warning[500] : colors.success[500],
+                        backgroundColor:
+                          progressPercent >= 80 ? colors.warning[500] : colors.success[500],
                       },
                     ]}
                   />
                 </View>
                 {remainingMinutes > 0 && (
                   <Text style={styles.remainingTime}>
-                    {t('remaining')}: {Math.floor(remainingMinutes / 60)}{t('hours_short')} {remainingMinutes % 60}{t('minutes_short')}
+                    {t('remaining')}: {Math.floor(remainingMinutes / 60)}
+                    {t('hours_short')} {remainingMinutes % 60}
+                    {t('minutes_short')}
                   </Text>
                 )}
               </View>
@@ -221,11 +230,11 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
                 <Text style={styles.statValue}>{earningsToday} DKK</Text>
                 <Text style={styles.statLabel}>{t('earnings_today')}</Text>
               </View>
-              <View style={styles.statCard}>
+              <TouchableOpacity style={styles.statCard} onPress={onRatingPress} activeOpacity={0.7}>
                 <Ionicons name="star" size={24} color={colors.warning[500]} />
                 <Text style={styles.statValue}>{rating.toFixed(1)}</Text>
                 <Text style={styles.statLabel}>{t('rating')}</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Connection Status */}
@@ -240,19 +249,44 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
               </View>
               <View style={styles.connectionDetails}>
                 <View style={styles.connectionItem}>
-                  <View style={[styles.statusDot, { backgroundColor: isSocketConnected ? colors.success[500] : colors.danger[500] }]} />
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor: isSocketConnected
+                          ? colors.success[500]
+                          : colors.danger[500],
+                      },
+                    ]}
+                  />
                   <Text style={styles.connectionText}>
                     {isSocketConnected ? t('connected_to_server') : t('disconnected_from_server')}
                   </Text>
                 </View>
                 <View style={styles.connectionItem}>
-                  <View style={[styles.statusDot, { backgroundColor: locationPermission ? colors.success[500] : colors.danger[500] }]} />
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor: locationPermission
+                          ? colors.success[500]
+                          : colors.danger[500],
+                      },
+                    ]}
+                  />
                   <Text style={styles.connectionText}>
-                    {locationPermission ? t('location_permission_granted') : t('location_permission_denied')}
+                    {locationPermission
+                      ? t('location_permission_granted')
+                      : t('location_permission_denied')}
                   </Text>
                 </View>
                 <View style={styles.connectionItem}>
-                  <View style={[styles.statusDot, { backgroundColor: isTracking ? colors.success[500] : colors.warning[500] }]} />
+                  <View
+                    style={[
+                      styles.statusDot,
+                      { backgroundColor: isTracking ? colors.success[500] : colors.warning[500] },
+                    ]}
+                  />
                   <Text style={styles.connectionText}>
                     {isTracking ? t('location_tracking_active') : t('location_tracking_inactive')}
                   </Text>
