@@ -467,6 +467,18 @@ export const updatePushToken = async (pushToken: string, token: string) => {
   return api.post('/api/driver/push-token', { pushToken }, token);
 };
 
+export const getRidePreferences = async (token: string) => {
+  return api.get('/api/driver/ride-preferences', token);
+};
+
+export const saveRidePreferences = async (
+  minDistanceKm: number,
+  minTimeMinutes: number,
+  token: string,
+) => {
+  return api.post('/api/driver/ride-preferences', { minDistanceKm, minTimeMinutes }, token);
+};
+
 export const getAnalytics = async (token: string, period: string = 'month') => {
   try {
     const data = await api.get(`/api/driver/analytics?period=${period}`, token);

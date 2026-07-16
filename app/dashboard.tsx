@@ -34,6 +34,7 @@ import {
   getDriverSchedule,
   normalizeScheduledPendingOffers,
   getDriverHistory,
+  getRidePreferences,
 } from '../src/services/api';
 import { StatusBar } from '../src/components/StatusBar';
 import { StatusBarExpanded } from '../src/components/StatusBarExpanded';
@@ -88,6 +89,7 @@ import HamburgerMenu from './components/HamburgerMenu';
 import ChatModal from './components/ChatModal';
 import StopModal from './components/StopModal';
 import DropoffModal from './components/DropoffModal';
+import RidePreferencesModal from './components/RidePreferencesModal';
 import { getStyles } from '../src/styles/dashboard.styles';
 import {
   buildSmartAlerts,
@@ -252,6 +254,8 @@ export default function DashboardScreen() {
   const [earningsToday, setEarningsToday] = useState(0);
   const [scheduleEligibility, setScheduleEligibility] = useState<any>(null);
   const [scheduleReasonMessage, setScheduleReasonMessage] = useState<string>('');
+  const [showRidePreferences, setShowRidePreferences] = useState(false);
+  const [hasRidePreferences, setHasRidePreferences] = useState(false);
   const driverOnlineRef = useRef(false);
   const driverBusyRef = useRef(false);
   const isSocketConnectedRef = useRef(false);
@@ -1261,6 +1265,33 @@ export default function DashboardScreen() {
     };
   }, [authState.token]);
 
+  const preferencesCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (!authState.token) {
+      preferencesCheckedRef.current = false;
+      return;
+    }
+    if (preferencesCheckedRef.current) return;
+    const timer = setTimeout(async () => {
+      preferencesCheckedRef.current = true;
+      try {
+        const res = await getRidePreferences(authState.token);
+        if (res?.preferences) setHasRidePreferences(true);
+        setShowRidePreferences(true);
+      } catch {
+        setShowRidePreferences(true);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [authState.token]);
+
+  useEffect(() => {
+    if (showRidePreferences && authState.token) {
+      toggleDriverBusy(true, authState.token).catch(() => {});
+    }
+  }, [showRidePreferences]);
+
   // Handle app state changes (background/foreground)
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: string) => {
@@ -1485,20 +1516,32 @@ export default function DashboardScreen() {
     }
   }, [activeRide?.id]);
 
-  const loadDriverStatus = async (retryCount = 0) => {
-    if (!authState.token) {
-      return;
+  async function checkRidePreferencesBeforeOnline() {
+    if (!authState.token) return true;
+    try {
+      const res = await getRidePreferences(authState.token);
+      if (res?.preferences) setHasRidePreferences(true);
+      return false;
+    } catch {
+      return false;
     }
+  }
+
+  const loadDriverStatus = async (retryCount = 0) => {
+    if (!authState.token) return;
     try {
       const res = await getDriverStatus(authState.token);
       const currentOnline = driverOnlineRef.current;
       const currentBusy = driverBusyRef.current;
 
-      // Ensure driver is marked as online if they have an active shift
       if (res.hasActiveShift && !res.isOnline) {
-        devLog('Driver has active shift but not online, setting online');
-        await toggleDriverOnline(true, authState.token);
-        res.isOnline = true;
+        const hasPreferences = await checkRidePreferencesBeforeOnline();
+        if (!hasPreferences) {
+          setShowRidePreferences(true);
+        } else {
+          await toggleDriverOnline(true, authState.token);
+          res.isOnline = true;
+        }
       }
 
       if (res.isOnline !== undefined && res.isOnline !== currentOnline) {
@@ -1958,9 +2001,20 @@ export default function DashboardScreen() {
   const handleToggleOnline = async () => {
     if (!authState.token) return;
     try {
+      if (!driverOnline) {
+        const hasPreferences = await checkRidePreferencesBeforeOnline();
+        if (!hasPreferences) {
+          setShowRidePreferences(true);
+          return;
+        }
+      }
       const res = await toggleDriverOnline(!driverOnline, authState.token);
       if (res.success) {
         setDriverOnline(!driverOnline);
+        if (!driverOnline) {
+          await toggleDriverBusy(false, authState.token);
+          setDriverBusy(false);
+        }
         if (res.schedule) {
           setScheduleEligibility(res.schedule);
           setScheduleReasonMessage(res.schedule?.reasonMessage || '');
@@ -3608,6 +3662,32 @@ export default function DashboardScreen() {
               setShowEndKMModal(true);
             }}
             onDismiss={() => setShowShiftWarning(false)}
+          />
+
+          <RidePreferencesModal
+            visible={showRidePreferences}
+            token={authState.token || ''}
+            onSave={() => {
+              setHasRidePreferences(true);
+              setShowRidePreferences(false);
+              if (authState.token) {
+                toggleDriverBusy(false, authState.token).catch(() => {});
+                setDriverBusy(false);
+                toggleDriverOnline(true, authState.token)
+                  .then((res) => {
+                    if (res.success) {
+                      setDriverOnline(true);
+                      startLocationTracking();
+                      if (res.schedule) {
+                        setScheduleEligibility(res.schedule);
+                        setScheduleReasonMessage(res.schedule?.reasonMessage || '');
+                      }
+                    }
+                  })
+                  .catch(() => {});
+              }
+            }}
+            onCancel={() => setShowRidePreferences(false)}
           />
 
           {/* Floating Go Button */}

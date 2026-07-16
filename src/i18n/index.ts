@@ -190,6 +190,15 @@ const resources = {
       contact_support: 'Contact Support',
       app_version: 'App Version',
 
+      ride_preferences_title: 'Ride Preferences',
+      ride_preferences_message: 'Set your minimum requirements for receiving trips.',
+      ride_preferences_min_distance: 'Minimum distance (km)',
+      ride_preferences_min_time: 'Minimum time (minutes)',
+      ride_preferences_min_distance_hint: 'Minimum distance between you and the order',
+      ride_preferences_min_time_hint: 'Minimum minutes between you and the customer',
+      ride_preferences_save: 'Save & Continue',
+      ride_preferences_required: 'Please fill in both values',
+
       // Status messages
       banned: 'Banned',
       seconds_short: 's',
@@ -623,6 +632,15 @@ const resources = {
       report_issue: 'الإبلاغ عن مشكلة',
       contact_support: 'اتصال بالدعم',
       app_version: 'إصدار التطبيق',
+
+      ride_preferences_title: 'تفضيلات الرحلات',
+      ride_preferences_message: 'قم بتعيين الحد الأدنى من المتطلبات لإستلام الرحلات.',
+      ride_preferences_min_distance: 'أقل مسافة (كم)',
+      ride_preferences_min_time: 'أقل عدد دقائق',
+      ride_preferences_min_distance_hint: 'أقل مسافة بينك وبين الطلب',
+      ride_preferences_min_time_hint: 'أقل عدد دقائق بينك وبين الزبون',
+      ride_preferences_save: 'حفظ ومتابعة',
+      ride_preferences_required: 'الرجاء ملء القيمتين',
 
       // Status messages
       banned: 'محظور',
@@ -1058,6 +1076,15 @@ const resources = {
       report_issue: 'Rapporter problem',
       contact_support: 'Kontakt support',
       app_version: 'App version',
+
+      ride_preferences_title: 'Turpræferencer',
+      ride_preferences_message: 'Indstil dine minimumskrav til modtagelse af ture.',
+      ride_preferences_min_distance: 'Mindste afstand (km)',
+      ride_preferences_min_time: 'Mindste tid (minutter)',
+      ride_preferences_min_distance_hint: 'Mindste afstand mellem dig og bestillingen',
+      ride_preferences_min_time_hint: 'Mindste antal minutter mellem dig og kunden',
+      ride_preferences_save: 'Gem og fortsæt',
+      ride_preferences_required: 'Udfyld venligst begge værdier',
 
       // Status messages
       banned: 'Udelukket',
