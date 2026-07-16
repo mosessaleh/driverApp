@@ -1273,15 +1273,23 @@ export default function DashboardScreen() {
       return;
     }
     if (preferencesCheckedRef.current) return;
+
     const timer = setTimeout(async () => {
       preferencesCheckedRef.current = true;
       try {
+        const status = await getDriverStatus(authState.token);
+        if (status?.hasActiveShift && status?.isOnline && status?.shiftStartTime) {
+          const shiftAge = (Date.now() - new Date(status.shiftStartTime).getTime()) / 1000;
+          if (shiftAge > 30) return;
+        }
+      } catch {}
+
+      try {
         const res = await getRidePreferences(authState.token);
         if (res?.preferences) setHasRidePreferences(true);
-        setShowRidePreferences(true);
-      } catch {
-        setShowRidePreferences(true);
-      }
+      } catch {}
+
+      setShowRidePreferences(true);
     }, 2000);
     return () => clearTimeout(timer);
   }, [authState.token]);
@@ -3014,6 +3022,10 @@ export default function DashboardScreen() {
           setShowMenu(false);
           goToSchedule();
         }}
+        onRidePreferences={() => {
+          setShowMenu(false);
+          setShowRidePreferences(true);
+        }}
         onToggleBusy={() => {
           setShowMenu(false);
           handleToggleBusy();
@@ -3687,7 +3699,29 @@ export default function DashboardScreen() {
                   .catch(() => {});
               }
             }}
-            onCancel={() => setShowRidePreferences(false)}
+            onCancel={() => {
+              if (hasRidePreferences) {
+                setShowRidePreferences(false);
+                if (authState.token) {
+                  toggleDriverBusy(false, authState.token).catch(() => {});
+                  setDriverBusy(false);
+                  toggleDriverOnline(true, authState.token)
+                    .then((res) => {
+                      if (res.success) {
+                        setDriverOnline(true);
+                        startLocationTracking();
+                        if (res.schedule) {
+                          setScheduleEligibility(res.schedule);
+                          setScheduleReasonMessage(res.schedule?.reasonMessage || '');
+                        }
+                      }
+                    })
+                    .catch(() => {});
+                }
+              } else {
+                Alert.alert(t('error'), t('ride_preferences_required'));
+              }
+            }}
           />
 
           {/* Floating Go Button */}

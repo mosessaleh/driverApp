@@ -23,6 +23,7 @@ type Props = {
   onAnalytics: () => void;
   onSettings: () => void;
   onSchedule: () => void;
+  onRidePreferences: () => void;
   onToggleBusy: () => void;
   onEndShift: () => void;
 };
@@ -47,6 +48,7 @@ export default function HamburgerMenu({
   onAnalytics,
   onSettings,
   onSchedule,
+  onRidePreferences,
   onToggleBusy,
   onEndShift,
 }: Props) {
@@ -66,7 +68,9 @@ export default function HamburgerMenu({
           <View style={styles.hamburgerLine} />
           <View style={styles.hamburgerLine} />
           {pendingScheduledCount > 0 && (
-            <View style={[styles.pendingBadgeOnMenuButton, { backgroundColor: pendingUrgencyColor }]}>
+            <View
+              style={[styles.pendingBadgeOnMenuButton, { backgroundColor: pendingUrgencyColor }]}
+            >
               <Text style={styles.pendingBadgeText}>{pendingScheduledCount}</Text>
             </View>
           )}
@@ -105,13 +109,31 @@ export default function HamburgerMenu({
             ]}
           >
             {!activeRide && (
-              <MenuItem icon="👤" text={t('profile')} isRTL={isRTL} onPress={onProfile} styles={styles} />
+              <MenuItem
+                icon="👤"
+                text={t('profile')}
+                isRTL={isRTL}
+                onPress={onProfile}
+                styles={styles}
+              />
             )}
             {!activeRide && (
-              <MenuItem icon="📋" text={t('history')} isRTL={isRTL} onPress={onHistory} styles={styles} />
+              <MenuItem
+                icon="📋"
+                text={t('history')}
+                isRTL={isRTL}
+                onPress={onHistory}
+                styles={styles}
+              />
             )}
             {!activeRide && (
-              <MenuItem icon="🕒" text={t('completed_shifts')} isRTL={isRTL} onPress={onShifts} styles={styles} />
+              <MenuItem
+                icon="🕒"
+                text={t('completed_shifts')}
+                isRTL={isRTL}
+                onPress={onShifts}
+                styles={styles}
+              />
             )}
             {!activeRide && (
               <TouchableOpacity style={styles.menuItem} activeOpacity={0.85} onPress={onUpcoming}>
@@ -120,7 +142,12 @@ export default function HamburgerMenu({
                 </View>
                 <Text style={styles.menuItemText}>{t('upcoming_bookings')}</Text>
                 {pendingScheduledCount > 0 && (
-                  <View style={[styles.pendingBadgeOnMenuItem, { backgroundColor: pendingUrgencyColor }]}>
+                  <View
+                    style={[
+                      styles.pendingBadgeOnMenuItem,
+                      { backgroundColor: pendingUrgencyColor },
+                    ]}
+                  >
                     <Text style={styles.pendingBadgeText}>{pendingScheduledCount}</Text>
                   </View>
                 )}
@@ -128,11 +155,38 @@ export default function HamburgerMenu({
               </TouchableOpacity>
             )}
             {!activeRide && (
-              <MenuItem icon="📊" text={t('analytics')} isRTL={isRTL} onPress={onAnalytics} styles={styles} />
+              <MenuItem
+                icon="📊"
+                text={t('analytics')}
+                isRTL={isRTL}
+                onPress={onAnalytics}
+                styles={styles}
+              />
             )}
-            <MenuItem icon="⚙️" text={t('settings')} isRTL={isRTL} onPress={onSettings} styles={styles} />
             {!activeRide && (
-              <MenuItem icon="🗓️" text={t('work_schedule')} isRTL={isRTL} onPress={onSchedule} styles={styles} />
+              <MenuItem
+                icon="📏"
+                text={t('ride_preferences_title')}
+                isRTL={isRTL}
+                onPress={onRidePreferences}
+                styles={styles}
+              />
+            )}
+            <MenuItem
+              icon="⚙️"
+              text={t('settings')}
+              isRTL={isRTL}
+              onPress={onSettings}
+              styles={styles}
+            />
+            {!activeRide && (
+              <MenuItem
+                icon="🗓️"
+                text={t('work_schedule')}
+                isRTL={isRTL}
+                onPress={onSchedule}
+                styles={styles}
+              />
             )}
             {!driverBusy && driverOnline && !bannedUntil && (
               <TouchableOpacity
@@ -200,138 +254,139 @@ function MenuItem({ icon, text, isRTL, styles, onPress }: MenuItemProps) {
   );
 }
 
-const getStyles = (isDarkMode: boolean, isRTL: boolean) => StyleSheet.create({
-  header: {
-    position: 'absolute',
-    top: 60,
-    left: isRTL ? undefined : 20,
-    right: isRTL ? 20 : undefined,
-    zIndex: 1000,
-  },
-  menuButton: {
-    width: 52,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: isDarkMode ? 'rgba(15,23,42,0.75)' : 'rgba(255,255,255,0.95)',
-    borderRadius: 26,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : 'rgba(15,23,42,0.08)',
-  },
-  menuButtonActive: {
-    backgroundColor: isDarkMode ? 'rgba(56,189,248,0.22)' : '#e0f2fe',
-    borderColor: isDarkMode ? 'rgba(56,189,248,0.6)' : '#7dd3fc',
-    shadowColor: '#38bdf8',
-    shadowOpacity: 0.4,
-  },
-  pendingBadgeOnMenuButton: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fff',
-  },
-  hamburgerLine: {
-    width: 22,
-    height: 3,
-    backgroundColor: isDarkMode ? '#e2e8f0' : '#0f172a',
-    marginVertical: 2,
-    borderRadius: 2,
-  },
-  menuLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1500,
-  },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: isDarkMode ? 'rgba(2,6,23,0.45)' : 'rgba(15,23,42,0.18)',
-  },
-  menuOverlay: {
-    position: 'absolute',
-    top: 120,
-    left: isRTL ? undefined : 16,
-    right: isRTL ? 16 : undefined,
-    backgroundColor: isDarkMode ? 'rgba(17,24,39,0.98)' : 'rgba(255,255,255,0.98)',
-    borderRadius: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    elevation: 14,
-    minWidth: 230,
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.08)',
-    zIndex: 1000,
-    overflow: 'hidden',
-    paddingVertical: 6,
-  },
-  menuItem: {
-    flexDirection: isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    minHeight: 50,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.06)',
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'transparent',
-  },
-  menuItemWarning: {
-    backgroundColor: isDarkMode ? 'rgba(255,193,7,0.16)' : '#fff8e1',
-  },
-  menuItemDanger: {
-    backgroundColor: isDarkMode ? 'rgba(220,53,69,0.16)' : '#fff1f2',
-  },
-  menuItemIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : '#e2e8f0',
-  },
-  menuItemIcon: {
-    fontSize: 16,
-  },
-  menuItemText: {
-    flex: 1,
-    fontSize: 15,
-    color: isDarkMode ? '#f8fafc' : '#0f172a',
-    fontWeight: '600',
-    textAlign: isRTL ? 'right' : 'left',
-  },
-  menuItemArrow: {
-    fontSize: 18,
-    color: isDarkMode ? 'rgba(226,232,240,0.6)' : '#94a3b8',
-    marginLeft: isRTL ? 0 : 4,
-    marginRight: isRTL ? 4 : 0,
-  },
-  pendingBadgeOnMenuItem: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  pendingBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 12,
-  },
-});
+const getStyles = (isDarkMode: boolean, isRTL: boolean) =>
+  StyleSheet.create({
+    header: {
+      position: 'absolute',
+      top: 60,
+      left: isRTL ? undefined : 20,
+      right: isRTL ? 20 : undefined,
+      zIndex: 1000,
+    },
+    menuButton: {
+      width: 52,
+      height: 52,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? 'rgba(15,23,42,0.75)' : 'rgba(255,255,255,0.95)',
+      borderRadius: 26,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+      elevation: 10,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : 'rgba(15,23,42,0.08)',
+    },
+    menuButtonActive: {
+      backgroundColor: isDarkMode ? 'rgba(56,189,248,0.22)' : '#e0f2fe',
+      borderColor: isDarkMode ? 'rgba(56,189,248,0.6)' : '#7dd3fc',
+      shadowColor: '#38bdf8',
+      shadowOpacity: 0.4,
+    },
+    pendingBadgeOnMenuButton: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#fff',
+    },
+    hamburgerLine: {
+      width: 22,
+      height: 3,
+      backgroundColor: isDarkMode ? '#e2e8f0' : '#0f172a',
+      marginVertical: 2,
+      borderRadius: 2,
+    },
+    menuLayer: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 1500,
+    },
+    menuBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: isDarkMode ? 'rgba(2,6,23,0.45)' : 'rgba(15,23,42,0.18)',
+    },
+    menuOverlay: {
+      position: 'absolute',
+      top: 120,
+      left: isRTL ? undefined : 16,
+      right: isRTL ? 16 : undefined,
+      backgroundColor: isDarkMode ? 'rgba(17,24,39,0.98)' : 'rgba(255,255,255,0.98)',
+      borderRadius: 18,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.28,
+      shadowRadius: 16,
+      elevation: 14,
+      minWidth: 230,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.08)',
+      zIndex: 1000,
+      overflow: 'hidden',
+      paddingVertical: 6,
+    },
+    menuItem: {
+      flexDirection: isRTL ? 'row-reverse' : 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      minHeight: 50,
+      gap: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.06)',
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'transparent',
+    },
+    menuItemWarning: {
+      backgroundColor: isDarkMode ? 'rgba(255,193,7,0.16)' : '#fff8e1',
+    },
+    menuItemDanger: {
+      backgroundColor: isDarkMode ? 'rgba(220,53,69,0.16)' : '#fff1f2',
+    },
+    menuItemIconWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(148,163,184,0.25)' : '#e2e8f0',
+    },
+    menuItemIcon: {
+      fontSize: 16,
+    },
+    menuItemText: {
+      flex: 1,
+      fontSize: 15,
+      color: isDarkMode ? '#f8fafc' : '#0f172a',
+      fontWeight: '600',
+      textAlign: isRTL ? 'right' : 'left',
+    },
+    menuItemArrow: {
+      fontSize: 18,
+      color: isDarkMode ? 'rgba(226,232,240,0.6)' : '#94a3b8',
+      marginLeft: isRTL ? 0 : 4,
+      marginRight: isRTL ? 4 : 0,
+    },
+    pendingBadgeOnMenuItem: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginHorizontal: 4,
+    },
+    pendingBadgeText: {
+      color: '#fff',
+      fontSize: 11,
+      fontWeight: '700',
+      lineHeight: 12,
+    },
+  });
