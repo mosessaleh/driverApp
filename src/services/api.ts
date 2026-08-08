@@ -1,7 +1,26 @@
 import { getApiBaseUrl } from '../config/network';
 import { ScheduledPendingOffer } from '../types';
+import {
+  getRefreshToken,
+  setRefreshToken,
+  getAuthToken,
+  setAuthToken,
+  removeRefreshToken,
+  removeAuthToken,
+} from './secureStorage';
 
 const API_BASE_URL = getApiBaseUrl();
+
+let onTokenRefreshed: ((token: string, refreshToken: string) => void) | null = null;
+let getDeviceIdFn: (() => Promise<string | null>) | null = null;
+
+export const setTokenRefreshCallback = (cb: (token: string, refreshToken: string) => void) => {
+  onTokenRefreshed = cb;
+};
+
+export const setDeviceIdProvider = (fn: () => Promise<string | null>) => {
+  getDeviceIdFn = fn;
+};
 
 export type DriverLoginWarningResponse = {
   requiresConfirmation: true;
@@ -22,6 +41,8 @@ export type DriverLoginSuccessResponse = {
   requiresConfirmation?: false;
   message: string;
   token: string;
+  accessToken?: string;
+  refreshToken?: string;
   bannedUntil?: string | null;
   restrictedOffers?: boolean;
   restrictedOffersUntil?: string | null;
@@ -79,16 +100,75 @@ class HttpError extends Error {
 const isRetryableHttpError = (status: number): boolean => {
   if (status === 429) return false;
   if (status === 408) return true;
-  if (status >= 400 && status < 500) return false;
+  if (status >= 400 && status < 500) return status === 401;
   return true;
+};
+
+let isRefreshing = false;
+let refreshPromise: Promise<{ token: string; refreshToken: string } | null> | null = null;
+
+const refreshAccessToken = async (): Promise<{ token: string; refreshToken: string } | null> => {
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const storedRefreshToken = await getRefreshToken();
+      if (!storedRefreshToken) return null;
+
+      const response = await fetch(`${API_BASE_URL}/api/driver/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        body: JSON.stringify({ refreshToken: storedRefreshToken }),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      const newToken = data.accessToken || data.token;
+      const newRefresh = data.refreshToken;
+
+      if (!newToken) return null;
+
+      await setAuthToken(newToken);
+      if (newRefresh) {
+        await setRefreshToken(newRefresh);
+      }
+
+      if (onTokenRefreshed) {
+        onTokenRefreshed(newToken, newRefresh || storedRefreshToken);
+      }
+
+      return { token: newToken, refreshToken: newRefresh || storedRefreshToken };
+    } catch {
+      return null;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 };
 
 const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof HttpError && !isRetryableHttpError(error.status)) {
-      throw error;
+    if (error instanceof HttpError) {
+      // Try refresh on 401
+      if (error.status === 401 && retries === 3) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return retry(fn, retries - 1, delay);
+        }
+        await removeAuthToken();
+        await removeRefreshToken();
+      }
+
+      if (!isRetryableHttpError(error.status)) {
+        throw error;
+      }
     }
     if (retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -107,6 +187,10 @@ export const api = {
       };
       if (token) {
         headers.Authorization = `Bearer ${token}`;
+      }
+      if (getDeviceIdFn) {
+        const deviceId = await getDeviceIdFn();
+        if (deviceId) headers['X-Device-Id'] = deviceId;
       }
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
@@ -139,6 +223,10 @@ export const api = {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      if (getDeviceIdFn) {
+        const deviceId = await getDeviceIdFn();
+        if (deviceId) headers['X-Device-Id'] = deviceId;
+      }
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'GET',
         headers,
@@ -160,6 +248,10 @@ export const api = {
       };
       if (token) {
         headers.Authorization = `Bearer ${token}`;
+      }
+      if (getDeviceIdFn) {
+        const deviceId = await getDeviceIdFn();
+        if (deviceId) headers['X-Device-Id'] = deviceId;
       }
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'PUT',
@@ -192,8 +284,17 @@ export const loginDriver = async (
   password: string,
   startKM: number,
   confirmOutsideSchedule: boolean = false,
+  deviceId?: string | null,
+  deviceInfo?: string | null,
 ): Promise<DriverLoginResponse> => {
-  return api.post('/api/driver/login', { username, password, startKM, confirmOutsideSchedule });
+  return api.post('/api/driver/login', {
+    username,
+    password,
+    startKM,
+    confirmOutsideSchedule,
+    deviceId,
+    deviceInfo,
+  });
 };
 
 export const getAvailableRides = async (token: string) => {
@@ -330,6 +431,10 @@ export const updateDriverLocation = async (
 
 export const logoutDriver = async (token: string) => {
   return api.post('/api/auth/logout', {}, token);
+};
+
+export const refreshDriverToken = async (refreshToken: string) => {
+  return api.post('/api/driver/refresh-token', { refreshToken });
 };
 
 export const getDriverProfile = async (driverId: string, token: string) => {

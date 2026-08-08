@@ -130,6 +130,7 @@ export interface ScheduledPendingOffer {
     stopAddress?: string | null;
     price: number;
     distanceKm: number;
+    durationMin?: number | null;
     riderName?: string;
     paymentMethod?: string;
     startLatLon?: { lat: number; lon: number } | null;

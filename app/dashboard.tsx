@@ -2802,9 +2802,11 @@ export default function DashboardScreen() {
   }, [liveRidePreview]);
 
   const pickupEtaMinutes = getPickupEtaMinutes();
-  const rideEtaMinutes = rideOffer?.rideData?.distanceKm
-    ? Math.max(1, Math.ceil((rideOffer.rideData.distanceKm || 0) * 2))
-    : null;
+  const rideEtaMinutes = (rideOffer?.rideData as any)?.durationMin
+    ? Math.max(1, Math.ceil((rideOffer?.rideData as any)?.durationMin || 0))
+    : rideOffer?.rideData?.distanceKm
+      ? Math.max(1, Math.ceil((rideOffer.rideData.distanceKm || 0) * 1.4))
+      : null;
   const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
   const scheduledDepartureText = scheduledDepartureTime || t('not_available');
   const showScheduledInfoBar = !!nextScheduledRide;

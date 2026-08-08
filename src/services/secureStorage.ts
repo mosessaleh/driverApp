@@ -3,6 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const SECURE_TOKEN_KEY = 'driverapp.auth.token';
+const SECURE_REFRESH_TOKEN_KEY = 'driverapp.auth.refreshToken';
+const SECURE_DEVICE_ID_KEY = 'driverapp.device.id';
 const SECURE_USER_KEY = 'driverapp.auth.user';
 const SECURE_RESTRICTED_OFFERS_KEY = 'driverapp.auth.restrictedOffers';
 const SECURE_RESTRICTED_OFFERS_UNTIL_KEY = 'driverapp.auth.restrictedOffersUntil';
@@ -47,7 +49,11 @@ const getStoredValue = async (secureKey: string, legacyKey: string): Promise<str
   return AsyncStorage.getItem(legacyKey);
 };
 
-const setStoredValue = async (secureKey: string, legacyKey: string, value: string): Promise<void> => {
+const setStoredValue = async (
+  secureKey: string,
+  legacyKey: string,
+  value: string,
+): Promise<void> => {
   if (canUseSecureStore) {
     await setSecureValue(secureKey, value);
     await AsyncStorage.removeItem(legacyKey);
@@ -62,7 +68,10 @@ const removeStoredValue = async (secureKey: string, legacyKey: string): Promise<
   await AsyncStorage.removeItem(legacyKey);
 };
 
-const migrateLegacyStoredValue = async (secureKey: string, legacyKey: string): Promise<string | null> => {
+const migrateLegacyStoredValue = async (
+  secureKey: string,
+  legacyKey: string,
+): Promise<string | null> => {
   const secureValue = await getSecureValue(secureKey);
   if (secureValue) return secureValue;
 
@@ -168,3 +177,24 @@ export const migrateLegacyPushToken = async (): Promise<string | null> => {
   return migrateLegacyStoredValue(SECURE_PUSH_TOKEN_KEY, 'expoPushToken');
 };
 
+const LEGACY_REFRESH_KEY = 'refreshToken';
+
+export const getRefreshToken = async (): Promise<string | null> => {
+  return getStoredValue(SECURE_REFRESH_TOKEN_KEY, LEGACY_REFRESH_KEY);
+};
+
+export const setRefreshToken = async (token: string): Promise<void> => {
+  await setStoredValue(SECURE_REFRESH_TOKEN_KEY, LEGACY_REFRESH_KEY, token);
+};
+
+export const removeRefreshToken = async (): Promise<void> => {
+  await removeStoredValue(SECURE_REFRESH_TOKEN_KEY, LEGACY_REFRESH_KEY);
+};
+
+export const getDeviceId = async (): Promise<string | null> => {
+  return getSecureValue(SECURE_DEVICE_ID_KEY);
+};
+
+export const setDeviceId = async (deviceId: string): Promise<void> => {
+  await setSecureValue(SECURE_DEVICE_ID_KEY, deviceId);
+};

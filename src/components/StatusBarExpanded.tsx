@@ -232,7 +232,7 @@ export const StatusBarExpanded: React.FC<StatusBarExpandedProps> = ({
               </View>
               <TouchableOpacity style={styles.statCard} onPress={onRatingPress} activeOpacity={0.7}>
                 <Ionicons name="star" size={24} color={colors.warning[500]} />
-                <Text style={styles.statValue}>{rating.toFixed(1)}</Text>
+                <Text style={styles.statValue}>{rating.toFixed(2)}</Text>
                 <Text style={styles.statLabel}>{t('rating')}</Text>
               </TouchableOpacity>
             </View>

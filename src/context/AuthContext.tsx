@@ -13,6 +13,8 @@ import {
   updatePushToken,
   DriverLoginResponse,
   isDriverLoginSuccessResponse,
+  setTokenRefreshCallback,
+  setDeviceIdProvider,
 } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import {
@@ -31,6 +33,10 @@ import {
   setStoredPushToken,
   setStoredRestrictedOffers,
   setStoredRestrictedOffersUntil,
+  setRefreshToken,
+  removeRefreshToken,
+  getDeviceId,
+  setDeviceId,
 } from '../services/secureStorage';
 import { LOCATION_BACKGROUND_TASK, SOCKET_BACKGROUND_TASK } from '../tasks/socketBackgroundTask';
 
@@ -64,6 +70,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restrictedOffersUntil: null,
   });
   const DISABLE_BACKGROUND_TASKS = false;
+
+  const ensureDeviceId = async (): Promise<string> => {
+    let deviceId = await getDeviceId();
+    if (!deviceId) {
+      deviceId = `dev_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
+      await setDeviceId(deviceId);
+    }
+    return deviceId;
+  };
+
+  const getDeviceInfo = (): string => {
+    const platform = Constants.platform?.ios
+      ? 'iOS'
+      : Constants.platform?.android
+        ? 'Android'
+        : 'Unknown';
+    const version = Constants.expoConfig?.version || '1.0.0';
+    return `${platform} / DriverApp v${version}`;
+  };
 
   const registerBackgroundTasks = async () => {
     if (DISABLE_BACKGROUND_TASKS) {
@@ -148,6 +173,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    setDeviceIdProvider(() => getDeviceId());
+    setTokenRefreshCallback((newToken: string, newRefreshToken: string) => {
+      setAuthState((prev) => ({ ...prev, token: newToken }));
+      if (newRefreshToken) {
+        setRefreshToken(newRefreshToken).catch(() => {});
+      }
+    });
+
     const loadAuthState = async () => {
       try {
         const token = await migrateLegacyAuthToken();
@@ -316,11 +349,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     options?: LoginOptions,
   ): Promise<DriverLoginResponse> => {
     try {
+      const deviceId = await ensureDeviceId();
+      const deviceInfo = getDeviceInfo();
+
       const response = await loginDriver(
         username,
         password,
         startKM,
         Boolean(options?.confirmOutsideSchedule),
+        deviceId,
+        deviceInfo,
       );
 
       if (response.requiresConfirmation === true) {
@@ -345,6 +383,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setStoredAuthUser(JSON.stringify(userData));
         await AsyncStorage.setItem('vehicleTypeId', String(userData.vehicleTypeId || 1));
         await setStoredRestrictedOffers(restrictedOffers ? 'true' : 'false');
+
+        const refreshTok = response.refreshToken;
+        if (refreshTok) {
+          await setRefreshToken(refreshTok);
+        }
+
         if (restrictedOffersUntil) {
           await setStoredRestrictedOffersUntil(String(restrictedOffersUntil));
         } else {
@@ -376,6 +420,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Server logout failed:', error);
     }
     await removeAuthToken();
+    await removeRefreshToken();
     await removeStoredAuthUser();
     await AsyncStorage.removeItem('vehicleTypeId');
     await removeStoredPushToken();

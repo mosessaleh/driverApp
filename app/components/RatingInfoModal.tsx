@@ -39,10 +39,10 @@ export default function RatingInfoModal({ visible, onClose, rating, fiveStarCoun
               {[1, 2, 3, 4, 5].map((i) => (
                 <Ionicons
                   key={i}
-                  name={i <= Math.round(rating) ? 'star' : 'star-outline'}
+                  name={i <= Math.floor(rating) ? 'star' : 'star-outline'}
                   size={18}
                   color={
-                    i <= Math.round(rating)
+                    i <= Math.floor(rating)
                       ? colors.warning[500]
                       : isDarkMode
                         ? '#475569'
