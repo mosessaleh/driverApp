@@ -104,6 +104,9 @@ const { width, height } = Dimensions.get('window');
 const DASHBOARD_SNAPSHOT_KEY = 'driver_dashboard_snapshot_v1';
 const OFFLINE_LOCATION_QUEUE_KEY = 'driver_offline_location_queue_v1';
 const MAX_OFFLINE_LOCATION_QUEUE = 80;
+// A shift is considered "fresh" (just started) within this window, so we show
+// the ride-preferences confirmation modal shortly after login for a new shift.
+const FRESH_SHIFT_WINDOW_SECONDS = 45;
 
 type QueuedLocationUpdate = {
   latitude: number;
@@ -1335,7 +1338,8 @@ export default function DashboardScreen() {
   const preferencesCheckedRef = useRef(false);
 
   useEffect(() => {
-    if (!authState.token) {
+    const token = authState.token;
+    if (!token) {
       preferencesCheckedRef.current = false;
       return;
     }
@@ -1344,28 +1348,26 @@ export default function DashboardScreen() {
     const timer = setTimeout(async () => {
       preferencesCheckedRef.current = true;
       let isFreshShift = false;
-      let hasExistingPrefs = false;
       try {
-        const status = await getDriverStatus(authState.token);
+        const status = await getDriverStatus(token);
         const shiftAge = status?.shiftStartTime
           ? (Date.now() - new Date(status.shiftStartTime).getTime()) / 1000
           : Infinity;
-        isFreshShift = shiftAge <= 15;
+        isFreshShift = shiftAge <= FRESH_SHIFT_WINDOW_SECONDS;
       } catch {}
 
       if (!isFreshShift) return;
 
       try {
-        const prefRes = await getRidePreferences(authState.token);
+        const prefRes = await getRidePreferences(token);
         if (prefRes?.preferences) {
           setHasRidePreferences(true);
-          hasExistingPrefs = true;
         }
       } catch {}
 
-      if (!hasExistingPrefs) {
-        setShowRidePreferences(true);
-      }
+      // Show the preferences modal on a new shift regardless of whether saved
+      // data exists, so the driver can confirm or update their preferences.
+      setShowRidePreferences(true);
     }, 2000);
     return () => clearTimeout(timer);
   }, [authState.token]);
@@ -1626,18 +1628,14 @@ export default function DashboardScreen() {
         const shiftAge = res.shiftStartTime
           ? (Date.now() - new Date(res.shiftStartTime).getTime()) / 1000
           : Infinity;
-        if (shiftAge <= 15) {
-          let hasExistingPrefs = false;
+        if (shiftAge <= FRESH_SHIFT_WINDOW_SECONDS) {
           try {
             const prefRes = await getRidePreferences(authState.token);
             if (prefRes?.preferences) {
               setHasRidePreferences(true);
-              hasExistingPrefs = true;
             }
           } catch {}
-          if (!hasExistingPrefs) {
-            setShowRidePreferences(true);
-          }
+          setShowRidePreferences(true);
         }
       }
 
