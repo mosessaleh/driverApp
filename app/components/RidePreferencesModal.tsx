@@ -35,6 +35,9 @@ export default function RidePreferencesModal({ visible, token, onSave, onCancel 
           if (res?.preferences) {
             setMinDistance(String(res.preferences.minDistanceKm));
             setMinTime(String(res.preferences.minTimeMinutes));
+          } else {
+            setMinDistance('10');
+            setMinTime('15');
           }
         })
         .catch(() => {})

@@ -59,6 +59,7 @@ import {
   offScheduledOfferResult,
   onRideCancelled,
   offRideCancelled,
+  onRideAccepted,
   sendRideTimeout,
   acceptRide,
   rejectRide,
@@ -96,6 +97,7 @@ import {
   type NetworkMode,
   type SmartAlert,
 } from '../src/features/driverIntelligence';
+import { encryptString, decryptString } from '../src/services/storageEncryption';
 
 const { width, height } = Dimensions.get('window');
 
@@ -261,6 +263,7 @@ export default function DashboardScreen() {
   const isSocketConnectedRef = useRef(false);
   const networkModeRef = useRef<NetworkMode>('online');
   const isFlushingQueueRef = useRef(false);
+  const activeRideRef = useRef<any>(null);
 
   const quickReplies = useMemo(
     () => [
@@ -278,7 +281,9 @@ export default function DashboardScreen() {
     try {
       const raw = await AsyncStorage.getItem(OFFLINE_LOCATION_QUEUE_KEY);
       if (!raw) return [];
-      const parsed = JSON.parse(raw);
+      const decrypted = await decryptString(raw);
+      if (!decrypted) return [];
+      const parsed = JSON.parse(decrypted);
       if (!Array.isArray(parsed)) return [];
 
       return parsed.filter((entry: any) => {
@@ -304,7 +309,10 @@ export default function DashboardScreen() {
       return;
     }
 
-    await AsyncStorage.setItem(OFFLINE_LOCATION_QUEUE_KEY, JSON.stringify(sanitized));
+    await AsyncStorage.setItem(
+      OFFLINE_LOCATION_QUEUE_KEY,
+      await encryptString(JSON.stringify(sanitized)),
+    );
     setOfflineQueueCount(sanitized.length);
   };
 
@@ -380,7 +388,10 @@ export default function DashboardScreen() {
       const rawSnapshot = await AsyncStorage.getItem(DASHBOARD_SNAPSHOT_KEY);
       if (!rawSnapshot) return;
 
-      const snapshot: DashboardSnapshot = JSON.parse(rawSnapshot);
+      const decryptedSnapshot = await decryptString(rawSnapshot);
+      if (!decryptedSnapshot) return;
+
+      const snapshot: DashboardSnapshot = JSON.parse(decryptedSnapshot);
 
       if (!currentLocation && snapshot?.currentLocation) {
         setCurrentLocation(snapshot.currentLocation);
@@ -413,11 +424,19 @@ export default function DashboardScreen() {
   useEffect(() => {
     driverOnlineRef.current = driverOnline;
     driverBusyRef.current = driverBusy;
-  }, [driverOnline, driverBusy]);
+    activeRideRef.current = activeRide;
+  }, [driverOnline, driverBusy, activeRide]);
 
   useEffect(() => {
     isSocketConnectedRef.current = isSocketConnected;
   }, [isSocketConnected]);
+
+  useEffect(() => {
+    if (isSocketConnected && activeRide && activeRide.id) {
+      joinChat(activeRide.id);
+      devLog('Re-joined chat room after socket reconnection');
+    }
+  }, [isSocketConnected, activeRide?.id]);
 
   useEffect(() => {
     networkModeRef.current = networkMode;
@@ -860,7 +879,7 @@ export default function DashboardScreen() {
       loadInitialStatus();
 
       // Listen for real-time driver status updates
-      const handleDriverStatusUpdate = (data: {
+      const handleDriverStatusUpdate = async (data: {
         currentRideId: number | null;
         isBusy: boolean;
         rideAccepted: number | null;
@@ -897,6 +916,22 @@ export default function DashboardScreen() {
           setRestrictedOffersUntil(untilDate);
         } else if (data.restrictedOffersUntil === null) {
           setRestrictedOffersUntil(null);
+        }
+
+        // If we got a new currentRideId but activeRide isn't set yet, fetch it
+        if (data.currentRideId && !activeRideRef.current && authState.token) {
+          try {
+            const rideRes = await getRide(data.currentRideId.toString(), authState.token);
+            if (rideRes.ok && rideRes.data) {
+              const ride = rideRes.data;
+              if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
+                setActiveRide(ride);
+                setChatMessages([]);
+                setUnreadMessagesCount(0);
+                setShowPickupModal(true);
+              }
+            }
+          } catch {}
         }
       };
 
@@ -1048,6 +1083,38 @@ export default function DashboardScreen() {
       };
 
       onRideCancelled(handleRideCancelled);
+
+      const handleRideAccepted = async (data: { rideId: number }) => {
+        devLog('Ride accepted event');
+        try {
+          const rideRes = await getRide(data.rideId.toString(), authState.token!);
+          if (rideRes.ok && rideRes.data) {
+            const ride = rideRes.data;
+            if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
+              setActiveRide(ride);
+              setChatMessages([]);
+              setUnreadMessagesCount(0);
+              setShowPickupModal(true);
+              setShowDropoffModal(false);
+              setShowStopModal(false);
+              sliderPositionRef.current = sliderWidth * 0.05;
+              setSliderPosition(sliderWidth * 0.05);
+              setTimeout(() => {
+                if (currentLocation) {
+                  fetchDirections(
+                    { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                  );
+                }
+              }, 1000);
+            }
+          }
+        } catch (err) {
+          console.error('Error handling ride accepted:', err);
+        }
+      };
+
+      onRideAccepted(handleRideAccepted);
 
       // Listen for chat messages
       const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
@@ -1276,20 +1343,29 @@ export default function DashboardScreen() {
 
     const timer = setTimeout(async () => {
       preferencesCheckedRef.current = true;
+      let isFreshShift = false;
+      let hasExistingPrefs = false;
       try {
         const status = await getDriverStatus(authState.token);
-        if (status?.hasActiveShift && status?.isOnline && status?.shiftStartTime) {
-          const shiftAge = (Date.now() - new Date(status.shiftStartTime).getTime()) / 1000;
-          if (shiftAge > 30) return;
+        const shiftAge = status?.shiftStartTime
+          ? (Date.now() - new Date(status.shiftStartTime).getTime()) / 1000
+          : Infinity;
+        isFreshShift = shiftAge <= 15;
+      } catch {}
+
+      if (!isFreshShift) return;
+
+      try {
+        const prefRes = await getRidePreferences(authState.token);
+        if (prefRes?.preferences) {
+          setHasRidePreferences(true);
+          hasExistingPrefs = true;
         }
       } catch {}
 
-      try {
-        const res = await getRidePreferences(authState.token);
-        if (res?.preferences) setHasRidePreferences(true);
-      } catch {}
-
-      setShowRidePreferences(true);
+      if (!hasExistingPrefs) {
+        setShowRidePreferences(true);
+      }
     }, 2000);
     return () => clearTimeout(timer);
   }, [authState.token]);
@@ -1528,7 +1604,10 @@ export default function DashboardScreen() {
     if (!authState.token) return true;
     try {
       const res = await getRidePreferences(authState.token);
-      if (res?.preferences) setHasRidePreferences(true);
+      if (res?.preferences) {
+        setHasRidePreferences(true);
+        return true;
+      }
       return false;
     } catch {
       return false;
@@ -1542,13 +1621,23 @@ export default function DashboardScreen() {
       const currentOnline = driverOnlineRef.current;
       const currentBusy = driverBusyRef.current;
 
-      if (res.hasActiveShift && !res.isOnline) {
-        const hasPreferences = await checkRidePreferencesBeforeOnline();
-        if (!hasPreferences) {
-          setShowRidePreferences(true);
-        } else {
-          await toggleDriverOnline(true, authState.token);
-          res.isOnline = true;
+      if (res.hasActiveShift && !preferencesCheckedRef.current) {
+        preferencesCheckedRef.current = true;
+        const shiftAge = res.shiftStartTime
+          ? (Date.now() - new Date(res.shiftStartTime).getTime()) / 1000
+          : Infinity;
+        if (shiftAge <= 15) {
+          let hasExistingPrefs = false;
+          try {
+            const prefRes = await getRidePreferences(authState.token);
+            if (prefRes?.preferences) {
+              setHasRidePreferences(true);
+              hasExistingPrefs = true;
+            }
+          } catch {}
+          if (!hasExistingPrefs) {
+            setShowRidePreferences(true);
+          }
         }
       }
 
@@ -1617,7 +1706,7 @@ export default function DashboardScreen() {
       }
 
       // Check for current active ride
-      if (res.currentRideId && !activeRide) {
+      if (res.currentRideId && !activeRideRef.current) {
         const rideRes = await getRide(res.currentRideId.toString(), authState.token);
         if (rideRes.ok && rideRes.data) {
           const ride = rideRes.data;
@@ -1787,11 +1876,16 @@ export default function DashboardScreen() {
           console.error('Error cleaning up countdown data:', error);
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error loading driver status:', e);
-      // Retry up to 3 times with exponential backoff
+      if (e?.status === 429 || e?.message?.includes('429')) {
+        const retryAfterSec = Number(e?.retryAfter) || 30;
+        devLog(`Rate limited (429), retrying in ${retryAfterSec}s`);
+        setTimeout(() => loadDriverStatus(0), Math.min(retryAfterSec * 1000, 60000));
+        return;
+      }
       if (retryCount < 3) {
-        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+        const delay = Math.pow(2, retryCount) * 1000;
         devLog(`Retrying driver status load in ${delay}ms (attempt ${retryCount + 1}/3)`);
         setTimeout(() => loadDriverStatus(retryCount + 1), delay);
       }
@@ -2659,6 +2753,7 @@ export default function DashboardScreen() {
       timestamp: new Date().toISOString(),
     };
 
+    setChatMessages((prev) => [...prev, message]);
     sendMessage(activeRide.id, message.message, message.sender);
     setChatInput('');
   };
@@ -2672,6 +2767,7 @@ export default function DashboardScreen() {
       timestamp: new Date().toISOString(),
     };
 
+    setChatMessages((prev) => [...prev, message]);
     sendMessage(activeRide.id, message.message, message.sender);
   };
 
@@ -2909,9 +3005,12 @@ export default function DashboardScreen() {
       lastRidePreview: liveRidePreview || lastCachedRidePreview,
     };
 
-    AsyncStorage.setItem(DASHBOARD_SNAPSHOT_KEY, JSON.stringify(snapshot)).catch((error) => {
-      console.error('Error caching dashboard snapshot:', error);
-    });
+    (async () => {
+      const encryptedSnapshot = await encryptString(JSON.stringify(snapshot));
+      AsyncStorage.setItem(DASHBOARD_SNAPSHOT_KEY, encryptedSnapshot).catch((error) => {
+        console.error('Error caching dashboard snapshot:', error);
+      });
+    })();
   }, [
     authState.token,
     driverOnline,
@@ -3679,7 +3778,7 @@ export default function DashboardScreen() {
           />
 
           <RidePreferencesModal
-            visible={showRidePreferences}
+            visible={showRidePreferences && !showShiftWarning}
             token={authState.token || ''}
             onSave={() => {
               setHasRidePreferences(true);

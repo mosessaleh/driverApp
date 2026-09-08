@@ -42,7 +42,7 @@ export default function Layout() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
       });
 
       await Notifications.setNotificationChannelAsync('user-updates', {
@@ -50,7 +50,7 @@ export default function Layout() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
       });
     };
 
@@ -74,12 +74,12 @@ export default function Layout() {
     }, 1200);
 
     // Handle notification received while app is foreground
-    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+    const notificationListener = Notifications.addNotificationReceivedListener((notification) => {
       devLog('Notification received:', notification);
     });
 
     // Handle notification response (when user taps on notification)
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+    const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
       devLog('Notification response received');
       const payload = parseNotificationPayload(response.notification.request.content.data);
       navigateFromNotificationPayload(payload);

@@ -3,7 +3,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectSocket, getSocket } from '../services/socket';
 import * as Location from 'expo-location';
 import { getAuthToken } from '../services/secureStorage';
+import { jwtDecode } from 'jwt-decode';
 import { updateDriverLocation } from '../services/api';
+
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+
+function isTokenExpired(token: string): boolean {
+  try {
+    const decoded: any = jwtDecode(token);
+    const exp = decoded?.exp;
+    if (typeof exp !== 'number' || !Number.isFinite(exp)) return false;
+    return Date.now() >= exp * 1000 - TOKEN_EXPIRY_BUFFER_MS;
+  } catch {
+    return true;
+  }
+}
 
 const SOCKET_BACKGROUND_TASK = 'socket-background-task';
 const LOCATION_BACKGROUND_TASK = 'location-background-task';
@@ -24,6 +38,8 @@ if (Constants.appOwnership !== 'expo') {
   const TaskManager = require('expo-task-manager');
 
   // Socket reconnection task
+  // TODO: Validate token freshness before reconnect to avoid wasted battery
+  // Consider calling getDriverStatus before reconnecting
   TaskManager.defineTask(SOCKET_BACKGROUND_TASK, async () => {
     try {
       console.log('Running socket background task for driver');
@@ -34,6 +50,11 @@ if (Constants.appOwnership !== 'expo') {
       const vehicleTypeId = vehicleTypeIdStr ? parseInt(vehicleTypeIdStr) : 1;
 
       if (token) {
+        if (isTokenExpired(token)) {
+          console.log('Token expired, skipping background socket reconnection');
+          return 'success';
+        }
+
         const socket = getSocket();
         if (!socket || !socket.connected) {
           console.log('Socket not connected, attempting to reconnect');
@@ -57,10 +78,10 @@ if (Constants.appOwnership !== 'expo') {
   TaskManager.defineTask(
     LOCATION_BACKGROUND_TASK,
     async ({ data, error }: { data?: BackgroundLocationTaskPayload; error?: Error }) => {
-    if (error) {
-      console.error('Location background task error:', error);
-      return;
-    }
+      if (error) {
+        console.error('Location background task error:', error);
+        return;
+      }
 
       const locations = data?.locations;
       if (!Array.isArray(locations) || locations.length === 0) {
@@ -90,12 +111,12 @@ if (Constants.appOwnership !== 'expo') {
 
         await AsyncStorage.setItem(
           'driverapp.lastBackgroundLocation',
-          JSON.stringify({ latitude, longitude, timestamp })
+          JSON.stringify({ latitude, longitude, timestamp }),
         );
       } catch (locationUpdateError) {
         console.error('Failed to sync background location for driver:', locationUpdateError);
       }
-    }
+    },
   );
 }
 

@@ -1,6 +1,13 @@
+/**
+ * TODO: Production - Implement SSL Certificate Pinning
+ * Options: react-native-ssl-pinning, TrustKit (iOS), or Network Security Config (Android)
+ * See: https://docs.expo.dev/versions/latest/sdk/expo-build-properties/#androidnetworksecurityconfig
+ */
+
 import { isDevelopmentBuild } from './security';
 
-const LOCAL_NETWORK_HOST_REGEX = /^(localhost|127\.0\.0\.1|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/;
+const LOCAL_NETWORK_HOST_REGEX =
+  /^(localhost|127\.0\.0\.1|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/;
 
 const assertAllowedProtocol = (url: URL) => {
   if (url.protocol !== 'http:') return;
@@ -9,7 +16,7 @@ const assertAllowedProtocol = (url: URL) => {
   if (isDevelopmentBuild() && isLocalNetworkHost) return;
 
   throw new Error(
-    'Insecure API URL detected. Use HTTPS in production. HTTP is only allowed for local development hosts.'
+    'Insecure API URL detected. Use HTTPS in production. HTTP is only allowed for local development hosts.',
   );
 };
 
@@ -35,4 +42,3 @@ export const getApiBaseUrl = (): string => {
 
   return configuredUrl.replace(/\/$/, '');
 };
-

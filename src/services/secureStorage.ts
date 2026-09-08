@@ -46,7 +46,12 @@ const getStoredValue = async (secureKey: string, legacyKey: string): Promise<str
   const secureValue = await getSecureValue(secureKey);
   if (secureValue) return secureValue;
 
-  return AsyncStorage.getItem(legacyKey);
+  // Only fall back to legacy AsyncStorage on web (where SecureStore is unavailable).
+  // On native, sensitive values live exclusively in SecureStore; one-time migration
+  // happens explicitly through migrateLegacy* functions.
+  if (!canUseSecureStore) return AsyncStorage.getItem(legacyKey);
+
+  return null;
 };
 
 const setStoredValue = async (
@@ -90,8 +95,10 @@ export const getAuthToken = async (): Promise<string | null> => {
   const secureToken = await getSecureStoreToken();
   if (secureToken) return secureToken;
 
-  // Web fallback (and migration fallback if needed)
-  return AsyncStorage.getItem('token');
+  // Web-only fallback (SecureStore is unavailable on web)
+  if (!canUseSecureStore) return AsyncStorage.getItem('token');
+
+  return null;
 };
 
 export const setAuthToken = async (token: string): Promise<void> => {
@@ -114,7 +121,9 @@ export const getStoredAuthUser = async (): Promise<string | null> => {
   const secureUser = await getSecureStoreUser();
   if (secureUser) return secureUser;
 
-  return AsyncStorage.getItem('user');
+  if (!canUseSecureStore) return AsyncStorage.getItem('user');
+
+  return null;
 };
 
 export const setStoredAuthUser = async (user: string): Promise<void> => {

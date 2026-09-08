@@ -55,6 +55,8 @@ const resources = {
       upcoming_bookings: 'Upcoming bookings',
       upcoming_loading: 'Loading upcoming rides...',
       upcoming_no_rides: 'No upcoming scheduled rides',
+      recent_rides: 'Recent Rides',
+      no_recent_rides: 'No rides yet',
       scheduled_ride_title: 'Scheduled Ride',
       scheduled_pending_offers: 'Pending offers',
       scheduled_ride_time_label: 'Scheduled time',
@@ -503,6 +505,8 @@ const resources = {
       upcoming_bookings: 'الحجوزات القادمة',
       upcoming_loading: 'جارٍ تحميل الحجوزات القادمة...',
       upcoming_no_rides: 'لا توجد رحلات مؤجلة قادمة',
+      recent_rides: 'آخر الرحلات',
+      no_recent_rides: 'لا توجد رحلات بعد',
       scheduled_ride_title: 'رحلة مؤجلة',
       scheduled_pending_offers: 'العروض المعلقة',
       scheduled_ride_time_label: 'موعد الرحلة',
@@ -942,6 +946,8 @@ const resources = {
       upcoming_bookings: 'Kommende bookinger',
       upcoming_loading: 'Indlæser kommende ture...',
       upcoming_no_rides: 'Ingen kommende planlagte ture',
+      recent_rides: 'Seneste ture',
+      no_recent_rides: 'Ingen ture endnu',
       scheduled_ride_title: 'Planlagt tur',
       scheduled_pending_offers: 'Afventende tilbud',
       scheduled_ride_time_label: 'Planlagt tidspunkt',
@@ -1346,10 +1352,10 @@ const resources = {
 // Initialize i18n
 i18n.use(initReactI18next).init({
   resources,
-  lng: 'en', // default language
+  lng: 'en',
   fallbackLng: 'en',
   interpolation: {
-    escapeValue: false, // React already escapes values
+    escapeValue: false,
   },
   react: {
     useSuspense: false,

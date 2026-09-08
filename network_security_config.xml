@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security configuration for DriverApp.
+
+  - Blocks all cleartext (HTTP) traffic at the OS level.
+  - Provides a ready-to-use certificate pinning section. To activate pinning,
+    obtain the server's SPKI (SubjectPublicKeyInfo) SHA-256 fingerprint and
+    replace REPLACE_WITH_BASE64_SHA256_SPKI below, then uncomment the
+    <domain-config> block. Keep the pin-set expiration in the future and
+    include a backup pin to avoid app outage during certificate rotation.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">taxa.944trafik.dk</domain>
+        <pin-set expiration="2027-12-31">
+            <pin digest="SHA-256">REPLACE_WITH_BASE64_SHA256_SPKI</pin>
+            <pin digest="SHA-256">REPLACE_WITH_BACKUP_BASE64_SHA256_SPKI</pin>
+        </pin-set>
+    </domain-config>
+    -->
+</network-security-config>

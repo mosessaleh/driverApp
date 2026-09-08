@@ -68,6 +68,15 @@
       "expo-task-manager",
       "expo-background-fetch",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false,
+            "networkSecurityConfig": "./network_security_config.xml"
+          }
+        }
+      ],
+      [
         "expo-location",
         {
           "isIosBackgroundLocationEnabled": true,

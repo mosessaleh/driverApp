@@ -184,7 +184,15 @@ const createSocket = () => {
     throw new Error('Cannot create socket without token');
   }
 
-  const newSocket = io(API_BASE_URL, {
+  // Protocol (ws:// or wss://) is determined by the API URL protocol
+  const wsUrl = API_BASE_URL.replace(/^https?/, (match) => (match === 'https' ? 'wss' : 'ws'));
+  if (wsUrl.startsWith('ws://') && !__DEV__) {
+    throw new Error(
+      'Insecure WebSocket (ws://) is not allowed in production. Use an HTTPS API URL.',
+    );
+  }
+
+  const newSocket = io(wsUrl, {
     auth: { token: currentToken },
     transports: ['websocket'],
     reconnection: false,
@@ -226,7 +234,7 @@ const createSocket = () => {
 export const connectSocket = (
   token: string,
   vehicleTypeId: number = 1,
-  location?: { lat: number; lng: number }
+  location?: { lat: number; lng: number },
 ): Socket => {
   currentToken = token;
   currentVehicleTypeId = vehicleTypeId;
@@ -334,9 +342,7 @@ export const offRideOfferRejected = () => {
   removePersistentListener('rideOfferRejected');
 };
 
-export const onScheduledOfferResult = (
-  callback: (data: ScheduledOfferResultPayload) => void,
-) => {
+export const onScheduledOfferResult = (callback: (data: ScheduledOfferResultPayload) => void) => {
   addPersistentListener('scheduledOfferResult', callback as SocketListener);
 };
 
@@ -344,7 +350,9 @@ export const offScheduledOfferResult = () => {
   removePersistentListener('scheduledOfferResult');
 };
 
-export const onScheduledOfferAcknowledged = (callback: (data: ScheduledOfferAcknowledgedPayload) => void) => {
+export const onScheduledOfferAcknowledged = (
+  callback: (data: ScheduledOfferAcknowledgedPayload) => void,
+) => {
   addPersistentListener('scheduledOfferAcknowledged', callback as SocketListener);
 };
 
@@ -353,7 +361,7 @@ export const offScheduledOfferAcknowledged = () => {
 };
 
 export const onScheduledUpcomingOffersUpdate = (
-  callback: (data: ScheduledUpcomingOffersUpdatePayload) => void
+  callback: (data: ScheduledUpcomingOffersUpdatePayload) => void,
 ) => {
   addPersistentListener('scheduledUpcomingOffersUpdate', callback as SocketListener);
 };
@@ -409,7 +417,9 @@ export const offPickupProximity = () => {
   removePersistentListener('pickupProximity');
 };
 
-export const onPickupCountdownExpired = (callback: (data: PickupCountdownExpiredPayload) => void) => {
+export const onPickupCountdownExpired = (
+  callback: (data: PickupCountdownExpiredPayload) => void,
+) => {
   addPersistentListener('pickupCountdownExpired', callback as SocketListener);
 };
 
