@@ -63,10 +63,6 @@ import {
   sendRideTimeout,
   acceptRide,
   rejectRide,
-  joinChat,
-  sendMessage,
-  onNewMessage,
-  offNewMessage,
   onPickupProximity,
   offPickupProximity,
   onPickupCountdownExpired,
@@ -87,7 +83,6 @@ import EndKMModal from './components/EndKMModal';
 import RatingInfoModal from './components/RatingInfoModal';
 import ShiftWarningModal from './components/ShiftWarningModal';
 import HamburgerMenu from './components/HamburgerMenu';
-import ChatModal from './components/ChatModal';
 import StopModal from './components/StopModal';
 import DropoffModal from './components/DropoffModal';
 import RidePreferencesModal from './components/RidePreferencesModal';
@@ -227,10 +222,6 @@ export default function DashboardScreen() {
   };
   const nextScheduledRideRef = useRef<any>(null);
   const pendingScheduledOffersRef = useRef<ScheduledPendingOffer[]>([]);
-  const [showChat, setShowChat] = useState(false);
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [networkMode, setNetworkMode] = useState<NetworkMode>('online');
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
@@ -247,12 +238,11 @@ export default function DashboardScreen() {
     'reason' | 'confirm' | 'loading' | 'success' | 'error'
   >('reason');
   const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
-  const [cancelFeeEstimate, setCancelFeeEstimate] = useState<number>(0);
-  const [cancelTimeElapsed, setCancelTimeElapsed] = useState<number>(0);
-  const [cancelDistanceEstimate, setCancelDistanceEstimate] = useState<number>(0);
   const [cancelErrorMessage, setCancelErrorMessage] = useState<string>('');
   const [pickupCountdownStart, setPickupCountdownStart] = useState<number | null>(null);
   const [pickupCountdownDuration, setPickupCountdownDuration] = useState(300);
+  const [countdownExpired, setCountdownExpired] = useState(false);
+  const [cancelMode, setCancelMode] = useState<'early' | 'late'>('early');
   const [showStatusExpanded, setShowStatusExpanded] = useState(false);
   const [showRatingInfo, setShowRatingInfo] = useState(false);
   const [totalRidesToday, setTotalRidesToday] = useState(0);
@@ -267,16 +257,6 @@ export default function DashboardScreen() {
   const networkModeRef = useRef<NetworkMode>('online');
   const isFlushingQueueRef = useRef(false);
   const activeRideRef = useRef<any>(null);
-
-  const quickReplies = useMemo(
-    () => [
-      t('quick_reply_on_my_way'),
-      t('quick_reply_arrived'),
-      t('quick_reply_traffic'),
-      t('quick_reply_arriving'),
-    ],
-    [t],
-  );
 
   const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -433,13 +413,6 @@ export default function DashboardScreen() {
   useEffect(() => {
     isSocketConnectedRef.current = isSocketConnected;
   }, [isSocketConnected]);
-
-  useEffect(() => {
-    if (isSocketConnected && activeRide && activeRide.id) {
-      joinChat(activeRide.id);
-      devLog('Re-joined chat room after socket reconnection');
-    }
-  }, [isSocketConnected, activeRide?.id]);
 
   useEffect(() => {
     networkModeRef.current = networkMode;
@@ -929,8 +902,6 @@ export default function DashboardScreen() {
               const ride = rideRes.data;
               if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
                 setActiveRide(ride);
-                setChatMessages([]);
-                setUnreadMessagesCount(0);
                 setShowPickupModal(true);
               }
             }
@@ -1095,8 +1066,6 @@ export default function DashboardScreen() {
             const ride = rideRes.data;
             if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
               setActiveRide(ride);
-              setChatMessages([]);
-              setUnreadMessagesCount(0);
               setShowPickupModal(true);
               setShowDropoffModal(false);
               setShowStopModal(false);
@@ -1118,22 +1087,6 @@ export default function DashboardScreen() {
       };
 
       onRideAccepted(handleRideAccepted);
-
-      // Listen for chat messages
-      const handleNewMessage = (data: { message: string; sender: string; timestamp: string }) => {
-        devLog('Chat message event received');
-        setChatMessages((prev) => [...prev, data]);
-
-        // If message is from client (passenger), increment unread count and play sound
-        if (data.sender !== 'driver') {
-          setUnreadMessagesCount((prev) => prev + 1);
-          if (settings.sound.messageSound) {
-            playMessageSound();
-          }
-        }
-      };
-
-      onNewMessage(handleNewMessage);
 
       // Listen for pickup proximity notifications
       const handlePickupProximity = async (data: {
@@ -1179,6 +1132,7 @@ export default function DashboardScreen() {
                 clearInterval(interval);
                 // Countdown finished - show cancel button and persist expiration
                 setShowCancelText(true);
+                setCountdownExpired(true);
                 AsyncStorage.setItem(
                   `pickupCountdown_${data.rideId}`,
                   JSON.stringify({
@@ -1204,6 +1158,7 @@ export default function DashboardScreen() {
         // Show cancel button immediately when server confirms countdown expired
         setCancelCountdown(0);
         setShowCancelText(true);
+        setCountdownExpired(true);
         // Persist expired state for app restarts
         try {
           const storedCountdown = await AsyncStorage.getItem(`pickupCountdown_${data.rideId}`);
@@ -1309,7 +1264,6 @@ export default function DashboardScreen() {
         offRideOfferRejected();
         offScheduledOfferResult();
         offRideCancelled();
-        offNewMessage();
         offPickupProximity();
         offPickupCountdownExpired();
         offScheduledLateWarning();
@@ -1594,14 +1548,6 @@ export default function DashboardScreen() {
     }
   }, [showPickupModal, showDropoffModal, showStopModal, activeRide, currentLocation]);
 
-  // Join chat room when active ride is available
-  useEffect(() => {
-    if (activeRide && activeRide.id) {
-      devLog('Joining chat room for ride:', activeRide.id);
-      joinChat(activeRide.id);
-    }
-  }, [activeRide?.id]);
-
   async function checkRidePreferencesBeforeOnline() {
     if (!authState.token) return true;
     try {
@@ -1712,8 +1658,6 @@ export default function DashboardScreen() {
           if (ride.status === 'DISPATCHED' || ride.status === 'ONGOING') {
             // Accepted, show pickup modal
             setActiveRide(ride);
-            setChatMessages([]);
-            setUnreadMessagesCount(0);
             setShowPickupModal(true);
             setShowStopModal(false);
             setShowDropoffModal(false);
@@ -1737,6 +1681,7 @@ export default function DashboardScreen() {
                 if (countdownPayload?.expired) {
                   setShowCancelText(true);
                   setCancelCountdown(0);
+                  setCountdownExpired(true);
                 } else if (
                   typeof countdownPayload?.countdownStart === 'number' &&
                   typeof countdownPayload?.countdownDuration === 'number'
@@ -1761,6 +1706,7 @@ export default function DashboardScreen() {
                         if (remainingInner <= 0) {
                           clearInterval(interval);
                           setShowCancelText(true);
+                          setCountdownExpired(true);
                           AsyncStorage.setItem(
                             `pickupCountdown_${ride.id}`,
                             JSON.stringify({
@@ -1779,6 +1725,7 @@ export default function DashboardScreen() {
                     devLog(`Countdown already expired for ride ${ride.id}, showing cancel button`);
                     setShowCancelText(true);
                     setCancelCountdown(0);
+                    setCountdownExpired(true);
                     AsyncStorage.setItem(
                       `pickupCountdown_${ride.id}`,
                       JSON.stringify({
@@ -1796,8 +1743,6 @@ export default function DashboardScreen() {
           } else if (ride.status === 'PICKED_UP') {
             // Picked up, show stop modal first if needed
             setActiveRide(ride);
-            setChatMessages([]);
-            setUnreadMessagesCount(0);
             setShowPickupModal(false);
             const hasStop = !!ride.stopAddress;
             let stopCompleted = false;
@@ -1864,6 +1809,7 @@ export default function DashboardScreen() {
         setShowCancelText(false);
         setCancelCountdown(0);
         setPickupCountdownStart(null);
+        setCountdownExpired(false);
         // Clean up any remaining countdown data
         try {
           const keys = await AsyncStorage.getAllKeys();
@@ -2179,6 +2125,7 @@ export default function DashboardScreen() {
     setShowCancelText(false);
     setCancelCountdown(0);
     setPickupCountdownStart(null);
+    setCountdownExpired(false);
     // Clean up AsyncStorage
     try {
       await AsyncStorage.removeItem(`pickupCountdown_${rideId}`);
@@ -2336,30 +2283,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Calculate cancellation fee estimate based on time and distance
-  const calculateCancelFeeEstimate = () => {
-    if (!activeRide?.acceptedAt) return { fee: 0, timeMin: 0, distanceKm: 0 };
-
-    const acceptedAt = new Date(activeRide.acceptedAt).getTime();
-    const now = Date.now();
-    const timeDiffMs = now - acceptedAt;
-    const timeDiffMin = Math.floor(timeDiffMs / (1000 * 60));
-
-    // Estimate distance based on average speed of 30 km/h
-    const averageSpeedKmh = 30;
-    const distanceKm = (timeDiffMin / 60) * averageSpeedKmh;
-
-    // Calculate approximate fee (base + per km + per min)
-    // Using approximate rates: base 30 DKK, 15 DKK/km, 2 DKK/min
-    const basePrice = 30;
-    const perKmPrice = 15;
-    const perMinPrice = 2;
-
-    const fee = Math.round(basePrice + distanceKm * perKmPrice + timeDiffMin * perMinPrice);
-
-    return { fee, timeMin: timeDiffMin, distanceKm: Math.round(distanceKm * 10) / 10 };
-  };
-
   const handleCancelRide = async (reason: string) => {
     const rideId = activeRide?.id;
     if (!rideId) return;
@@ -2372,6 +2295,7 @@ export default function DashboardScreen() {
         {
           reason: reason,
           canceledBy: 'driver',
+          cancelType: cancelMode,
         },
         authState.token!,
       );
@@ -2392,6 +2316,7 @@ export default function DashboardScreen() {
           setShowCancelText(false);
           setCancelCountdown(0);
           setPickupCountdownStart(null);
+          setCountdownExpired(false);
 
           // Clean up AsyncStorage
           try {
@@ -2420,40 +2345,9 @@ export default function DashboardScreen() {
   };
 
   const openCancelModal = () => {
-    try {
-      if (!authState.token || !activeRide?.id) {
-        const fallback = calculateCancelFeeEstimate();
-        setCancelFeeEstimate(fallback.fee);
-        setCancelTimeElapsed(fallback.timeMin);
-        setCancelDistanceEstimate(fallback.distanceKm);
-      } else {
-        api
-          .get(`/api/driver/rides/${activeRide.id}/cancel-estimate`, authState.token)
-          .then((res: any) => {
-            if (res?.ok && res?.data) {
-              setCancelFeeEstimate(res.data.cost);
-              setCancelTimeElapsed(res.data.timeMin);
-              setCancelDistanceEstimate(res.data.distanceKm);
-            } else {
-              const fallback = calculateCancelFeeEstimate();
-              setCancelFeeEstimate(fallback.fee);
-              setCancelTimeElapsed(fallback.timeMin);
-              setCancelDistanceEstimate(fallback.distanceKm);
-            }
-          })
-          .catch(() => {
-            const fallback = calculateCancelFeeEstimate();
-            setCancelFeeEstimate(fallback.fee);
-            setCancelTimeElapsed(fallback.timeMin);
-            setCancelDistanceEstimate(fallback.distanceKm);
-          });
-      }
-    } catch (e) {
-      const fallback = calculateCancelFeeEstimate();
-      setCancelFeeEstimate(fallback.fee);
-      setCancelTimeElapsed(fallback.timeMin);
-      setCancelDistanceEstimate(fallback.distanceKm);
-    }
+    const mode = countdownExpired ? 'late' : 'early';
+    setCancelMode(mode);
+
     setCancelStep('reason');
     setSelectedCancelReason(null);
     setCancelErrorMessage('');
@@ -2611,7 +2505,6 @@ export default function DashboardScreen() {
 
   const playPickupBeep = () => playBeepSound(require('../assets/music/PickUp.mp3'));
   const playDropoffBeep = () => playBeepSound(require('../assets/music/DropOff.mp3'));
-  const playMessageSound = () => playBeepSound(require('../assets/music/icq_message.mp3'));
 
   const playRideOfferSound = async () => {
     try {
@@ -2742,33 +2635,6 @@ export default function DashboardScreen() {
     router.push('/profile');
   };
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim() || !activeRide) return;
-
-    const message = {
-      message: chatInput.trim(),
-      sender: 'driver',
-      timestamp: new Date().toISOString(),
-    };
-
-    setChatMessages((prev) => [...prev, message]);
-    sendMessage(activeRide.id, message.message, message.sender);
-    setChatInput('');
-  };
-
-  const handleQuickReply = (reply: string) => {
-    if (!activeRide) return;
-
-    const message = {
-      message: reply,
-      sender: 'driver',
-      timestamp: new Date().toISOString(),
-    };
-
-    setChatMessages((prev) => [...prev, message]);
-    sendMessage(activeRide.id, message.message, message.sender);
-  };
-
   const getStatusText = () => {
     if (bannedUntil && banCountdown > 0)
       return `${t('banned')} - ${banCountdown}${t('seconds_short')}`;
@@ -2824,6 +2690,16 @@ export default function DashboardScreen() {
     const mins = minutes % 60;
     if (mins === 0) return `${hours}h`;
     return `${hours}h ${mins}min`;
+  };
+
+  const estimateDurationMinFromKm = (km: number): number => {
+    const d = Number(km);
+    if (!Number.isFinite(d) || d <= 0) return 1;
+    let speedKmh = 30;
+    if (d >= 5) speedKmh = 40;
+    if (d >= 15) speedKmh = 50;
+    if (d >= 40) speedKmh = 58;
+    return Math.max(1, Math.ceil((d / speedKmh) * 60));
   };
 
   useEffect(() => {
@@ -2899,7 +2775,7 @@ export default function DashboardScreen() {
   const rideEtaMinutes = (rideOffer?.rideData as any)?.durationMin
     ? Math.max(1, Math.ceil((rideOffer?.rideData as any)?.durationMin || 0))
     : rideOffer?.rideData?.distanceKm
-      ? Math.max(1, Math.ceil((rideOffer.rideData.distanceKm || 0) * 1.4))
+      ? estimateDurationMinFromKm(rideOffer.rideData.distanceKm)
       : null;
   const scheduledCountdownText = formatCountdown(scheduledCountdownSeconds);
   const scheduledDepartureText = scheduledDepartureTime || t('not_available');
@@ -3032,7 +2908,6 @@ export default function DashboardScreen() {
         shiftElapsedTime={shiftElapsedTime}
         isSocketConnected={isSocketConnected}
         banCountdown={banCountdown}
-        unreadMessages={unreadMessagesCount}
         onPress={() => setShowStatusExpanded(true)}
       />
 
@@ -3346,22 +3221,6 @@ export default function DashboardScreen() {
                     >
                       <Text style={styles.pickupNavText}>{t('nav')}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.pickupChatButton, styles.pickupActionButton]}
-                      onPress={() => {
-                        setShowChat(true);
-                        setUnreadMessagesCount(0);
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.pickupChatButtonText}>💬 {t('chat')}</Text>
-                        {unreadMessagesCount > 0 && (
-                          <View style={styles.unreadBadge}>
-                            <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
                   </View>
                   <TouchableOpacity
                     style={styles.pickupButton}
@@ -3386,11 +3245,13 @@ export default function DashboardScreen() {
                       {(cancelCountdown % 60).toString().padStart(2, '0')}
                     </Text>
                   )}
-                  {showCancelText && cancelCountdown === 0 && (
-                    <TouchableOpacity style={styles.cancelRideButton} onPress={openCancelModal}>
-                      <Text style={styles.cancelRideButtonText}>{t('cancel_ride')}</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={styles.cancelRideLink}
+                    onPress={openCancelModal}
+                    disabled={isPickupLoading}
+                  >
+                    <Text style={styles.cancelRideLinkText}>{t('cancel_ride')}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -3401,13 +3262,8 @@ export default function DashboardScreen() {
             activeRide={activeRide}
             currentLocation={currentLocation}
             isContinueLoading={isContinueLoading}
-            unreadMessagesCount={unreadMessagesCount}
             onNav={handleNav}
             onContinueTrip={handleContinueTrip}
-            onChat={() => {
-              setShowChat(true);
-              setUnreadMessagesCount(0);
-            }}
           />
 
           {/* Cancel Ride Modal - New Design */}
@@ -3443,46 +3299,31 @@ export default function DashboardScreen() {
                     <View style={styles.cancelStepContainer}>
                       <Text style={styles.cancelModalSubtitle}>{t('cancel_ride_subtitle')}</Text>
 
-                      {/* Warning Banner */}
-                      <View style={styles.cancelWarningBanner}>
-                        <Text style={styles.cancelWarningIcon}>⚠️</Text>
-                        <Text style={styles.cancelWarningText}>{t('cancel_ride_warning')}</Text>
-                      </View>
-
-                      {/* Fee Estimate Preview */}
-                      <View style={styles.cancelFeePreview}>
-                        <View style={styles.cancelFeeRow}>
-                          <Text style={styles.cancelFeeLabel}>{t('cancel_ride_time_elapsed')}</Text>
-                          <Text style={styles.cancelFeeValue}>
-                            {cancelTimeElapsed} {t('minutes_short')}
+                      {cancelMode === 'early' && (
+                        <View style={styles.cancelEarlyInfo}>
+                          <Text style={styles.cancelEarlyInfoText}>
+                            {t('cancel_ride_early_info')}
                           </Text>
                         </View>
-                        <View style={styles.cancelFeeRow}>
-                          <Text style={styles.cancelFeeLabel}>
-                            {t('cancel_ride_distance_traveled')}
-                          </Text>
-                          <Text style={styles.cancelFeeValue}>
-                            {cancelDistanceEstimate} {t('kilometers_short')}
-                          </Text>
-                        </View>
-                        <View style={[styles.cancelFeeRow, styles.cancelFeeTotal]}>
-                          <Text style={styles.cancelFeeTotalLabel}>
-                            {t('cancel_ride_fee_estimate')}
-                          </Text>
-                          <Text style={styles.cancelFeeTotalValue}>{cancelFeeEstimate} DKK</Text>
-                        </View>
-                      </View>
+                      )}
 
                       {/* Reason Options */}
                       <View style={styles.cancelReasonsList}>
-                        {[
-                          { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
-                          { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
-                          { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
-                          { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
-                          { key: 'emergency', icon: '🆘', color: '#dc3545' },
-                          { key: 'other_reason', icon: '📝', color: '#6c757d' },
-                        ].map((reason) => (
+                        {(cancelMode === 'early'
+                          ? [
+                              { key: 'car_problem', icon: '🔧', color: '#fd7e14' },
+                              { key: 'price_not_suitable', icon: '💲', color: '#6f42c1' },
+                              { key: 'forced_to_go', icon: '🚶', color: '#6c757d' },
+                            ]
+                          : [
+                              { key: 'passenger_no_show', icon: '👤', color: '#dc3545' },
+                              { key: 'car_problem', icon: '🚗', color: '#fd7e14' },
+                              { key: 'traffic_issue', icon: '🚦', color: '#ffc107' },
+                              { key: 'wrong_address', icon: '📍', color: '#6f42c1' },
+                              { key: 'emergency', icon: '🆘', color: '#dc3545' },
+                              { key: 'other_reason', icon: '📝', color: '#6c757d' },
+                            ]
+                        ).map((reason) => (
                           <TouchableOpacity
                             key={reason.key}
                             style={[styles.cancelReasonOption, { borderLeftColor: reason.color }]}
@@ -3515,14 +3356,6 @@ export default function DashboardScreen() {
                         <Text style={styles.cancelSelectedReasonValue}>
                           {t(selectedCancelReason || '')}
                         </Text>
-                      </View>
-
-                      {/* Final Fee Display */}
-                      <View style={styles.cancelFinalFee}>
-                        <Text style={styles.cancelFinalFeeLabel}>
-                          {t('cancel_ride_fee_estimate')}
-                        </Text>
-                        <Text style={styles.cancelFinalFeeValue}>{cancelFeeEstimate} DKK</Text>
                       </View>
 
                       {/* Action Buttons */}
@@ -3564,9 +3397,15 @@ export default function DashboardScreen() {
                         <View style={styles.cancelSuccessIcon}>
                           <Text style={styles.cancelSuccessIconText}>✓</Text>
                         </View>
-                        <Text style={styles.cancelSuccessTitle}>{t('cancel_ride_success')}</Text>
+                        <Text style={styles.cancelSuccessTitle}>
+                          {cancelMode === 'early'
+                            ? t('cancel_ride_early_success')
+                            : t('cancel_ride_success')}
+                        </Text>
                         <Text style={styles.cancelSuccessMessage}>
-                          {t('cancel_ride_success_message')}
+                          {cancelMode === 'early'
+                            ? t('cancel_ride_early_success_message')
+                            : t('cancel_ride_success_message')}
                         </Text>
                       </View>
                     </View>
@@ -3753,17 +3592,6 @@ export default function DashboardScreen() {
               </View>
             </View>
           )}
-
-          <ChatModal
-            visible={showChat}
-            messages={chatMessages}
-            quickReplies={quickReplies}
-            chatInput={chatInput}
-            onChangeInput={setChatInput}
-            onSend={handleSendMessage}
-            onQuickReply={handleQuickReply}
-            onClose={() => setShowChat(false)}
-          />
 
           <ShiftWarningModal
             visible={showShiftWarning}

@@ -52,6 +52,7 @@ const resources = {
       ride_offer_reject: 'Reject',
       ride_offer_time_left: 'Time left: {{seconds}}s',
       ride_offer_eta_to_pickup: 'ETA to pickup',
+      ride_offer_eta_trip: 'Total trip time',
       upcoming_bookings: 'Upcoming bookings',
       upcoming_loading: 'Loading upcoming rides...',
       upcoming_no_rides: 'No upcoming scheduled rides',
@@ -145,7 +146,7 @@ const resources = {
         'Your strongest demand window is {{hours}}. Prioritize availability during these hours.',
       rating_tip_top_area:
         'You perform best around {{area}}. Positioning there may increase positive ratings.',
-      rating_tip_excellent:
+      rating_tip_excellent_recommendation:
         'Excellent performance. Keep this consistency to maintain a top rating.',
 
       // Profile
@@ -216,6 +217,8 @@ const resources = {
       // Cancel Ride Modal
       cancel_ride_title: 'Cancel Ride',
       cancel_ride_subtitle: 'Please select a reason for cancellation',
+      cancel_ride_early_info:
+        'You are canceling before the pickup countdown has ended, so no fee applies. The ride will be offered to another driver.',
       cancel_ride_warning:
         'Warning: Canceling the ride may incur a fee based on time and distance traveled',
       cancel_ride_confirm_title: 'Confirm Cancellation',
@@ -227,6 +230,8 @@ const resources = {
       cancel_ride_processing: 'Processing cancellation...',
       cancel_ride_success: 'Ride canceled successfully',
       cancel_ride_success_message: 'You can view the details in your ride history',
+      cancel_ride_early_success: 'Ride released',
+      cancel_ride_early_success_message: 'A new driver is being assigned to this ride',
       cancel_ride_error: 'Failed to cancel ride',
       cancel_ride_error_message: 'Please try again or contact support',
       cancel_ride_go_back: 'Go Back',
@@ -236,6 +241,8 @@ const resources = {
       passenger_no_show: 'Passenger did not show up',
       traffic_issue: 'Heavy traffic / Road closed',
       emergency: 'Personal emergency',
+      price_not_suitable: 'Price not suitable',
+      forced_to_go: 'I have to leave',
       minutes_short: 'min',
       kilometers_short: 'km',
 
@@ -502,6 +509,7 @@ const resources = {
       ride_offer_reject: 'رفض',
       ride_offer_time_left: 'الوقت المتبقي: {{seconds}}ث',
       ride_offer_eta_to_pickup: 'زمن الوصول لنقطة الالتقاط',
+      ride_offer_eta_trip: 'الوقت الكلي للرحلة',
       upcoming_bookings: 'الحجوزات القادمة',
       upcoming_loading: 'جارٍ تحميل الحجوزات القادمة...',
       upcoming_no_rides: 'لا توجد رحلات مؤجلة قادمة',
@@ -591,7 +599,8 @@ const resources = {
       rating_tip_peak_hours: 'أوقات الذروة لديك: {{hours}}. حاول التواجد في هذه الفترات.',
       rating_tip_top_area:
         'المنطقة الأكثر نشاطاً لديك: {{area}}. التواجد هناك قد يرفع فرص التقييمات الإيجابية.',
-      rating_tip_excellent: 'أداؤك ممتاز حالياً. استمر بنفس الجودة للحفاظ على تقييم مرتفع.',
+      rating_tip_excellent_recommendation:
+        'أداؤك ممتاز حالياً. استمر بنفس الجودة للحفاظ على تقييم مرتفع.',
 
       // Profile
       personal_info: 'المعلومات الشخصية',
@@ -661,6 +670,8 @@ const resources = {
       // Cancel Ride Modal
       cancel_ride_title: 'إلغاء الرحلة',
       cancel_ride_subtitle: 'يرجى اختيار سبب الإلغاء',
+      cancel_ride_early_info:
+        'أنت تلغي الرحلة قبل انتهاء العد التنازلي للالتقاط، لذلك لن تُطبق أي رسوم. سيتم عرض الرحلة على سائق آخر.',
       cancel_ride_warning:
         'تحذير: إلغاء الرحلة قد يترتب عليه رسوم بناءً على الوقت والمسافة المقطوعة',
       cancel_ride_confirm_title: 'تأكيد الإلغاء',
@@ -672,6 +683,8 @@ const resources = {
       cancel_ride_processing: 'جارٍ معالجة الإلغاء...',
       cancel_ride_success: 'تم إلغاء الرحلة بنجاح',
       cancel_ride_success_message: 'يمكنك عرض التفاصيل في سجل الرحلات',
+      cancel_ride_early_success: 'تم تحرير الرحلة',
+      cancel_ride_early_success_message: 'جارٍ تعيين سائق جديد لهذه الرحلة',
       cancel_ride_error: 'فشل إلغاء الرحلة',
       cancel_ride_error_message: 'يرجى المحاولة مرة أخرى أو الاتصال بالدعم',
       cancel_ride_go_back: 'العودة',
@@ -681,6 +694,8 @@ const resources = {
       passenger_no_show: 'الراكب لم يحضر',
       traffic_issue: 'ازدحام مروري / طريق مغلق',
       emergency: 'حالة طوارئ شخصية',
+      price_not_suitable: 'السعر غير مناسب',
+      forced_to_go: 'مضطر للذهاب',
       minutes_short: 'د',
       kilometers_short: 'كم',
 
@@ -943,6 +958,7 @@ const resources = {
       ride_offer_reject: 'Afvis',
       ride_offer_time_left: 'Tid tilbage: {{seconds}}s',
       ride_offer_eta_to_pickup: 'Ankomst til afhentning',
+      ride_offer_eta_trip: 'Samlet turvarighed',
       upcoming_bookings: 'Kommende bookinger',
       upcoming_loading: 'Indlæser kommende ture...',
       upcoming_no_rides: 'Ingen kommende planlagte ture',
@@ -1036,7 +1052,7 @@ const resources = {
         'Dine stærkeste tidspunkter er {{hours}}. Prioritér tilgængelighed dér.',
       rating_tip_top_area:
         'Du præsterer bedst omkring {{area}}. Placering dér kan øge positive ratings.',
-      rating_tip_excellent:
+      rating_tip_excellent_recommendation:
         'Meget stærk performance. Fortsæt samme kvalitet for at bevare top-rating.',
 
       // Profile
@@ -1107,6 +1123,8 @@ const resources = {
       // Cancel Ride Modal
       cancel_ride_title: 'Aflys tur',
       cancel_ride_subtitle: 'Vælg venligst en årsag til aflysningen',
+      cancel_ride_early_info:
+        'Du aflyser før afhentnings-nedtællingen er slut, så der pålægges intet gebyr. Turen tilbydes en anden chauffør.',
       cancel_ride_warning:
         'Advarsel: Aflysning af turen kan medføre et gebyr baseret på tid og distance',
       cancel_ride_confirm_title: 'Bekræft aflysning',
@@ -1118,6 +1136,8 @@ const resources = {
       cancel_ride_processing: 'Behandler aflysning...',
       cancel_ride_success: 'Tur aflyst succesfuldt',
       cancel_ride_success_message: 'Du kan se detaljerne i din turhistorik',
+      cancel_ride_early_success: 'Tur frigivet',
+      cancel_ride_early_success_message: 'En ny chauffør tildeles denne tur',
       cancel_ride_error: 'Kunne ikke aflyse tur',
       cancel_ride_error_message: 'Prøv venligst igen eller kontakt support',
       cancel_ride_go_back: 'Gå tilbage',
@@ -1127,6 +1147,8 @@ const resources = {
       passenger_no_show: 'Passager mødte ikke op',
       traffic_issue: 'Tung trafik / Vej lukket',
       emergency: 'Personlig nødsituation',
+      price_not_suitable: 'Prisen passer ikke',
+      forced_to_go: 'Jeg er nødt til at tage afsted',
       minutes_short: 'min',
       kilometers_short: 'km',
 

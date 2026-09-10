@@ -83,9 +83,7 @@ export const buildSmartAlerts = ({
     low: 1,
   } as const;
 
-  return alerts
-    .sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity])
-    .slice(0, 3);
+  return alerts.sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity]).slice(0, 3);
 };
 
 export type RatingRecommendation = {
@@ -143,7 +141,7 @@ export const buildRatingRecommendations = ({
   }
 
   if (recommendations.length === 0) {
-    recommendations.push({ key: 'rating_tip_excellent' });
+    recommendations.push({ key: 'rating_tip_excellent_recommendation' });
   }
 
   return recommendations.slice(0, 4);

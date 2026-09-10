@@ -1585,6 +1585,31 @@ export const getStyles = (isDarkMode: boolean, isRTL = false, isScheduledOffer =
       fontSize: 16,
       fontWeight: 'bold',
     },
+    cancelRideLink: {
+      alignItems: 'center',
+      paddingVertical: 8,
+      marginTop: 4,
+    },
+    cancelRideLinkText: {
+      color: '#dc3545',
+      fontSize: 14,
+      fontWeight: '500',
+      textAlign: 'center',
+      textDecorationLine: 'underline',
+    },
+    cancelEarlyInfo: {
+      backgroundColor: '#f0f9ff',
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 12,
+      borderLeftWidth: 3,
+      borderLeftColor: '#0ea5e9',
+    },
+    cancelEarlyInfoText: {
+      color: '#0369a1',
+      fontSize: 13,
+      lineHeight: 19,
+    },
     scheduledInfoBar: {
       position: 'absolute',
       top: 40,

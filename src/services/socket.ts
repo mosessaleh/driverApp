@@ -14,7 +14,6 @@ import type {
   ScheduledOfferAcknowledgedPayload,
   ScheduledUpcomingOffersUpdatePayload,
   RideCancelledPayload,
-  NewMessagePayload,
   PickupProximityPayload,
   PickupCountdownExpiredPayload,
   ScheduledLateWarningPayload,
@@ -382,31 +381,6 @@ export const sendRideTimeout = (rideId: number) => {
   if (socket) {
     socket.emit('rideTimeout', { rideId });
   }
-};
-
-// Chat functionality
-export const joinChat = (bookingId: number) => {
-  if (socket) {
-    socket.emit('joinChat', { bookingId });
-  }
-};
-
-export const sendMessage = (bookingId: number, message: string, sender: string) => {
-  if (socket) {
-    socket.emit('sendMessage', {
-      bookingId,
-      message,
-      sender,
-    });
-  }
-};
-
-export const onNewMessage = (callback: (data: NewMessagePayload) => void) => {
-  addPersistentListener('newMessage', callback as SocketListener);
-};
-
-export const offNewMessage = () => {
-  removePersistentListener('newMessage');
 };
 
 export const onPickupProximity = (callback: (data: PickupProximityPayload) => void) => {

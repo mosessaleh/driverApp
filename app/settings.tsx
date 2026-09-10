@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Switch,
+  TouchableOpacity,
+  StatusBar,
+} from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useTranslation } from '../src/hooks/useTranslation';
@@ -37,16 +45,19 @@ const SettingItem: React.FC<SettingItemProps> = ({
   isLast = false,
 }) => {
   const themeColors = getThemeColors(isDarkMode);
-  
+
   const content = (
-    <View style={[styles.settingItem, !isLast && { borderBottomColor: themeColors.neutral.border, borderBottomWidth: 1 }]}>
+    <View
+      style={[
+        styles.settingItem,
+        !isLast && { borderBottomColor: themeColors.neutral.border, borderBottomWidth: 1 },
+      ]}
+    >
       <View style={[styles.iconContainer, { backgroundColor: iconBgColor }]}>
         <Ionicons name={icon} size={22} color={iconColor} />
       </View>
       <View style={styles.settingContent}>
-        <Text style={[styles.settingTitle, { color: themeColors.neutral.text }]}>
-          {title}
-        </Text>
+        <Text style={[styles.settingTitle, { color: themeColors.neutral.text }]}>{title}</Text>
         {subtitle && (
           <Text style={[styles.settingSubtitle, { color: themeColors.neutral.textSecondary }]}>
             {subtitle}
@@ -105,7 +116,9 @@ export default function SettingsScreen() {
       />
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}>
+      <View
+        style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}
+      >
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
         </TouchableOpacity>
@@ -131,16 +144,6 @@ export default function SettingsScreen() {
               isDarkMode={isDarkMode}
               iconColor={colors.info[500]}
               iconBgColor={colors.info[100]}
-            />
-            <SettingItem
-              icon="chatbubble-outline"
-              title={t('message_notifications')}
-              subtitle={t('settings_notify_message_subtitle')}
-              value={settings.notifications.chatMessages}
-              onValueChange={(value) => updateSetting('notifications', 'chatMessages', value)}
-              isDarkMode={isDarkMode}
-              iconColor={colors.success[500]}
-              iconBgColor={colors.success[100]}
             />
             <SettingItem
               icon="refresh-outline"
@@ -203,7 +206,7 @@ export default function SettingsScreen() {
           </Text>
           <Card variant="default" isDarkMode={isDarkMode} padding="none">
             <SettingItem
-              icon={isDarkMode ? "moon" : "sunny"}
+              icon={isDarkMode ? 'moon' : 'sunny'}
               title={t('dark_mode')}
               subtitle={t('settings_dark_mode_subtitle')}
               value={settings.appearance.darkMode}
@@ -229,10 +232,15 @@ export default function SettingsScreen() {
               iconBgColor={colors.warning[100]}
               isLast
             />
-            
+
             {/* Language Selector */}
             {showLanguageSelector && (
-              <View style={[styles.languageSelector, { backgroundColor: themeColors.neutral.surfaceVariant }]}> 
+              <View
+                style={[
+                  styles.languageSelector,
+                  { backgroundColor: themeColors.neutral.surfaceVariant },
+                ]}
+              >
                 {[
                   { code: 'en', label: t('language_name_en'), flag: '🇬🇧' },
                   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
@@ -242,7 +250,9 @@ export default function SettingsScreen() {
                     key={lang.code}
                     style={[
                       styles.languageOption,
-                      settings.appearance.language === lang.code && { backgroundColor: colors.primary[100] },
+                      settings.appearance.language === lang.code && {
+                        backgroundColor: colors.primary[100],
+                      },
                     ]}
                     onPress={() => handleLanguageChange(lang.code as 'en' | 'ar' | 'da')}
                   >
@@ -322,7 +332,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Copyright */}
-        <Text style={[styles.copyright, { color: themeColors.neutral.textTertiary }]}> 
+        <Text style={[styles.copyright, { color: themeColors.neutral.textTertiary }]}>
           {t('footer_copyright')}
         </Text>
       </ScrollView>

@@ -74,12 +74,6 @@ export interface RideCancelledPayload {
   rideId: number;
 }
 
-export interface NewMessagePayload {
-  message: string;
-  sender: string;
-  timestamp: string;
-}
-
 export interface PickupProximityPayload {
   rideId: number;
   distanceMeters: number;
