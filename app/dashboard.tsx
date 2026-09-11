@@ -33,6 +33,7 @@ import {
   getDriverUpcoming,
   getDriverSchedule,
   normalizeScheduledPendingOffers,
+  normalizeOpenRides,
   getDriverHistory,
   getRidePreferences,
 } from '../src/services/api';
@@ -45,7 +46,7 @@ import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ride, Booking, ScheduledPendingOffer } from '../src/types';
+import { Ride, Booking, ScheduledPendingOffer, OpenRide } from '../src/types';
 import {
   onDriverStatusUpdate,
   offDriverStatusUpdate,
@@ -71,6 +72,31 @@ import {
   offScheduledLateWarning,
   onScheduledUpcomingOffersUpdate,
   offScheduledUpcomingOffersUpdate,
+  onRideProposal,
+  offRideProposal,
+  onRideProposalTimeout,
+  offRideProposalTimeout,
+  onRideProposalRejected,
+  offRideProposalRejected,
+  onRideProposalCancelled,
+  offRideProposalCancelled,
+  onOpenRidesUpdate,
+  offOpenRidesUpdate,
+  acceptChainRide,
+  onChainRideOffer,
+  offChainRideOffer,
+  onChainRideOfferTimeout,
+  offChainRideOfferTimeout,
+  onChainRideOfferRejected,
+  offChainRideOfferRejected,
+  onChainRideOfferCancelled,
+  offChainRideOfferCancelled,
+  onChainAccepted,
+  offChainAccepted,
+  onChainAcceptFailed,
+  offChainAcceptFailed,
+  onChainRideCancelled,
+  offChainRideCancelled,
   getSocket,
 } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
@@ -172,6 +198,17 @@ export default function DashboardScreen() {
   const [offerCountdown, setOfferCountdown] = useState(0);
   const [offerTotalSeconds, setOfferTotalSeconds] = useState(0);
   const [offerTimeout, setOfferTimeout] = useState<ReturnType<typeof setInterval> | null>(null);
+  const [rideProposal, setRideProposal] = useState<any>(null);
+  const [proposalCountdown, setProposalCountdown] = useState(0);
+  const [proposalTotalSeconds, setProposalTotalSeconds] = useState(0);
+  const rideProposalRef = useRef<any>(null);
+  const proposalTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [openRides, setOpenRides] = useState<OpenRide[]>([]);
+  const [chainOffer, setChainOffer] = useState<any>(null);
+  const [chainCountdown, setChainCountdown] = useState(0);
+  const [chainTotalSeconds, setChainTotalSeconds] = useState(0);
+  const chainOfferRef = useRef<any>(null);
+  const chainTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [rideOfferSound, setRideOfferSound] = useState<any>(null);
   const [lateWarningSound, setLateWarningSound] = useState<any>(null);
   const [scheduledBanner, setScheduledBanner] = useState<{
@@ -929,7 +966,7 @@ export default function DashboardScreen() {
           // Play ride offer sound if enabled
           if (settings.sound.rideOfferSound) {
             if (isScheduledOffer) {
-              await playRideOfferSoundOnce();
+              await playScheduledOfferSoundOnce();
             } else {
               await playRideOfferSound();
             }
@@ -1231,7 +1268,7 @@ export default function DashboardScreen() {
           setPendingScheduledOffers(normalized);
 
           if (hasNewOffer && settings.sound.rideOfferSound) {
-            playRideOfferSoundTwice().catch((error) => {
+            playScheduledOfferSoundTwice().catch((error) => {
               console.error('Error playing scheduled offer sound twice:', error);
             });
           }
@@ -1244,6 +1281,143 @@ export default function DashboardScreen() {
       };
 
       onScheduledUpcomingOffersUpdate(handleScheduledUpcomingOffersUpdate);
+
+      // Listen for phase-2 open proposals (relaxed-preference modal)
+      const handleRideProposal = async (data: any) => {
+        devLog('Ride proposal received');
+        try {
+          await stopRideOfferSound();
+          if (settings.sound.rideOfferSound) {
+            await playProposalSound();
+          }
+        } catch (soundError) {
+          console.error('Error while preparing proposal sound:', soundError);
+        }
+
+        const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || 15000) / 1000));
+        setProposalTotalSeconds(totalSeconds);
+        rideProposalRef.current = data;
+        setRideProposal(data);
+        setProposalCountdown(totalSeconds);
+
+        const timeout = setInterval(() => {
+          setProposalCountdown((prev) => {
+            if (prev <= 1) {
+              rejectRide(data.rideId);
+              rideProposalRef.current = null;
+              setRideProposal(null);
+              setProposalCountdown(0);
+              stopRideOfferSound().then(() => {});
+              clearInterval(timeout);
+              proposalTimeoutRef.current = null;
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        proposalTimeoutRef.current = timeout;
+      };
+
+      const clearProposal = async (rideId: number) => {
+        if (rideProposalRef.current && rideProposalRef.current.rideId === rideId) {
+          await stopRideOfferSound();
+          rideProposalRef.current = null;
+          setRideProposal(null);
+          setProposalCountdown(0);
+          if (proposalTimeoutRef.current) {
+            clearInterval(proposalTimeoutRef.current);
+            proposalTimeoutRef.current = null;
+          }
+        }
+      };
+
+      const handleRideProposalTimeout = (data: { rideId: number }) => clearProposal(data.rideId);
+      const handleRideProposalRejected = (data: { rideId: number }) => clearProposal(data.rideId);
+      const handleRideProposalCancelled = (data: { rideId: number }) => clearProposal(data.rideId);
+
+      const handleOpenRidesUpdate = (data: any) => {
+        setOpenRides(normalizeOpenRides(data?.openRides));
+        loadUpcomingRides().catch(() => {});
+      };
+
+      onRideProposal(handleRideProposal);
+      onRideProposalTimeout(handleRideProposalTimeout);
+      onRideProposalRejected(handleRideProposalRejected);
+      onRideProposalCancelled(handleRideProposalCancelled);
+      onOpenRidesUpdate(handleOpenRidesUpdate);
+
+      // Listen for "chain ride" offers (next ride after the current one finishes).
+      const clearChainOffer = async (rideId: number) => {
+        if (chainOfferRef.current && chainOfferRef.current.rideId === rideId) {
+          await stopRideOfferSound();
+          chainOfferRef.current = null;
+          setChainOffer(null);
+          setChainCountdown(0);
+          if (chainTimeoutRef.current) {
+            clearInterval(chainTimeoutRef.current);
+            chainTimeoutRef.current = null;
+          }
+        }
+      };
+
+      const handleChainRideOffer = async (data: any) => {
+        devLog('Chain ride offer received');
+        try {
+          await stopRideOfferSound();
+          if (settings.sound.rideOfferSound) {
+            await playProposalSound();
+          }
+        } catch (soundError) {
+          console.error('Error while preparing chain offer sound:', soundError);
+        }
+
+        const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || 15000) / 1000));
+        setChainTotalSeconds(totalSeconds);
+        chainOfferRef.current = data;
+        setChainOffer(data);
+        setChainCountdown(totalSeconds);
+
+        const timeout = setInterval(() => {
+          setChainCountdown((prev) => {
+            if (prev <= 1) {
+              rejectRide(data.rideId);
+              chainOfferRef.current = null;
+              setChainOffer(null);
+              setChainCountdown(0);
+              stopRideOfferSound().then(() => {});
+              clearInterval(timeout);
+              chainTimeoutRef.current = null;
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        chainTimeoutRef.current = timeout;
+      };
+
+      const handleChainRideOfferTimeout = (data: { rideId: number }) =>
+        clearChainOffer(data.rideId);
+      const handleChainRideOfferRejected = (data: { rideId: number }) =>
+        clearChainOffer(data.rideId);
+      const handleChainRideOfferCancelled = (data: { rideId: number }) =>
+        clearChainOffer(data.rideId);
+      const handleChainAccepted = async (data: { rideId: number }) => {
+        await clearChainOffer(data.rideId);
+        await loadDriverStatus();
+        loadUpcomingRides().catch(() => {});
+      };
+      const handleChainAcceptFailed = async (data: { rideId: number; reason?: string }) => {
+        await clearChainOffer(data.rideId);
+      };
+      const handleChainRideCancelled = (data: { rideId: number }) => clearChainOffer(data.rideId);
+
+      onChainRideOffer(handleChainRideOffer);
+      onChainRideOfferTimeout(handleChainRideOfferTimeout);
+      onChainRideOfferRejected(handleChainRideOfferRejected);
+      onChainRideOfferCancelled(handleChainRideOfferCancelled);
+      onChainAccepted(handleChainAccepted);
+      onChainAcceptFailed(handleChainAcceptFailed);
+      onChainRideCancelled(handleChainRideCancelled);
 
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
@@ -1268,8 +1442,28 @@ export default function DashboardScreen() {
         offPickupCountdownExpired();
         offScheduledLateWarning();
         offScheduledUpcomingOffersUpdate();
+        offRideProposal();
+        offRideProposalTimeout();
+        offRideProposalRejected();
+        offRideProposalCancelled();
+        offOpenRidesUpdate();
+        offChainRideOffer();
+        offChainRideOfferTimeout();
+        offChainRideOfferRejected();
+        offChainRideOfferCancelled();
+        offChainAccepted();
+        offChainAcceptFailed();
+        offChainRideCancelled();
         if (offerTimeout) {
           clearInterval(offerTimeout);
+        }
+        if (proposalTimeoutRef.current) {
+          clearInterval(proposalTimeoutRef.current);
+          proposalTimeoutRef.current = null;
+        }
+        if (chainTimeoutRef.current) {
+          clearInterval(chainTimeoutRef.current);
+          chainTimeoutRef.current = null;
         }
         if (scheduledBannerTimeoutRef.current) {
           clearTimeout(scheduledBannerTimeoutRef.current);
@@ -1857,6 +2051,8 @@ export default function DashboardScreen() {
       } else {
         setUpcomingRides([]);
       }
+
+      setOpenRides(normalizeOpenRides(response?.openRides));
 
       const normalizedRaw = normalizeScheduledPendingOffers(response?.pendingOffers) as any[];
       const normalizedPending: ScheduledPendingOffer[] = normalizedRaw.filter(
@@ -2532,25 +2728,23 @@ export default function DashboardScreen() {
     }
   };
 
-  const playRideOfferSoundOnce = async () => {
+  // Distinct sound for scheduled rides (plays once, unlike the looping normal offer).
+  const playScheduledOfferSoundOnce = async () => {
     try {
       await stopRideOfferSound();
       const sound = await runWithAudioFocusRetry(async () => {
-        const { sound } = await Audio.Sound.createAsync(
-          require('../assets/music/rideGetting.mp3'),
-          {
-            isLooping: false,
-            volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
-          },
-        );
+        const { sound } = await Audio.Sound.createAsync(require('../assets/music/AcceptRide.mp3'), {
+          isLooping: false,
+          volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+        });
         try {
           await sound.playAsync();
           return sound;
         } catch (error) {
-          await safelyUnloadSound(sound, 'ride offer sound once after failed playAsync');
+          await safelyUnloadSound(sound, 'scheduled offer sound after failed playAsync');
           throw error;
         }
-      }, 'playing ride offer sound once');
+      }, 'playing scheduled offer sound');
 
       setRideOfferSoundSafe(sound);
       sound.setOnPlaybackStatusUpdate((status: any) => {
@@ -2563,17 +2757,44 @@ export default function DashboardScreen() {
         }
       });
     } catch (error) {
-      console.error('Error playing ride offer sound once:', error);
+      console.error('Error playing scheduled offer sound:', error);
     }
   };
 
-  const playRideOfferSoundTwice = async () => {
-    await playRideOfferSoundOnce();
+  const playScheduledOfferSoundTwice = async () => {
+    await playScheduledOfferSoundOnce();
     setTimeout(() => {
-      playRideOfferSoundOnce().catch((error) => {
-        console.error('Error replaying ride offer sound:', error);
+      playScheduledOfferSoundOnce().catch((error) => {
+        console.error('Error replaying scheduled offer sound:', error);
       });
     }, 900);
+  };
+
+  // Distinct message sound for the relaxed-preference proposal modal.
+  const playProposalSound = async () => {
+    try {
+      await stopRideOfferSound();
+      const sound = await runWithAudioFocusRetry(async () => {
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/music/icq_message.mp3'),
+          {
+            isLooping: true,
+            volume: Math.max(0, Math.min(1, settings?.sound?.volume ?? 1)),
+          },
+        );
+        try {
+          await sound.playAsync();
+          return sound;
+        } catch (error) {
+          await safelyUnloadSound(sound, 'proposal sound after failed playAsync');
+          throw error;
+        }
+      }, 'playing proposal sound');
+
+      setRideOfferSoundSafe(sound);
+    } catch (error) {
+      console.error('Error playing proposal sound:', error);
+    }
   };
 
   const stopRideOfferSound = async () => {
@@ -2784,6 +3005,8 @@ export default function DashboardScreen() {
     ? Math.max(0, Math.ceil(scheduledCountdownSeconds / 60))
     : null;
   const pendingScheduledCount = pendingScheduledOffers.length;
+  const openRidesCount = openRides.length;
+  const menuBadgeCount = pendingScheduledCount + openRidesCount;
   const nextPendingScheduledOffer = pendingScheduledOffers.length
     ? pendingScheduledOffers[0]
     : null;
@@ -2793,6 +3016,7 @@ export default function DashboardScreen() {
         getPendingOfferTimeoutMs(nextPendingScheduledOffer),
       )
     : '#3b82f6';
+  const menuBadgeColor = openRidesCount > 0 ? '#0d9488' : pendingUrgencyColor;
   const isScheduledOffer = !!(
     rideOffer?.scheduled ||
     rideOffer?.offerType === 'scheduled' ||
@@ -2964,8 +3188,8 @@ export default function DashboardScreen() {
         driverOnline={driverOnline}
         driverBusy={driverBusy}
         bannedUntil={bannedUntil}
-        pendingScheduledCount={pendingScheduledCount}
-        pendingUrgencyColor={pendingUrgencyColor}
+        pendingScheduledCount={menuBadgeCount}
+        pendingUrgencyColor={menuBadgeColor}
         onToggle={() => setShowMenu(!showMenu)}
         onClose={() => setShowMenu(false)}
         onProfile={() => {
@@ -3023,6 +3247,48 @@ export default function DashboardScreen() {
             contentContainerStyle={{ paddingBottom: 120 }}
             showsVerticalScrollIndicator={false}
           >
+            {/* ── Open-to-all rides (no driver found) ── */}
+            {openRides.length > 0 && (
+              <View style={styles.openRidesCard}>
+                <View style={styles.openRidesHeader}>
+                  <Text style={styles.openRidesIcon}>🚕</Text>
+                  <Text style={styles.openRidesTitle}>{t('open_rides_title')}</Text>
+                </View>
+                {openRides.map((ride) => (
+                  <View key={ride.id} style={styles.openRideItem}>
+                    <View style={styles.openRideInfo}>
+                      <Text style={styles.openRideId}>#{ride.id}</Text>
+                      <Text style={styles.openRideRoute} numberOfLines={1}>
+                        {ride.pickupAddress}
+                      </Text>
+                      <Text style={styles.openRideRoute} numberOfLines={1}>
+                        {ride.dropoffAddress}
+                      </Text>
+                      <View style={styles.openRideFooter}>
+                        <Text style={styles.openRidePrice}>~{ride.price} DKK</Text>
+                        {ride.distanceKm != null && (
+                          <Text style={styles.openRideDistance}>
+                            {t('open_rides_distance')}: {Math.round(ride.distanceKm * 10) / 10} km
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.openRideAcceptBtn}
+                      onPress={async () => {
+                        acceptRide(ride.id);
+                        setOpenRides((prev) => prev.filter((r) => r.id !== ride.id));
+                        await loadDriverStatus();
+                        loadUpcomingRides().catch(() => {});
+                      }}
+                    >
+                      <Text style={styles.openRideAcceptText}>{t('open_rides_accept')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* ── Upcoming Ride Card ── */}
             <View
               style={[
@@ -3145,6 +3411,19 @@ export default function DashboardScreen() {
                     )}
                   </View>
                 </View>
+                {activeRide.riderName ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: '700',
+                        color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                      }}
+                    >
+                      👤 {t('rider')}: {activeRide.riderName}
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.pickupInfoRow}>
                   <View style={styles.pickupInfoCard}>
                     <Text style={styles.pickupInfoLabel}>
@@ -3516,6 +3795,14 @@ export default function DashboardScreen() {
                 </View>
 
                 <View style={styles.rideOfferAddressBlock}>
+                  {rideOffer?.rideData?.riderName ? (
+                    <View style={styles.rideOfferAddressRow}>
+                      <Text style={styles.rideOfferAddressLabel}>{t('rider')}</Text>
+                      <Text style={styles.rideOfferAddressValue} numberOfLines={1}>
+                        {rideOffer.rideData.riderName}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.rideOfferAddressRow}>
                     <Text style={styles.rideOfferAddressLabel}>{t('from')}</Text>
                     <Text style={styles.rideOfferAddressValue} numberOfLines={2}>
@@ -3586,6 +3873,197 @@ export default function DashboardScreen() {
                   >
                     <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>
                       {isScheduledOffer ? t('no') : t('ride_offer_reject')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Open Proposal Modal (relaxed-preference question) */}
+          {rideProposal && (
+            <View style={styles.rideOfferModal}>
+              <View style={styles.rideProposalSheet}>
+                <View style={styles.rideOfferHeader}>
+                  <Text style={styles.rideProposalTitle}>{t('ride_proposal_title')}</Text>
+                  <View style={styles.rideOfferPill}>
+                    <Text style={styles.rideOfferPillText}>#{rideProposal.rideId}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.rideProposalQuestion}>{t('ride_proposal_question')}</Text>
+
+                <View style={styles.rideProposalDistanceRow}>
+                  <Text style={styles.rideProposalDistanceLabel}>
+                    {t('ride_proposal_distance')}
+                  </Text>
+                  <Text style={styles.rideProposalDistanceValue}>
+                    {Math.round((Number(rideProposal?.distanceKm) || 0) * 10) / 10} km
+                    {Number.isFinite(Number(rideProposal?.etaMinutes)) &&
+                    Number(rideProposal?.etaMinutes) > 0
+                      ? ` (~${Math.round(Number(rideProposal.etaMinutes))} min)`
+                      : ''}
+                  </Text>
+                </View>
+
+                <View style={styles.rideProposalRoute}>
+                  <Text style={styles.rideProposalAddress} numberOfLines={1}>
+                    {rideProposal?.rideData?.pickupAddress}
+                  </Text>
+                  <Text style={styles.rideProposalAddress} numberOfLines={1}>
+                    {rideProposal?.rideData?.dropoffAddress}
+                  </Text>
+                  <Text style={styles.rideProposalPrice}>~{rideProposal?.rideData?.price} DKK</Text>
+                </View>
+
+                <View style={styles.rideOfferCountdownRow}>
+                  <View style={styles.rideOfferCountdownTrack}>
+                    <View
+                      style={[
+                        styles.rideOfferCountdownFill,
+                        {
+                          width: `${
+                            (proposalTotalSeconds > 0
+                              ? Math.max(0, Math.min(1, proposalCountdown / proposalTotalSeconds))
+                              : 0) * 100
+                          }%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.rideOfferCountdownText}>
+                    {t('ride_proposal_time_left', { seconds: proposalCountdown })}
+                  </Text>
+                </View>
+
+                <View style={styles.rideOfferButtons}>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
+                    onPress={async () => {
+                      acceptRide(rideProposal.rideId);
+                      rideProposalRef.current = null;
+                      setRideProposal(null);
+                      setProposalCountdown(0);
+                      stopRideOfferSound().then(() => {});
+                      if (proposalTimeoutRef.current) {
+                        clearInterval(proposalTimeoutRef.current);
+                        proposalTimeoutRef.current = null;
+                      }
+                      await loadDriverStatus();
+                      loadUpcomingRides().catch(() => {});
+                    }}
+                  >
+                    <Text style={styles.acceptButtonText}>{t('yes')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
+                    onPress={async () => {
+                      rejectRide(rideProposal.rideId);
+                      rideProposalRef.current = null;
+                      setRideProposal(null);
+                      setProposalCountdown(0);
+                      await stopRideOfferSound();
+                      if (proposalTimeoutRef.current) {
+                        clearInterval(proposalTimeoutRef.current);
+                        proposalTimeoutRef.current = null;
+                      }
+                    }}
+                  >
+                    <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>
+                      {t('no')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Chain Ride Offer Modal (next ride after current finishes) */}
+          {chainOffer && (
+            <View style={styles.rideOfferModal}>
+              <View style={styles.rideProposalSheet}>
+                <View style={styles.rideOfferHeader}>
+                  <Text style={styles.rideProposalTitle}>{t('chain_ride_title')}</Text>
+                  <View style={styles.rideOfferPill}>
+                    <Text style={styles.rideOfferPillText}>#{chainOffer.rideId}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.rideProposalQuestion}>{t('chain_ride_subtitle')}</Text>
+
+                <View style={styles.rideProposalDistanceRow}>
+                  <Text style={styles.rideProposalDistanceLabel}>{t('chain_ride_remaining')}</Text>
+                  <Text style={styles.rideProposalDistanceValue}>
+                    {Math.round(Number(chainOffer?.remainingMinutes) || 0)} min
+                  </Text>
+                </View>
+
+                <View style={styles.rideProposalRoute}>
+                  <Text style={styles.rideProposalAddress} numberOfLines={1}>
+                    {chainOffer?.rideData?.pickupAddress}
+                  </Text>
+                  <Text style={styles.rideProposalAddress} numberOfLines={1}>
+                    {chainOffer?.rideData?.dropoffAddress}
+                  </Text>
+                  <Text style={styles.rideProposalPrice}>~{chainOffer?.rideData?.price} DKK</Text>
+                  <Text style={styles.rideProposalAddress}>
+                    {t('chain_ride_distance')}:{' '}
+                    {Math.round((Number(chainOffer?.pickupDistanceKm) || 0) * 10) / 10} km (~
+                    {Math.round(Number(chainOffer?.pickupEtaMinutes) || 0)} min)
+                  </Text>
+                </View>
+
+                <View style={styles.rideOfferCountdownRow}>
+                  <View style={styles.rideOfferCountdownTrack}>
+                    <View
+                      style={[
+                        styles.rideOfferCountdownFill,
+                        {
+                          width: `${(chainTotalSeconds > 0 ? Math.max(0, Math.min(1, chainCountdown / chainTotalSeconds)) : 0) * 100}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.rideOfferCountdownText}>
+                    {t('ride_proposal_time_left', { seconds: chainCountdown })}
+                  </Text>
+                </View>
+
+                <View style={styles.rideOfferButtons}>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
+                    onPress={async () => {
+                      acceptChainRide(chainOffer.rideId);
+                      chainOfferRef.current = null;
+                      setChainOffer(null);
+                      setChainCountdown(0);
+                      stopRideOfferSound().then(() => {});
+                      if (chainTimeoutRef.current) {
+                        clearInterval(chainTimeoutRef.current);
+                        chainTimeoutRef.current = null;
+                      }
+                      await loadDriverStatus();
+                      loadUpcomingRides().catch(() => {});
+                    }}
+                  >
+                    <Text style={styles.acceptButtonText}>{t('yes')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
+                    onPress={async () => {
+                      rejectRide(chainOffer.rideId);
+                      chainOfferRef.current = null;
+                      setChainOffer(null);
+                      setChainCountdown(0);
+                      await stopRideOfferSound();
+                      if (chainTimeoutRef.current) {
+                        clearInterval(chainTimeoutRef.current);
+                        chainTimeoutRef.current = null;
+                      }
+                    }}
+                  >
+                    <Text style={[styles.rejectButtonText, styles.rideOfferSecondaryText]}>
+                      {t('no')}
                     </Text>
                   </TouchableOpacity>
                 </View>

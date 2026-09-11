@@ -11,15 +11,22 @@ import {
 } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
-import { getDriverUpcoming, normalizeScheduledPendingOffers, api } from '../src/services/api';
+import {
+  getDriverUpcoming,
+  normalizeScheduledPendingOffers,
+  normalizeOpenRides,
+  api,
+} from '../src/services/api';
 import {
   onScheduledUpcomingOffersUpdate,
   offScheduledUpcomingOffersUpdate,
+  onOpenRidesUpdate,
+  offOpenRidesUpdate,
   acceptRide,
   rejectRide,
 } from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
-import type { ScheduledPendingOffer } from '../src/types';
+import type { ScheduledPendingOffer, OpenRide } from '../src/types';
 
 const CANCEL_REASONS = [
   {
@@ -85,6 +92,7 @@ export default function UpcomingScreen() {
 
   const [rides, setRides] = useState<any[]>([]);
   const [pendingOffers, setPendingOffers] = useState<ScheduledPendingOffer[]>([]);
+  const [openRides, setOpenRides] = useState<OpenRide[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
@@ -109,8 +117,14 @@ export default function UpcomingScreen() {
 
     onScheduledUpcomingOffersUpdate(handleScheduledUpcomingOffersUpdate);
 
+    const handleOpenRidesUpdate = (payload: any) => {
+      setOpenRides(normalizeOpenRides(payload?.openRides));
+    };
+    onOpenRidesUpdate(handleOpenRidesUpdate);
+
     return () => {
       offScheduledUpcomingOffersUpdate();
+      offOpenRidesUpdate();
     };
   }, []);
 
@@ -139,6 +153,7 @@ export default function UpcomingScreen() {
         (offer) => offer && Number.isFinite(Number(offer.rideId)),
       );
       setPendingOffers(normalizedPending);
+      setOpenRides(normalizeOpenRides(response?.openRides));
     } catch (error) {
       console.error('Error loading upcoming rides/offers:', error);
       if (retryCount < 2) {
@@ -271,6 +286,44 @@ export default function UpcomingScreen() {
         style={styles.ridesContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshData} />}
       >
+        {openRides.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionTitle}>{t('open_rides_title')}</Text>
+            {openRides.map((ride) => (
+              <View key={`open-${ride.id}`} style={styles.offerCard}>
+                <View style={styles.offerHeaderRow}>
+                  <Text style={styles.rideId}>#{ride.id}</Text>
+                  <View style={[styles.pendingCountBadge, { backgroundColor: '#0d9488' }]}>
+                    <Text style={styles.pendingCountBadgeText}>
+                      {t('open_rides_distance')}:{' '}
+                      {Math.round(Number(ride.distanceKm || 0) * 10) / 10} km
+                    </Text>
+                  </View>
+                </View>
+
+                {ride?.riderName ? <Text style={styles.rideRider}>👤 {ride.riderName}</Text> : null}
+
+                <Text style={styles.rideAddress}>{ride.pickupAddress || '-'}</Text>
+                {!!ride?.stopAddress && <Text style={styles.rideAddress}>{ride.stopAddress}</Text>}
+                <Text style={styles.rideAddress}>{ride.dropoffAddress || '-'}</Text>
+
+                <View style={styles.offerFooterRow}>
+                  <Text style={styles.amountValue}>{Number(ride.price || 0)} DKK</Text>
+                  <TouchableOpacity
+                    style={[styles.offerActionBtn, styles.acceptBtn]}
+                    onPress={() => {
+                      acceptRide(ride.id);
+                      setOpenRides((prev) => prev.filter((x) => x.id !== ride.id));
+                    }}
+                  >
+                    <Text style={styles.offerActionText}>{t('yes')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {pendingOffersWithMeta.length > 0 && (
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>
@@ -294,6 +347,10 @@ export default function UpcomingScreen() {
                   <Text style={styles.rideDate}>
                     {formatDate(offer.pickupTime)} • {formatTime(offer.pickupTime)}
                   </Text>
+                ) : null}
+
+                {offer?.rideData?.riderName ? (
+                  <Text style={styles.rideRider}>👤 {offer.rideData.riderName}</Text>
                 ) : null}
 
                 <Text style={styles.rideAddress}>{offer?.rideData?.pickupAddress || '-'}</Text>
@@ -622,6 +679,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     marginBottom: 2,
+  },
+  rideRider: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 6,
   },
   rideAmount: {
     alignItems: 'flex-end',

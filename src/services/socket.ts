@@ -17,6 +17,12 @@ import type {
   PickupProximityPayload,
   PickupCountdownExpiredPayload,
   ScheduledLateWarningPayload,
+  RideProposalPayload,
+  RideProposalTimeoutPayload,
+  RideProposalRejectedPayload,
+  RideProposalCancelledPayload,
+  OpenRidesUpdatePayload,
+  ChainRideOfferPayload,
 } from '../types/socket';
 
 export type { ScheduledUpcomingOffersUpdatePayload };
@@ -303,6 +309,12 @@ export const rejectRide = (rideId: number) => {
   }
 };
 
+export const acceptChainRide = (rideId: number) => {
+  if (socket) {
+    socket.emit('acceptChainRide', { rideId });
+  }
+};
+
 export const updateLocation = (location: { lat: number; lng: number }) => {
   if (socket) {
     socket.emit('updateLocation', { location });
@@ -407,6 +419,108 @@ export const onScheduledLateWarning = (callback: (data: ScheduledLateWarningPayl
 
 export const offScheduledLateWarning = () => {
   removePersistentListener('scheduledLateWarning');
+};
+
+export const onRideProposal = (callback: (data: RideProposalPayload) => void) => {
+  addPersistentListener('rideProposal', callback as SocketListener);
+};
+
+export const offRideProposal = () => {
+  removePersistentListener('rideProposal');
+};
+
+export const onRideProposalTimeout = (callback: (data: RideProposalTimeoutPayload) => void) => {
+  addPersistentListener('rideProposalTimeout', callback as SocketListener);
+};
+
+export const offRideProposalTimeout = () => {
+  removePersistentListener('rideProposalTimeout');
+};
+
+export const onRideProposalRejected = (callback: (data: RideProposalRejectedPayload) => void) => {
+  addPersistentListener('rideProposalRejected', callback as SocketListener);
+};
+
+export const offRideProposalRejected = () => {
+  removePersistentListener('rideProposalRejected');
+};
+
+export const onRideProposalCancelled = (callback: (data: RideProposalCancelledPayload) => void) => {
+  addPersistentListener('rideProposalCancelled', callback as SocketListener);
+};
+
+export const offRideProposalCancelled = () => {
+  removePersistentListener('rideProposalCancelled');
+};
+
+export const onOpenRidesUpdate = (callback: (data: OpenRidesUpdatePayload) => void) => {
+  addPersistentListener('openRidesUpdate', callback as SocketListener);
+};
+
+export const offOpenRidesUpdate = () => {
+  removePersistentListener('openRidesUpdate');
+};
+
+export const onChainRideOffer = (callback: (data: ChainRideOfferPayload) => void) => {
+  addPersistentListener('chainRideOffer', callback as SocketListener);
+};
+
+export const offChainRideOffer = () => {
+  removePersistentListener('chainRideOffer');
+};
+
+export const onChainRideOfferTimeout = (callback: (data: { rideId: number }) => void) => {
+  addPersistentListener('chainRideOfferTimeout', callback as SocketListener);
+};
+
+export const offChainRideOfferTimeout = () => {
+  removePersistentListener('chainRideOfferTimeout');
+};
+
+export const onChainRideOfferRejected = (callback: (data: { rideId: number }) => void) => {
+  addPersistentListener('chainRideOfferRejected', callback as SocketListener);
+};
+
+export const offChainRideOfferRejected = () => {
+  removePersistentListener('chainRideOfferRejected');
+};
+
+export const onChainRideOfferCancelled = (
+  callback: (data: { rideId: number; reason?: string }) => void,
+) => {
+  addPersistentListener('chainRideOfferCancelled', callback as SocketListener);
+};
+
+export const offChainRideOfferCancelled = () => {
+  removePersistentListener('chainRideOfferCancelled');
+};
+
+export const onChainAccepted = (callback: (data: { rideId: number }) => void) => {
+  addPersistentListener('chainAccepted', callback as SocketListener);
+};
+
+export const offChainAccepted = () => {
+  removePersistentListener('chainAccepted');
+};
+
+export const onChainAcceptFailed = (
+  callback: (data: { rideId: number; reason?: string }) => void,
+) => {
+  addPersistentListener('chainAcceptFailed', callback as SocketListener);
+};
+
+export const offChainAcceptFailed = () => {
+  removePersistentListener('chainAcceptFailed');
+};
+
+export const onChainRideCancelled = (
+  callback: (data: { rideId: number; reason?: string }) => void,
+) => {
+  addPersistentListener('chainRideCancelled', callback as SocketListener);
+};
+
+export const offChainRideCancelled = () => {
+  removePersistentListener('chainRideCancelled');
 };
 
 export const getSocket = (): Socket | null => socket;

@@ -50,11 +50,12 @@ export default function RideDetailsScreen() {
     if (!dateString) return t('not_available');
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return t('not_available');
-    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    const locale =
+      getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
     return date.toLocaleDateString(locale, {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -62,10 +63,11 @@ export default function RideDetailsScreen() {
     if (!dateString) return t('not_available');
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return t('not_available');
-    const locale = getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
+    const locale =
+      getCurrentLanguage() === 'ar' ? 'ar' : getCurrentLanguage() === 'da' ? 'da-DK' : 'en-GB';
     return date.toLocaleTimeString(locale, {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -73,7 +75,8 @@ export default function RideDetailsScreen() {
     const normalizedStatus = status.toLowerCase();
     if (normalizedStatus === 'completed') return t('ride_status_completed');
     if (normalizedStatus === 'pending') return t('ride_status_pending');
-    if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled') return t('ride_status_cancelled');
+    if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled')
+      return t('ride_status_cancelled');
     return status;
   };
 
@@ -153,76 +156,92 @@ export default function RideDetailsScreen() {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>{t('date')}</Text>
-              <Text style={styles.summaryValue}>{formatDate(ride.pickupTime || ride.createdAt)}</Text>
+              <Text style={styles.summaryValue}>
+                {formatDate(ride.pickupTime || ride.createdAt)}
+              </Text>
             </View>
           </View>
-          
+
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>{t('time')}</Text>
+              <Text style={styles.summaryValue}>
+                {formatTime(ride.pickupTime || ride.createdAt)}
+              </Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>{t('distance')}</Text>
+              <Text style={styles.summaryValue}>
+                {ride.distanceKm} {t('kilometers_short')}
+              </Text>
+            </View>
+          </View>
+          {ride.riderName ? (
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>{t('time')}</Text>
-                <Text style={styles.summaryValue}>{formatTime(ride.pickupTime || ride.createdAt)}</Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>{t('distance')}</Text>
-                <Text style={styles.summaryValue}>{ride.distanceKm} {t('kilometers_short')}</Text>
+                <Text style={styles.summaryLabel}>{t('rider')}</Text>
+                <Text style={styles.summaryValue}>{ride.riderName}</Text>
               </View>
             </View>
+          ) : null}
         </View>
 
         {/* Route Information */}
-          <View style={styles.routeCard}>
-            <Text style={styles.sectionTitle}>{t('route_information')}</Text>
-            
-            <View style={styles.routeItem}>
-              <View style={styles.routeIconContainer}>
-                <View style={styles.pickupIcon} />
-              </View>
-              <View style={styles.routeTextContainer}>
-                <Text style={styles.routeLabel}>{t('pickup')}</Text>
-                <Text style={styles.routeAddress}>{ride.pickupAddress}</Text>
-              </View>
+        <View style={styles.routeCard}>
+          <Text style={styles.sectionTitle}>{t('route_information')}</Text>
+
+          <View style={styles.routeItem}>
+            <View style={styles.routeIconContainer}>
+              <View style={styles.pickupIcon} />
             </View>
-
-            {ride.stopAddress && (
-              <>
-                <View style={styles.routeDivider} />
-                <View style={styles.routeItem}>
-                  <View style={styles.routeIconContainer}>
-                    <View style={styles.stopIcon} />
-                  </View>
-                  <View style={styles.routeTextContainer}>
-                    <Text style={styles.routeLabel}>{t('stop')}</Text>
-                    <Text style={styles.routeAddress}>{ride.stopAddress}</Text>
-                  </View>
-                </View>
-              </>
-            )}
-
-            <View style={styles.routeDivider} />
-            
-            <View style={styles.routeItem}>
-              <View style={styles.routeIconContainer}>
-                <View style={styles.dropoffIcon} />
-              </View>
-              <View style={styles.routeTextContainer}>
-                <Text style={styles.routeLabel}>{t('dropoff')}</Text>
-                <Text style={styles.routeAddress}>{ride.dropoffAddress}</Text>
-              </View>
+            <View style={styles.routeTextContainer}>
+              <Text style={styles.routeLabel}>{t('pickup')}</Text>
+              <Text style={styles.routeAddress}>{ride.pickupAddress}</Text>
             </View>
           </View>
-{/* Vehicle & Payment Info */}
+
+          {ride.stopAddress && (
+            <>
+              <View style={styles.routeDivider} />
+              <View style={styles.routeItem}>
+                <View style={styles.routeIconContainer}>
+                  <View style={styles.stopIcon} />
+                </View>
+                <View style={styles.routeTextContainer}>
+                  <Text style={styles.routeLabel}>{t('stop')}</Text>
+                  <Text style={styles.routeAddress}>{ride.stopAddress}</Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          <View style={styles.routeDivider} />
+
+          <View style={styles.routeItem}>
+            <View style={styles.routeIconContainer}>
+              <View style={styles.dropoffIcon} />
+            </View>
+            <View style={styles.routeTextContainer}>
+              <Text style={styles.routeLabel}>{t('dropoff')}</Text>
+              <Text style={styles.routeAddress}>{ride.dropoffAddress}</Text>
+            </View>
+          </View>
+        </View>
+        {/* Vehicle & Payment Info */}
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>{t('vehicle_type')}</Text>
-              <Text style={styles.infoValue}>{ride.vehicleTypeName || ride.vehicleType?.title || t('not_available')}</Text>
+              <Text style={styles.infoValue}>
+                {ride.vehicleTypeName || ride.vehicleType?.title || t('not_available')}
+              </Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>{t('payment')}</Text>
               <Text style={styles.infoValue}>{ride.paymentMethod || t('cash')}</Text>
             </View>
           </View>
-          
+
           <View style={styles.amountContainer}>
             <Text style={styles.amountLabel}>{t('total_amount')}</Text>
             <Text style={styles.amountValue}>{ride.price} DKK</Text>
@@ -233,14 +252,12 @@ export default function RideDetailsScreen() {
         {ride.user && (
           <View style={styles.customerCard}>
             <Text style={styles.sectionTitle}>{t('customer_information')}</Text>
-            
+
             <View style={styles.customerInfo}>
               <View style={styles.customerAvatar}>
-                <Text style={styles.avatarText}>
-                  {ride.user.firstName.charAt(0)}
-                </Text>
+                <Text style={styles.avatarText}>{ride.user.firstName.charAt(0)}</Text>
               </View>
-              
+
               <View style={styles.customerDetails}>
                 <Text style={styles.customerName}>{ride.user.firstName}</Text>
               </View>
@@ -251,35 +268,43 @@ export default function RideDetailsScreen() {
         {/* Additional Details */}
         <View style={styles.detailsCard}>
           <Text style={styles.sectionTitle}>{t('additional_details')}</Text>
-          
+
           {ride.acceptedAt && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('accepted_time')}</Text>
-              <Text style={styles.detailValue}>{formatDate(ride.acceptedAt)} • {formatTime(ride.acceptedAt)}</Text>
+              <Text style={styles.detailValue}>
+                {formatDate(ride.acceptedAt)} • {formatTime(ride.acceptedAt)}
+              </Text>
             </View>
           )}
-          
+
           {ride.pickedAt && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('pickup_time')}</Text>
-              <Text style={styles.detailValue}>{formatDate(ride.pickedAt)} • {formatTime(ride.pickedAt)}</Text>
+              <Text style={styles.detailValue}>
+                {formatDate(ride.pickedAt)} • {formatTime(ride.pickedAt)}
+              </Text>
             </View>
           )}
-          
+
           {ride.droppedAt && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('dropoff_time')}</Text>
-              <Text style={styles.detailValue}>{formatDate(ride.droppedAt)} • {formatTime(ride.droppedAt)}</Text>
+              <Text style={styles.detailValue}>
+                {formatDate(ride.droppedAt)} • {formatTime(ride.droppedAt)}
+              </Text>
             </View>
           )}
-          
+
           {ride.estimatedTime && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('estimated_time')}</Text>
-              <Text style={styles.detailValue}>{ride.estimatedTime} {t('minutes')}</Text>
+              <Text style={styles.detailValue}>
+                {ride.estimatedTime} {t('minutes')}
+              </Text>
             </View>
           )}
-          
+
           {ride.notes && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>{t('notes')}</Text>
@@ -287,17 +312,22 @@ export default function RideDetailsScreen() {
             </View>
           )}
 
-          {ride.status?.toLowerCase() === 'canceled' && (ride.cancellationReason || ride.canceledBy) && (
-            <View style={styles.cancellationDetails}>
-              <Text style={styles.cancellationTitle}>{t('cancellation_details')}</Text>
-              {ride.cancellationReason ? (
-              <Text style={styles.cancellationText}>{t('cancellation_reason')}: {t(ride.cancellationReason)}</Text>
-              ) : null}
-              {ride.canceledBy ? (
-              <Text style={styles.cancellationText}>{t('canceled_by')}: {t(`canceled_by_${ride.canceledBy}`)}</Text>
-              ) : null}
-            </View>
-          )}
+          {ride.status?.toLowerCase() === 'canceled' &&
+            (ride.cancellationReason || ride.canceledBy) && (
+              <View style={styles.cancellationDetails}>
+                <Text style={styles.cancellationTitle}>{t('cancellation_details')}</Text>
+                {ride.cancellationReason ? (
+                  <Text style={styles.cancellationText}>
+                    {t('cancellation_reason')}: {t(ride.cancellationReason)}
+                  </Text>
+                ) : null}
+                {ride.canceledBy ? (
+                  <Text style={styles.cancellationText}>
+                    {t('canceled_by')}: {t(`canceled_by_${ride.canceledBy}`)}
+                  </Text>
+                ) : null}
+              </View>
+            )}
         </View>
       </ScrollView>
     </View>

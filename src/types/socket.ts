@@ -36,6 +36,87 @@ export interface RideOfferRejectedPayload {
   rideId: number;
 }
 
+export interface OpenRide {
+  id: number;
+  pickupAddress: string;
+  dropoffAddress: string;
+  stopAddress?: string | null;
+  price: number;
+  distanceKm: number;
+  durationMin?: number | null;
+  riderName?: string;
+  startLatLon?: { lat: number; lon: number } | null;
+  stopLatLon?: { lat: number; lon: number } | null;
+  endLatLon?: { lat: number; lon: number } | null;
+  vehicleTypeId?: number;
+  paymentMethod?: string;
+  createdAt?: string;
+}
+
+export interface RideProposalPayload {
+  type?: string;
+  rideId: number;
+  rideData: {
+    id: number;
+    pickupAddress: string;
+    dropoffAddress: string;
+    price: number;
+    distanceKm: number;
+    riderName?: string;
+    startLatLon?: { lat: number; lon: number } | null;
+    endLatLon?: { lat: number; lon: number } | null;
+    vehicleTypeId?: number;
+    paymentMethod?: string;
+    [key: string]: unknown;
+  };
+  distanceKm: number;
+  etaMinutes: number;
+  timestamp: number;
+  timeoutMs?: number;
+}
+
+export interface RideProposalTimeoutPayload {
+  rideId: number;
+}
+
+export interface RideProposalRejectedPayload {
+  rideId: number;
+}
+
+export interface RideProposalCancelledPayload {
+  rideId: number;
+  reason?: string;
+}
+
+export interface OpenRidesUpdatePayload {
+  openRidesCount: number;
+  openRides: OpenRide[];
+}
+
+export interface ChainRideOfferPayload {
+  type?: string;
+  rideId: number;
+  rideData: {
+    id: number;
+    pickupAddress: string;
+    dropoffAddress: string;
+    price: number;
+    distanceKm: number;
+    riderName?: string;
+    startLatLon?: { lat: number; lon: number } | null;
+    endLatLon?: { lat: number; lon: number } | null;
+    vehicleTypeId?: number;
+    paymentMethod?: string;
+    [key: string]: unknown;
+  };
+  currentRideId: number;
+  remainingMinutes: number;
+  pickupEtaMinutes: number;
+  pickupDistanceKm: number;
+  timestamp: number;
+  timeoutMs?: number;
+}
+
 export interface RideAcceptedPayload {
   rideId: number;
 }

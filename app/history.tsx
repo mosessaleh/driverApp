@@ -19,6 +19,7 @@ import { useTranslation } from '../src/hooks/useTranslation';
 
 type RideItem = {
   id: number | string;
+  riderName?: string | null;
   pickupAddress?: string | null;
   stopAddress?: string | null;
   dropoffAddress?: string | null;
@@ -537,6 +538,8 @@ export default function HistoryScreen() {
           <Text style={styles.rideDateTime}>
             {formatDate(item.createdAt)} • {formatTime(item.createdAt)}
           </Text>
+
+          {item.riderName ? <Text style={styles.riderName}>👤 {item.riderName}</Text> : null}
 
           <View style={styles.addressBlock}>
             <Text style={styles.addressLabel}>{t('pickup')}</Text>
@@ -1063,6 +1066,12 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginBottom: 10,
     fontWeight: '600',
+  },
+  riderName: {
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '700',
+    marginBottom: 8,
   },
   addressBlock: {
     marginBottom: 8,

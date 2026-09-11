@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from '../config/network';
-import { ScheduledPendingOffer } from '../types';
+import { ScheduledPendingOffer, OpenRide } from '../types';
 import {
   getRefreshToken,
   setRefreshToken,
@@ -558,6 +558,34 @@ export const normalizeScheduledPendingOffers = (
     .filter((offer): offer is ScheduledPendingOffer => Boolean(offer));
 
   return normalized.sort((a, b) => a.expiresAtMs - b.expiresAtMs);
+};
+
+export const normalizeOpenRides = (openRides: any[] | undefined | null): OpenRide[] => {
+  if (!Array.isArray(openRides)) return [];
+
+  return openRides
+    .map((ride): OpenRide | null => {
+      const id = toFiniteNumber(ride?.id, 0);
+      if (id <= 0) return null;
+
+      return {
+        id,
+        pickupAddress: ride?.pickupAddress || '',
+        dropoffAddress: ride?.dropoffAddress || '',
+        stopAddress: ride?.stopAddress || null,
+        price: toFiniteNumber(ride?.price, 0),
+        distanceKm: toFiniteNumber(ride?.distanceKm, 0),
+        durationMin: ride?.durationMin != null ? toFiniteNumber(ride.durationMin, 0) : null,
+        riderName: ride?.riderName || '',
+        startLatLon: normalizeLatLon(ride?.startLatLon),
+        stopLatLon: normalizeLatLon(ride?.stopLatLon),
+        endLatLon: normalizeLatLon(ride?.endLatLon),
+        vehicleTypeId: toFiniteNumber(ride?.vehicleTypeId, 0),
+        paymentMethod: ride?.paymentMethod || undefined,
+        createdAt: ride?.createdAt || undefined,
+      };
+    })
+    .filter((ride): ride is OpenRide => Boolean(ride));
 };
 
 export const endShift = async (endKM: number, token: string) => {

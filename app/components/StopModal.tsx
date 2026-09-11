@@ -13,6 +13,7 @@ type ActiveRide = {
   pickupAddress?: string;
   dropoffAddress?: string;
   riderPhone?: string;
+  riderName?: string;
   vehicleTypeName?: string;
   paymentMethod?: string;
 };
@@ -64,6 +65,15 @@ export default function StopModal({
             )}
           </View>
         </View>
+        {activeRide.riderName ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <Text
+              style={{ fontSize: 14, fontWeight: '700', color: isDarkMode ? '#f1f5f9' : '#0f172a' }}
+            >
+              👤 {t('rider')}: {activeRide.riderName}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.pickupInfoRow}>
           <View style={styles.pickupInfoCard}>
             <Text style={styles.pickupInfoLabel}>

@@ -147,3 +147,5 @@ export interface Driver {
   email: string;
   online: boolean;
 }
+
+export type { OpenRide } from './socket';
