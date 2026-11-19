@@ -21,6 +21,7 @@ import {
 // (we'll require it inside the component when needed)
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from '../src/hooks/useTranslation';
 import {
   toggleDriverOnline,
@@ -98,11 +99,12 @@ import {
   onChainRideCancelled,
   offChainRideCancelled,
   getSocket,
+  setLocationUpdateMode,
 } from '../src/services/socket';
 import { sendLocalNotification } from '../src/services/notifications';
 import { LOCATION_BACKGROUND_TASK } from '../src/tasks/socketBackgroundTask';
-import { devLog, getGoogleMapsApiKey, requireGoogleMapsApiKey } from '../src/config/security';
-import MapPlaceholder from './components/MapPlaceholder';
+import { devLog, getGoogleMapsApiKey } from '../src/config/security';
+import LiveMap, { MapDestination } from './components/LiveMap';
 import LastRidesList from './components/LastRidesList';
 import SearchingCard from './components/SearchingCard';
 import EndKMModal from './components/EndKMModal';
@@ -119,8 +121,6 @@ import {
   type SmartAlert,
 } from '../src/features/driverIntelligence';
 import { encryptString, decryptString } from '../src/services/storageEncryption';
-
-const { width, height } = Dimensions.get('window');
 
 const DASHBOARD_SNAPSHOT_KEY = 'driver_dashboard_snapshot_v1';
 const OFFLINE_LOCATION_QUEUE_KEY = 'driver_offline_location_queue_v1';
@@ -154,9 +154,51 @@ export const options = {
   headerShown: false,
 };
 
+const ROUTE_DEVIATION_THRESHOLD_KM = 0.035;
+const ROUTE_REFETCH_MIN_INTERVAL_MS = 10000;
+
+function distancePointToSegmentKm(
+  p: { latitude: number; longitude: number },
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const toKmLat = 111.32;
+  const toKmLng = (lat: number) => 111.32 * Math.cos((lat * Math.PI) / 180);
+  const midLat = (a.latitude + b.latitude) / 2;
+  const ax = a.longitude * toKmLng(midLat);
+  const ay = a.latitude * toKmLat;
+  const bx = b.longitude * toKmLng(midLat);
+  const by = b.latitude * toKmLat;
+  const px = p.longitude * toKmLng(midLat);
+  const py = p.latitude * toKmLat;
+
+  const vx = bx - ax;
+  const vy = by - ay;
+  const lenSq = vx * vx + vy * vy;
+  if (lenSq === 0) {
+    return Math.hypot(px - ax, py - ay);
+  }
+  let t = ((px - ax) * vx + (py - ay) * vy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
+}
+
+function distanceToPolylineKm(
+  point: { latitude: number; longitude: number },
+  polyline: Array<{ latitude: number; longitude: number }>,
+): number {
+  let minKm = Infinity;
+  for (let i = 1; i < polyline.length; i++) {
+    const segmentKm = distancePointToSegmentKm(point, polyline[i - 1], polyline[i]);
+    if (segmentKm < minKm) minKm = segmentKm;
+  }
+  return minKm === Infinity ? 0 : minKm;
+}
+
 export default function DashboardScreen() {
   const { authState, logout } = useAuth();
   const { settings, isDarkMode, isRTL } = useSettings();
+  const insets = useSafeAreaInsets();
   const { t, getCurrentLanguage } = useTranslation();
   const router = useRouter();
   const googleMapsApiKey = getGoogleMapsApiKey();
@@ -183,6 +225,10 @@ export default function DashboardScreen() {
   const [showEndShiftMenu, setShowEndShiftMenu] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [menuMounted, setMenuMounted] = useState(false);
+  const [showRidesOverview, setShowRidesOverview] = useState(false);
+  const [pickupCollapsed, setPickupCollapsed] = useState(true);
+  const [stopCollapsed, setStopCollapsed] = useState(true);
+  const [dropoffCollapsed, setDropoffCollapsed] = useState(true);
   const [showEndKMModal, setShowEndKMModal] = useState(false);
   const [endKM, setEndKM] = useState('');
   const [activeRide, setActiveRide] = useState<any>(null);
@@ -209,6 +255,12 @@ export default function DashboardScreen() {
   const [chainTotalSeconds, setChainTotalSeconds] = useState(0);
   const chainOfferRef = useRef<any>(null);
   const chainTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rideOfferRef = useRef<any>(null);
+  const offerTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   const [rideOfferSound, setRideOfferSound] = useState<any>(null);
   const [lateWarningSound, setLateWarningSound] = useState<any>(null);
   const [scheduledBanner, setScheduledBanner] = useState<{
@@ -294,6 +346,7 @@ export default function DashboardScreen() {
   const networkModeRef = useRef<NetworkMode>('online');
   const isFlushingQueueRef = useRef(false);
   const activeRideRef = useRef<any>(null);
+  const currentLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -964,7 +1017,7 @@ export default function DashboardScreen() {
           await stopRideOfferSound();
 
           // Play ride offer sound if enabled
-          if (settings.sound.rideOfferSound) {
+          if (settingsRef.current.sound.rideOfferSound) {
             if (isScheduledOffer) {
               await playScheduledOfferSoundOnce();
             } else {
@@ -978,6 +1031,7 @@ export default function DashboardScreen() {
         const defaultTimeoutMs = isScheduledOffer ? 15000 : 30000;
         const totalSeconds = Math.max(1, Math.ceil((data?.timeoutMs || defaultTimeoutMs) / 1000));
         setOfferTotalSeconds(totalSeconds);
+        rideOfferRef.current = data;
         setRideOffer(data);
         setOfferCountdown(totalSeconds);
 
@@ -993,12 +1047,13 @@ export default function DashboardScreen() {
               } else if (isScheduledOffer && authState.token) {
                 rejectRide(data.rideId);
               }
+              rideOfferRef.current = null;
               setRideOffer(null);
               setOfferCountdown(0);
               stopRideOfferSound().then(() => devLog('Offer sound stopped after timeout'));
-              if (offerTimeout) {
-                clearInterval(offerTimeout);
-                setOfferTimeout(null);
+              if (offerTimeoutRef.current) {
+                clearInterval(offerTimeoutRef.current);
+                offerTimeoutRef.current = null;
               }
               clearInterval(timeout);
               return 0;
@@ -1007,6 +1062,7 @@ export default function DashboardScreen() {
           });
         }, 1000);
 
+        offerTimeoutRef.current = timeout;
         setOfferTimeout(timeout);
       };
 
@@ -1016,15 +1072,17 @@ export default function DashboardScreen() {
       const handleRideOfferTimeout = async (data: { rideId: number }) => {
         devLog('Ride offer timeout event');
         // Only clear if this timeout matches the current offer
-        if (rideOffer && rideOffer.rideId === data.rideId) {
+        if (rideOfferRef.current && rideOfferRef.current.rideId === data.rideId) {
           devLog('Clearing timed-out matching offer');
           await stopRideOfferSound();
+          rideOfferRef.current = null;
           setRideOffer(null);
           setOfferCountdown(0);
-          if (offerTimeout) {
-            clearInterval(offerTimeout);
-            setOfferTimeout(null);
+          if (offerTimeoutRef.current) {
+            clearInterval(offerTimeoutRef.current);
+            offerTimeoutRef.current = null;
           }
+          setOfferTimeout(null);
         } else {
           devLog('Ignoring timeout for non-matching offer');
         }
@@ -1036,15 +1094,17 @@ export default function DashboardScreen() {
       const handleRideOfferRejected = async (data: { rideId: number }) => {
         devLog('Ride offer rejected event');
         // Only clear if this rejection matches the current offer
-        if (rideOffer && rideOffer.rideId === data.rideId) {
+        if (rideOfferRef.current && rideOfferRef.current.rideId === data.rideId) {
           devLog('Clearing rejected matching offer');
           await stopRideOfferSound();
+          rideOfferRef.current = null;
           setRideOffer(null);
           setOfferCountdown(0);
-          if (offerTimeout) {
-            clearInterval(offerTimeout);
-            setOfferTimeout(null);
+          if (offerTimeoutRef.current) {
+            clearInterval(offerTimeoutRef.current);
+            offerTimeoutRef.current = null;
           }
+          setOfferTimeout(null);
         } else {
           devLog('Ignoring rejection for non-matching offer');
         }
@@ -1079,17 +1139,36 @@ export default function DashboardScreen() {
       const handleRideCancelled = async (data: { rideId: number }) => {
         devLog('Ride cancelled event');
         // Only clear if this cancellation matches the current offer
-        if (rideOffer && rideOffer.rideId === data.rideId) {
+        if (rideOfferRef.current && rideOfferRef.current.rideId === data.rideId) {
           devLog('Clearing cancelled matching offer');
           await stopRideOfferSound();
+          rideOfferRef.current = null;
           setRideOffer(null);
           setOfferCountdown(0);
-          if (offerTimeout) {
-            clearInterval(offerTimeout);
-            setOfferTimeout(null);
+          if (offerTimeoutRef.current) {
+            clearInterval(offerTimeoutRef.current);
+            offerTimeoutRef.current = null;
           }
+          setOfferTimeout(null);
         } else {
           devLog('Ignoring cancellation for non-matching offer');
+        }
+
+        // If the cancelled ride is the currently active ride, clear it fully
+        if (activeRideRef.current && activeRideRef.current.id === data.rideId) {
+          devLog('Clearing cancelled active ride');
+          setActiveRide(null);
+          setCurrentRideId(null);
+          setShowPickupModal(false);
+          setShowStopModal(false);
+          setShowDropoffModal(false);
+          setShowCancelText(false);
+          setCancelCountdown(0);
+          setPickupCountdownStart(null);
+          setCountdownExpired(false);
+          setRouteCoordinates([]);
+          Alert.alert(t('ride_cancelled_title'), t('ride_cancelled_message'));
+          loadDriverStatus().catch(() => {});
         }
       };
 
@@ -1109,9 +1188,10 @@ export default function DashboardScreen() {
               sliderPositionRef.current = sliderWidth * 0.05;
               setSliderPosition(sliderWidth * 0.05);
               setTimeout(() => {
-                if (currentLocation) {
+                const loc = currentLocationRef.current;
+                if (loc) {
                   fetchDirections(
-                    { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                    { lat: loc.latitude, lng: loc.longitude },
                     { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
                   );
                 }
@@ -1364,7 +1444,7 @@ export default function DashboardScreen() {
         devLog('Chain ride offer received');
         try {
           await stopRideOfferSound();
-          if (settings.sound.rideOfferSound) {
+          if (settingsRef.current.sound.rideOfferSound) {
             await playProposalSound();
           }
         } catch (soundError) {
@@ -1454,8 +1534,9 @@ export default function DashboardScreen() {
         offChainAccepted();
         offChainAcceptFailed();
         offChainRideCancelled();
-        if (offerTimeout) {
-          clearInterval(offerTimeout);
+        if (offerTimeoutRef.current) {
+          clearInterval(offerTimeoutRef.current);
+          offerTimeoutRef.current = null;
         }
         if (proposalTimeoutRef.current) {
           clearInterval(proposalTimeoutRef.current);
@@ -1557,6 +1638,10 @@ export default function DashboardScreen() {
         setShowMenu(false);
         return true;
       }
+      if (showRidesOverview) {
+        setShowRidesOverview(false);
+        return true;
+      }
       if (showEndKMModal) {
         setShowEndKMModal(false);
         return true;
@@ -1584,7 +1669,15 @@ export default function DashboardScreen() {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
     return () => backHandler?.remove();
-  }, [t, showMenu, showEndKMModal, showCancelModal, showStatusExpanded, showShiftWarning]);
+  }, [
+    t,
+    showMenu,
+    showRidesOverview,
+    showEndKMModal,
+    showCancelModal,
+    showStatusExpanded,
+    showShiftWarning,
+  ]);
 
   // Monitor socket connection status
   useEffect(() => {
@@ -1859,9 +1952,10 @@ export default function DashboardScreen() {
             setSliderPosition(sliderWidth * 0.05); // Reset slider
             // Fetch directions from driver to pickup point (since not picked up yet)
             setTimeout(() => {
-              if (currentLocation) {
+              const loc = currentLocationRef.current;
+              if (loc) {
                 fetchDirections(
-                  { lat: currentLocation.latitude, lng: currentLocation.longitude },
+                  { lat: loc.latitude, lng: loc.longitude },
                   { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
                 );
               }
@@ -1961,14 +2055,20 @@ export default function DashboardScreen() {
               setShowStopModal(true);
               setShowDropoffModal(false);
               setTimeout(() => {
+                const originLoc = currentLocationRef.current
+                  ? {
+                      lat: currentLocationRef.current.latitude,
+                      lng: currentLocationRef.current.longitude,
+                    }
+                  : { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon };
                 if (stopWaypoint) {
-                  fetchDirections(
-                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-                  );
+                  fetchDirections(originLoc, {
+                    lat: stopWaypoint.lat,
+                    lng: stopWaypoint.lng,
+                  });
                 } else {
                   fetchDirections(
-                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
+                    originLoc,
                     { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
                     stopWaypoint,
                   );
@@ -1978,18 +2078,17 @@ export default function DashboardScreen() {
               setShowStopModal(false);
               setShowDropoffModal(true);
               setTimeout(() => {
-                if (stopWaypoint && hasStop && stopCompleted) {
-                  fetchDirections(
-                    { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
-                  );
-                } else {
-                  fetchDirections(
-                    { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon },
-                    { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
-                    stopWaypoint,
-                  );
-                }
+                const originLoc = currentLocationRef.current
+                  ? {
+                      lat: currentLocationRef.current.latitude,
+                      lng: currentLocationRef.current.longitude,
+                    }
+                  : stopWaypoint || { lat: ride.startLatLon.lat, lng: ride.startLatLon.lon };
+                fetchDirections(
+                  originLoc,
+                  { lat: ride.endLatLon.lat, lng: ride.endLatLon.lon },
+                  stopWaypoint && hasStop && stopCompleted ? stopWaypoint : null,
+                );
               }, 1000);
             }
           }
@@ -1997,6 +2096,7 @@ export default function DashboardScreen() {
       } else if (!res.currentRideId) {
         // Clear any existing ride displays
         setActiveRide(null);
+        setCurrentRideId(null);
         setShowPickupModal(false);
         setShowStopModal(false);
         setShowDropoffModal(false);
@@ -2004,6 +2104,7 @@ export default function DashboardScreen() {
         setCancelCountdown(0);
         setPickupCountdownStart(null);
         setCountdownExpired(false);
+        setRouteCoordinates([]);
         // Clean up any remaining countdown data
         try {
           const keys = await AsyncStorage.getAllKeys();
@@ -2333,7 +2434,8 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error('Error removing stop completion from AsyncStorage:', error);
     }
-    // Clear previous route and fetch new route from pickup to dropoff
+    // Clear previous route and fetch new route from the driver's actual
+    // position (fallback: pickup point) to the next destination
     setRouteCoordinates([]);
     const stopWaypoint =
       activeRide?.stopLatLon &&
@@ -2341,14 +2443,17 @@ export default function DashboardScreen() {
       typeof activeRide.stopLatLon.lon === 'number'
         ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
         : null;
+    const originLoc = currentLocationRef.current
+      ? {
+          lat: currentLocationRef.current.latitude,
+          lng: currentLocationRef.current.longitude,
+        }
+      : { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon };
     if (hasStop && stopWaypoint) {
-      fetchDirections(
-        { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
-        { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-      );
+      fetchDirections(originLoc, { lat: stopWaypoint.lat, lng: stopWaypoint.lng });
     } else {
       fetchDirections(
-        { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
+        originLoc,
         { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
         stopWaypoint,
       );
@@ -2402,18 +2507,17 @@ export default function DashboardScreen() {
         typeof activeRide.stopLatLon.lon === 'number'
           ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
           : null;
-      if (stopWaypoint) {
-        await fetchDirections(
-          { lat: stopWaypoint.lat, lng: stopWaypoint.lng },
-          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
-        );
-      } else {
-        await fetchDirections(
-          { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon },
-          { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
-          stopWaypoint,
-        );
-      }
+      const originLoc = currentLocationRef.current
+        ? {
+            lat: currentLocationRef.current.latitude,
+            lng: currentLocationRef.current.longitude,
+          }
+        : stopWaypoint || { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon };
+      await fetchDirections(
+        originLoc,
+        { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon },
+        stopWaypoint,
+      );
     } catch (error) {
       console.error('Error continuing trip:', error);
     } finally {
@@ -2658,6 +2762,70 @@ export default function DashboardScreen() {
     }
     return poly;
   };
+
+  // Target of the current ride stage, derived from which modal is active
+  const activeRouteDestination = useMemo(() => {
+    if (!activeRide) return null;
+    const stop =
+      activeRide?.stopLatLon &&
+      typeof activeRide.stopLatLon.lat === 'number' &&
+      typeof activeRide.stopLatLon.lon === 'number'
+        ? { lat: activeRide.stopLatLon.lat, lng: activeRide.stopLatLon.lon }
+        : null;
+    if (showStopModal) return stop;
+    if (showDropoffModal) {
+      if (
+        activeRide?.endLatLon &&
+        typeof activeRide.endLatLon.lat === 'number' &&
+        typeof activeRide.endLatLon.lon === 'number'
+      ) {
+        return { lat: activeRide.endLatLon.lat, lng: activeRide.endLatLon.lon };
+      }
+      return null;
+    }
+    if (showPickupModal) {
+      if (
+        activeRide?.startLatLon &&
+        typeof activeRide.startLatLon.lat === 'number' &&
+        typeof activeRide.startLatLon.lon === 'number'
+      ) {
+        return { lat: activeRide.startLatLon.lat, lng: activeRide.startLatLon.lon };
+      }
+      return null;
+    }
+    return null;
+  }, [activeRide, showPickupModal, showStopModal, showDropoffModal]);
+
+  // Draw/refresh the route: immediately when missing, or as soon as the driver
+  // deviates from the drawn route
+  const lastRouteFetchAtRef = useRef(0);
+
+  useEffect(() => {
+    if (!activeRide || !currentLocation || !activeRouteDestination) return;
+
+    const now = Date.now();
+    if (now - lastRouteFetchAtRef.current < ROUTE_REFETCH_MIN_INTERVAL_MS) return;
+
+    if (routeCoordinates.length < 2) {
+      lastRouteFetchAtRef.current = now;
+      fetchDirections(
+        { lat: currentLocation.latitude, lng: currentLocation.longitude },
+        activeRouteDestination,
+        null,
+      );
+      return;
+    }
+
+    const distanceKm = distanceToPolylineKm(currentLocation, routeCoordinates);
+    if (distanceKm <= ROUTE_DEVIATION_THRESHOLD_KM) return;
+
+    lastRouteFetchAtRef.current = now;
+    fetchDirections(
+      { lat: currentLocation.latitude, lng: currentLocation.longitude },
+      activeRouteDestination,
+      null,
+    );
+  }, [currentLocation, routeCoordinates, activeRide, activeRouteDestination]);
 
   const playBeepSound = async (soundFile: any, loop: boolean = false) => {
     try {
@@ -3124,8 +3292,115 @@ export default function DashboardScreen() {
 
   const styles = getStyles(isDarkMode, isRTL, isScheduledOffer);
 
+  const hasActiveRide = !!activeRide;
+
+  const mapDestinations = useMemo<MapDestination[]>(() => {
+    if (!activeRide) return [];
+    const list: MapDestination[] = [];
+
+    const addPoint = (
+      latLon: { lat?: number; lon?: number } | null | undefined,
+      kind: MapDestination['kind'],
+      label: string,
+    ) => {
+      if (latLon && typeof latLon.lat === 'number' && typeof latLon.lon === 'number') {
+        list.push({ latitude: latLon.lat, longitude: latLon.lon, kind, label });
+      }
+    };
+
+    // Stage-aware: show only the points relevant to the current stage
+    if (showPickupModal) {
+      addPoint(activeRide.startLatLon, 'pickup', t('pickup'));
+    } else if (showStopModal) {
+      addPoint(activeRide.stopLatLon, 'stop', t('stop'));
+      addPoint(activeRide.endLatLon, 'dropoff', t('dropoff'));
+    } else if (showDropoffModal) {
+      addPoint(activeRide.endLatLon, 'dropoff', t('dropoff'));
+    }
+
+    return list;
+  }, [activeRide, showPickupModal, showStopModal, showDropoffModal, t]);
+
+  const mapStatusLabel = activeRide
+    ? `#${activeRide.id}`
+    : !locationPermission
+      ? t('location_permission_denied')
+      : !currentLocation
+        ? t('getting_location')
+        : isSearching
+          ? t('searching_trips')
+          : t('current_location');
+
+  // Floating navigation button target follows the currently open stage modal
+  const navStage = useMemo(() => {
+    if (!activeRide) return null;
+    if (showStopModal && stopCollapsed) {
+      return { address: activeRide.stopAddress || '' };
+    }
+    if (showDropoffModal && dropoffCollapsed) {
+      return { address: activeRide.dropoffAddress || '' };
+    }
+    if (showPickupModal && pickupCollapsed) {
+      return { address: activeRide.pickupAddress || '' };
+    }
+    return null;
+  }, [
+    activeRide,
+    showPickupModal,
+    showStopModal,
+    showDropoffModal,
+    pickupCollapsed,
+    stopCollapsed,
+    dropoffCollapsed,
+  ]);
+
+  useEffect(() => {
+    currentLocationRef.current = currentLocation;
+  }, [currentLocation]);
+
+  useEffect(() => {
+    setLocationUpdateMode(hasActiveRide ? 'active' : 'idle');
+  }, [hasActiveRide]);
+
+  useEffect(() => {
+    if (showPickupModal) {
+      setPickupCollapsed(true);
+    }
+  }, [showPickupModal]);
+
+  useEffect(() => {
+    if (showStopModal) {
+      setStopCollapsed(true);
+    }
+  }, [showStopModal]);
+
+  useEffect(() => {
+    if (showDropoffModal) {
+      setDropoffCollapsed(true);
+    }
+  }, [showDropoffModal]);
+
   return (
     <View style={styles.container}>
+      {/* ── Full-Screen Live Map (background layer, starts below the status bar) ── */}
+      <View style={[styles.fullMapContainer, { top: insets.top }]}>
+        <LiveMap
+          height="100%"
+          rounded={false}
+          driverLocation={currentLocation}
+          route={routeCoordinates?.length > 1 ? routeCoordinates : undefined}
+          destinations={mapDestinations}
+          darkMode={isDarkMode}
+          followDriver={!activeRide}
+        />
+        <View style={styles.mapStatusRow} pointerEvents="none">
+          <View style={styles.mapStatusDot} />
+          <Text style={styles.mapStatusText} numberOfLines={1}>
+            {mapStatusLabel}
+          </Text>
+        </View>
+      </View>
+
       {/* New Status Bar */}
       <StatusBar
         status={getDriverStatusType()}
@@ -3232,7 +3507,25 @@ export default function DashboardScreen() {
           setShowMenu(false);
           setShowEndKMModal(true);
         }}
+        onOpenRidesOverview={() => setShowRidesOverview(true)}
+        ridesOverviewBadgeCount={openRides.length}
       />
+
+      {navStage && (
+        <TouchableOpacity
+          style={styles.startNavButton}
+          activeOpacity={0.85}
+          onPress={() =>
+            handleNav(
+              `${currentLocation?.latitude},${currentLocation?.longitude}`,
+              navStage.address,
+            )
+          }
+        >
+          <Text style={styles.startNavIcon}>🧭</Text>
+          <Text style={styles.startNavText}>{t('start_navigation')}</Text>
+        </TouchableOpacity>
+      )}
 
       {isInitialLoading ? (
         <View style={styles.loadingOverlay}>
@@ -3241,140 +3534,167 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <>
-          {/* ── Main Content (below status bar) ── */}
-          <ScrollView
-            style={styles.mainContent}
-            contentContainerStyle={{ paddingBottom: 120 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* ── Open-to-all rides (no driver found) ── */}
-            {openRides.length > 0 && (
-              <View style={styles.openRidesCard}>
-                <View style={styles.openRidesHeader}>
-                  <Text style={styles.openRidesIcon}>🚕</Text>
-                  <Text style={styles.openRidesTitle}>{t('open_rides_title')}</Text>
+          {/* ── Rides Overview Modal (open rides / upcoming / recent) ── */}
+          {showRidesOverview && (
+            <View style={styles.ridesModalLayer}>
+              <TouchableOpacity
+                style={styles.ridesModalBackdrop}
+                activeOpacity={1}
+                onPress={() => setShowRidesOverview(false)}
+              />
+              <View style={styles.ridesModalPanel}>
+                <View style={styles.ridesModalHeader}>
+                  <Text style={styles.ridesModalTitle}>{t('rides_overview_title')}</Text>
+                  <TouchableOpacity
+                    style={styles.ridesModalCloseBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setShowRidesOverview(false)}
+                  >
+                    <Text style={styles.ridesModalCloseText}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-                {openRides.map((ride) => (
-                  <View key={ride.id} style={styles.openRideItem}>
-                    <View style={styles.openRideInfo}>
-                      <Text style={styles.openRideId}>#{ride.id}</Text>
-                      <Text style={styles.openRideRoute} numberOfLines={1}>
-                        {ride.pickupAddress}
-                      </Text>
-                      <Text style={styles.openRideRoute} numberOfLines={1}>
-                        {ride.dropoffAddress}
-                      </Text>
-                      <View style={styles.openRideFooter}>
-                        <Text style={styles.openRidePrice}>~{ride.price} DKK</Text>
-                        {ride.distanceKm != null && (
-                          <Text style={styles.openRideDistance}>
-                            {t('open_rides_distance')}: {Math.round(ride.distanceKm * 10) / 10} km
-                          </Text>
-                        )}
+                <ScrollView
+                  style={styles.ridesModalScroll}
+                  contentContainerStyle={{ paddingBottom: 60 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* ── Open-to-all rides (no driver found) ── */}
+                  {openRides.length > 0 && (
+                    <View style={styles.openRidesCard}>
+                      <View style={styles.openRidesHeader}>
+                        <Text style={styles.openRidesIcon}>🚕</Text>
+                        <Text style={styles.openRidesTitle}>{t('open_rides_title')}</Text>
                       </View>
+                      {openRides.map((ride) => (
+                        <View key={ride.id} style={styles.openRideItem}>
+                          <View style={styles.openRideInfo}>
+                            <Text style={styles.openRideId}>#{ride.id}</Text>
+                            <Text style={styles.openRideRoute} numberOfLines={1}>
+                              {ride.pickupAddress}
+                            </Text>
+                            <Text style={styles.openRideRoute} numberOfLines={1}>
+                              {ride.dropoffAddress}
+                            </Text>
+                            <View style={styles.openRideFooter}>
+                              <Text style={styles.openRidePrice}>~{ride.price} DKK</Text>
+                              {ride.distanceKm != null && (
+                                <Text style={styles.openRideDistance}>
+                                  {t('open_rides_distance')}:{' '}
+                                  {Math.round(ride.distanceKm * 10) / 10} km
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.openRideAcceptBtn}
+                            onPress={async () => {
+                              acceptRide(ride.id);
+                              setOpenRides((prev) => prev.filter((r) => r.id !== ride.id));
+                              await loadDriverStatus();
+                              loadUpcomingRides().catch(() => {});
+                            }}
+                          >
+                            <Text style={styles.openRideAcceptText}>{t('open_rides_accept')}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
                     </View>
-                    <TouchableOpacity
-                      style={styles.openRideAcceptBtn}
-                      onPress={async () => {
-                        acceptRide(ride.id);
-                        setOpenRides((prev) => prev.filter((r) => r.id !== ride.id));
-                        await loadDriverStatus();
-                        loadUpcomingRides().catch(() => {});
-                      }}
-                    >
-                      <Text style={styles.openRideAcceptText}>{t('open_rides_accept')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
+                  )}
 
-            {/* ── Upcoming Ride Card ── */}
-            <View
-              style={[
-                styles.upcomingCard,
-                nextScheduledRide
-                  ? scheduledBanner?.selected !== false
-                    ? styles.upcomingCardSelected
-                    : styles.upcomingCardPending
-                  : styles.upcomingCardEmpty,
-              ]}
-            >
-              {nextScheduledRide ? (
-                <>
-                  <View style={styles.upcomingHeader}>
-                    <Text style={styles.upcomingIcon}>📅</Text>
-                    <Text style={styles.upcomingTitle}>
-                      {t('scheduled_ride_title') || 'Upcoming Ride'}
-                    </Text>
-                  </View>
-                  <View style={styles.upcomingBody}>
-                    <View style={styles.upcomingTimeRow}>
-                      <Text style={styles.upcomingCountdown}>{scheduledCountdownText}</Text>
-                      {scheduledDepartureTime && (
-                        <Text style={styles.upcomingDeparture}>🚗 {scheduledDepartureTime}</Text>
-                      )}
-                    </View>
-                    <View style={styles.upcomingRoute}>
-                      <View style={styles.upcomingRouteDot} />
-                      <Text style={styles.upcomingAddress} numberOfLines={1}>
-                        {nextScheduledRide.pickupAddress}
-                      </Text>
-                    </View>
-                    <View style={styles.upcomingRouteLine} />
-                    <View style={styles.upcomingRoute}>
-                      <View style={[styles.upcomingRouteDot, styles.upcomingRouteDotEnd]} />
-                      <Text style={styles.upcomingAddress} numberOfLines={1}>
-                        {nextScheduledRide.dropoffAddress}
-                      </Text>
-                    </View>
-                    {(nextScheduledRide.price != null || nextScheduledRide.distanceKm != null) && (
-                      <View style={styles.upcomingFooter}>
-                        {nextScheduledRide.price != null && (
-                          <Text style={styles.upcomingPrice}>~{nextScheduledRide.price} DKK</Text>
-                        )}
-                        {nextScheduledRide.distanceKm != null && (
-                          <Text style={styles.upcomingDistance}>
-                            {Math.round(nextScheduledRide.distanceKm * 10) / 10} km
+                  {/* ── Upcoming Ride Card ── */}
+                  <View
+                    style={[
+                      styles.upcomingCard,
+                      nextScheduledRide
+                        ? scheduledBanner?.selected !== false
+                          ? styles.upcomingCardSelected
+                          : styles.upcomingCardPending
+                        : styles.upcomingCardEmpty,
+                    ]}
+                  >
+                    {nextScheduledRide ? (
+                      <>
+                        <View style={styles.upcomingHeader}>
+                          <Text style={styles.upcomingIcon}>📅</Text>
+                          <Text style={styles.upcomingTitle}>
+                            {t('scheduled_ride_title') || 'Upcoming Ride'}
                           </Text>
-                        )}
+                        </View>
+                        <View style={styles.upcomingBody}>
+                          <View style={styles.upcomingTimeRow}>
+                            <Text style={styles.upcomingCountdown}>{scheduledCountdownText}</Text>
+                            {scheduledDepartureTime && (
+                              <Text style={styles.upcomingDeparture}>
+                                🚗 {scheduledDepartureTime}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={styles.upcomingRoute}>
+                            <View style={styles.upcomingRouteDot} />
+                            <Text style={styles.upcomingAddress} numberOfLines={1}>
+                              {nextScheduledRide.pickupAddress}
+                            </Text>
+                          </View>
+                          <View style={styles.upcomingRouteLine} />
+                          <View style={styles.upcomingRoute}>
+                            <View style={[styles.upcomingRouteDot, styles.upcomingRouteDotEnd]} />
+                            <Text style={styles.upcomingAddress} numberOfLines={1}>
+                              {nextScheduledRide.dropoffAddress}
+                            </Text>
+                          </View>
+                          {(nextScheduledRide.price != null ||
+                            nextScheduledRide.distanceKm != null) && (
+                            <View style={styles.upcomingFooter}>
+                              {nextScheduledRide.price != null && (
+                                <Text style={styles.upcomingPrice}>
+                                  ~{nextScheduledRide.price} DKK
+                                </Text>
+                              )}
+                              {nextScheduledRide.distanceKm != null && (
+                                <Text style={styles.upcomingDistance}>
+                                  {Math.round(nextScheduledRide.distanceKm * 10) / 10} km
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.upcomingProgressBar}>
+                          <View
+                            style={[
+                              styles.upcomingProgressFill,
+                              {
+                                width: `${scheduledCountdownSeconds > 0 ? Math.max(2, Math.min(100, 100 - (scheduledCountdownSeconds / (60 * 60)) * 100)) : 0}%`,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.upcomingEmpty}>
+                        <Text style={styles.upcomingEmptyIcon}>📋</Text>
+                        <Text style={styles.upcomingEmptyText}>
+                          {t('no_upcoming_rides') || 'No upcoming rides'}
+                        </Text>
                       </View>
                     )}
                   </View>
-                  <View style={styles.upcomingProgressBar}>
-                    <View
-                      style={[
-                        styles.upcomingProgressFill,
-                        {
-                          width: `${scheduledCountdownSeconds > 0 ? Math.max(2, Math.min(100, 100 - (scheduledCountdownSeconds / (60 * 60)) * 100)) : 0}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                </>
-              ) : (
-                <View style={styles.upcomingEmpty}>
-                  <Text style={styles.upcomingEmptyIcon}>📋</Text>
-                  <Text style={styles.upcomingEmptyText}>
-                    {t('no_upcoming_rides') || 'No upcoming rides'}
-                  </Text>
-                </View>
-              )}
-            </View>
 
-            {/* ── Recent Rides ── */}
-            <LastRidesList
-              rides={recentRides.map((r) => ({
-                id: r.id,
-                startTime: r.createdAt || r.pickupTime || undefined,
-                from: r.pickupAddress || r.startName || 'Unknown',
-                to: r.dropoffAddress || r.stopAddress || r.endName || 'Unknown',
-                price: r.price ?? r.fare ?? undefined,
-                status: r.status,
-              }))}
-              isDarkMode={isDarkMode}
-            />
-          </ScrollView>
+                  {/* ── Recent Rides ── */}
+                  <LastRidesList
+                    rides={recentRides.map((r) => ({
+                      id: r.id,
+                      startTime: r.createdAt || r.pickupTime || undefined,
+                      from: r.pickupAddress || r.startName || 'Unknown',
+                      to: r.dropoffAddress || r.stopAddress || r.endName || 'Unknown',
+                      price: r.price ?? r.fare ?? undefined,
+                      status: r.status,
+                    }))}
+                    isDarkMode={isDarkMode}
+                  />
+                </ScrollView>
+              </View>
+            </View>
+          )}
 
           <EndKMModal
             visible={showEndKMModal}
@@ -3391,147 +3711,176 @@ export default function DashboardScreen() {
           {/* Pickup Modal */}
           {showPickupModal && activeRide && (
             <View style={styles.rideModalContainer}>
-              <View style={styles.pickupModalCard}>
-                <View style={styles.pickupHandle} />
-                <View style={styles.pickupHeaderRow}>
-                  <View style={styles.pickupBadge}>
-                    <Text style={styles.pickupBadgeText}>{t('pickup')}</Text>
-                  </View>
-                  <View style={styles.pickupHeaderMeta}>
-                    <View style={styles.pickupIdPill}>
-                      <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
-                    </View>
-                    {activeRide.riderPhone && (
-                      <TouchableOpacity
-                        style={styles.callIconInModal}
-                        onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
-                      >
-                        <Text style={styles.callIconText}>📞</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-                {activeRide.riderName ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: '700',
-                        color: isDarkMode ? '#f1f5f9' : '#0f172a',
-                      }}
-                    >
-                      👤 {t('rider')}: {activeRide.riderName}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={styles.pickupInfoRow}>
-                  <View style={styles.pickupInfoCard}>
-                    <Text style={styles.pickupInfoLabel}>
-                      {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
-                        ? t('approximate_price')
-                        : t('price')}
-                    </Text>
-                    {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash' ? (
-                      <>
-                        <Text
-                          style={[
-                            styles.pickupInfoValue,
-                            styles.pickupInfoValueAccent,
-                            { color: '#f59e0b' },
-                          ]}
-                        >
-                          ~{activeRide.price} DKK
-                        </Text>
-                        <Text
-                          style={[
-                            styles.pickupInfoLabel,
-                            { fontSize: 11, marginTop: 2, color: '#f59e0b' },
-                          ]}
-                        >
-                          {t('meter_runs_on_meter')}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
-                        {activeRide.price} DKK
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.pickupInfoCard}>
-                    <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
-                    <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
-                  </View>
-                </View>
-                <View style={styles.pickupAddressCard}>
-                  <View style={styles.pickupAddressHeader}>
-                    <View style={styles.pickupDot} />
-                    <Text style={styles.pickupAddressLabel}>{t('pickup')}</Text>
-                  </View>
-                  <Text style={styles.pickupAddressValue} numberOfLines={2} ellipsizeMode="tail">
-                    {activeRide.pickupAddress}
-                  </Text>
-                </View>
-                {!!activeRide.stopAddress && (
-                  <View style={styles.stopAddressCard}>
-                    <View style={styles.stopAddressHeader}>
-                      <View style={styles.stopDot} />
-                      <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
-                    </View>
-                    <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
-                      {activeRide.stopAddress}
-                    </Text>
-                  </View>
-                )}
-                {activeRide.vehicleTypeName ? (
-                  <View style={styles.rideTypeBadge}>
-                    <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.pickupActions}>
-                  <View style={styles.pickupActionRow}>
-                    <TouchableOpacity
-                      style={[styles.pickupNavButton, styles.pickupActionButton]}
-                      onPress={() =>
-                        handleNav(
-                          `${currentLocation?.latitude},${currentLocation?.longitude}`,
-                          activeRide.pickupAddress,
-                        )
-                      }
-                    >
-                      <Text style={styles.pickupNavText}>{t('nav')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.pickupButton}
-                    onLongPress={handlePickupConfirm}
-                    delayLongPress={1500}
-                    disabled={isPickupLoading}
-                  >
-                    {isPickupLoading ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color="#fff" />
-                        <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>
-                          {t('pickup_in_progress')}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
-                    )}
-                  </TouchableOpacity>
-                  {showCancelText && cancelCountdown > 0 && (
-                    <Text style={styles.cancelOnText}>
-                      {t('cancel_on')}: {Math.floor(cancelCountdown / 60)}:
-                      {(cancelCountdown % 60).toString().padStart(2, '0')}
+              <View
+                style={[styles.pickupModalCard, pickupCollapsed && styles.pickupModalCardCollapsed]}
+              >
+                <TouchableOpacity
+                  style={styles.pickupCollapseHeader}
+                  activeOpacity={0.85}
+                  onPress={() => setPickupCollapsed((prev) => !prev)}
+                >
+                  <Text style={styles.pickupCollapseArrow}>{pickupCollapsed ? '▲' : '▼'}</Text>
+                  {pickupCollapsed && (
+                    <Text style={styles.pickupCollapsedTitle} numberOfLines={1}>
+                      #{activeRide.id} · {t('pickup')} · {activeRide.pickupAddress}
                     </Text>
                   )}
-                  <TouchableOpacity
-                    style={styles.cancelRideLink}
-                    onPress={openCancelModal}
-                    disabled={isPickupLoading}
-                  >
-                    <Text style={styles.cancelRideLinkText}>{t('cancel_ride')}</Text>
-                  </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
+                {!pickupCollapsed && (
+                  <>
+                    <View style={styles.pickupHeaderRow}>
+                      <View style={styles.pickupBadge}>
+                        <Text style={styles.pickupBadgeText}>{t('pickup')}</Text>
+                      </View>
+                      <View style={styles.pickupHeaderMeta}>
+                        <View style={styles.pickupIdPill}>
+                          <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+                        </View>
+                        {activeRide.riderPhone && (
+                          <TouchableOpacity
+                            style={styles.callIconInModal}
+                            onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                          >
+                            <Text style={styles.callIconText}>📞</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                    {activeRide.riderName ? (
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            fontWeight: '700',
+                            color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                          }}
+                        >
+                          👤 {t('rider')}: {activeRide.riderName}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.pickupInfoRow}>
+                      <View style={styles.pickupInfoCard}>
+                        <Text style={styles.pickupInfoLabel}>
+                          {activeRide.paymentMethod === 'meter' ||
+                          activeRide.paymentMethod === 'cash'
+                            ? t('approximate_price')
+                            : t('price')}
+                        </Text>
+                        {activeRide.paymentMethod === 'meter' ||
+                        activeRide.paymentMethod === 'cash' ? (
+                          <>
+                            <Text
+                              style={[
+                                styles.pickupInfoValue,
+                                styles.pickupInfoValueAccent,
+                                { color: '#f59e0b' },
+                              ]}
+                            >
+                              ~{activeRide.price} DKK
+                            </Text>
+                            <Text
+                              style={[
+                                styles.pickupInfoLabel,
+                                { fontSize: 11, marginTop: 2, color: '#f59e0b' },
+                              ]}
+                            >
+                              {t('meter_runs_on_meter')}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
+                            {activeRide.price} DKK
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.pickupInfoCard}>
+                        <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                        <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+                      </View>
+                    </View>
+                    <View style={styles.pickupAddressCard}>
+                      <View style={styles.pickupAddressHeader}>
+                        <View style={styles.pickupDot} />
+                        <Text style={styles.pickupAddressLabel}>{t('pickup')}</Text>
+                      </View>
+                      <Text
+                        style={styles.pickupAddressValue}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
+                      >
+                        {activeRide.pickupAddress}
+                      </Text>
+                    </View>
+                    {!!activeRide.stopAddress && (
+                      <View style={styles.stopAddressCard}>
+                        <View style={styles.stopAddressHeader}>
+                          <View style={styles.stopDot} />
+                          <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+                        </View>
+                        <Text
+                          style={styles.stopAddressValue}
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                        >
+                          {activeRide.stopAddress}
+                        </Text>
+                      </View>
+                    )}
+                    {activeRide.vehicleTypeName ? (
+                      <View style={styles.rideTypeBadge}>
+                        <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.pickupActions}>
+                      <View style={styles.pickupActionRow}>
+                        <TouchableOpacity
+                          style={[styles.pickupNavButton, styles.pickupActionButton]}
+                          onPress={() =>
+                            handleNav(
+                              `${currentLocation?.latitude},${currentLocation?.longitude}`,
+                              activeRide.pickupAddress,
+                            )
+                          }
+                        >
+                          <Text style={styles.pickupNavText}>{t('nav')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.pickupButton}
+                        onLongPress={handlePickupConfirm}
+                        delayLongPress={1500}
+                        disabled={isPickupLoading}
+                      >
+                        {isPickupLoading ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <ActivityIndicator size="small" color="#fff" />
+                            <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>
+                              {t('pickup_in_progress')}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.pickupButtonText}>{t('hold_to_pickup')}</Text>
+                        )}
+                      </TouchableOpacity>
+                      {showCancelText && cancelCountdown > 0 && (
+                        <Text style={styles.cancelOnText}>
+                          {t('cancel_on')}: {Math.floor(cancelCountdown / 60)}:
+                          {(cancelCountdown % 60).toString().padStart(2, '0')}
+                        </Text>
+                      )}
+                      <TouchableOpacity
+                        style={styles.cancelRideLink}
+                        onPress={openCancelModal}
+                        disabled={isPickupLoading}
+                      >
+                        <Text style={styles.cancelRideLinkText}>{t('cancel_ride')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           )}
@@ -3543,6 +3892,8 @@ export default function DashboardScreen() {
             isContinueLoading={isContinueLoading}
             onNav={handleNav}
             onContinueTrip={handleContinueTrip}
+            collapsed={stopCollapsed}
+            onToggleCollapse={() => setStopCollapsed((prev) => !prev)}
           />
 
           {/* Cancel Ride Modal - New Design */}
@@ -3717,6 +4068,8 @@ export default function DashboardScreen() {
             isDropoffLoading={isDropoffLoading}
             onNav={handleNav}
             onDropoff={handleDropoffConfirm}
+            collapsed={dropoffCollapsed}
+            onToggleCollapse={() => setDropoffCollapsed((prev) => !prev)}
           />
 
           {/* Ride Offer Modal */}
@@ -3841,6 +4194,7 @@ export default function DashboardScreen() {
                     style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
                     onPress={async () => {
                       acceptRide(rideOffer.rideId);
+                      rideOfferRef.current = null;
                       setRideOffer(null);
                       setOfferCountdown(0);
                       stopRideOfferSound().then(() => {
@@ -3848,6 +4202,7 @@ export default function DashboardScreen() {
                       });
                       if (offerTimeout) {
                         clearInterval(offerTimeout);
+                        offerTimeoutRef.current = null;
                         setOfferTimeout(null);
                       }
                       await loadDriverStatus();
@@ -3862,11 +4217,13 @@ export default function DashboardScreen() {
                     style={[styles.rideOfferButton, styles.rejectButton, styles.rideOfferSecondary]}
                     onPress={async () => {
                       rejectRide(rideOffer.rideId);
+                      rideOfferRef.current = null;
                       setRideOffer(null);
                       setOfferCountdown(0);
                       await stopRideOfferSound();
                       if (offerTimeout) {
                         clearInterval(offerTimeout);
+                        offerTimeoutRef.current = null;
                         setOfferTimeout(null);
                       }
                     }}

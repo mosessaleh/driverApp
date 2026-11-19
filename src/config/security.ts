@@ -19,10 +19,7 @@ export const devWarn = (...args: any[]) => {
 const runtimeGoogleMapsApiKey = Constants.expoConfig?.extra?.googleMapsApiKey?.trim();
 
 export const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-  process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-  runtimeGoogleMapsApiKey ||
-  '';
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || runtimeGoogleMapsApiKey || '';
 
 // Debug: log resolved key in development to verify runtime loading
 if (typeof __DEV__ !== 'undefined' && __DEV__) {

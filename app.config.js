@@ -45,10 +45,7 @@ loadLocalEnv();
 module.exports = ({ config }) => {
   const baseConfig = appJson.expo || {};
   const googleServicesFileFromEnv = process.env.GOOGLE_SERVICES_JSON?.trim();
-  const googleMapsApiKey =
-    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+  const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
   const isEasBuild = process.env.EAS_BUILD === '1' || process.env.CI === '1';
 
   const fallbackGoogleServicesFile =

@@ -6,14 +6,12 @@
 
 import { isDevelopmentBuild } from './security';
 
-const LOCAL_NETWORK_HOST_REGEX =
-  /^(localhost|127\.0\.0\.1|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/;
-
 const assertAllowedProtocol = (url: URL) => {
   if (url.protocol !== 'http:') return;
 
-  const isLocalNetworkHost = LOCAL_NETWORK_HOST_REGEX.test(url.hostname);
-  if (isDevelopmentBuild() && isLocalNetworkHost) return;
+  // Development builds (Expo Go, dev clients) may talk to any HTTP host,
+  // including remote dev servers. Production builds require HTTPS.
+  if (isDevelopmentBuild()) return;
 
   throw new Error(
     'Insecure API URL detected. Use HTTPS in production. HTTP is only allowed for local development hosts.',

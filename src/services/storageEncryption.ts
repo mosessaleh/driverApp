@@ -26,11 +26,15 @@ async function getOrCreateKey(): Promise<string | null> {
 export async function encryptString(value: string): Promise<string> {
   try {
     const key = await getOrCreateKey();
-    if (!key) return value;
+    if (!key) {
+      console.warn('SecureStore unavailable; storing value unencrypted (platform limitation).');
+      return value;
+    }
 
     const encrypted = CryptoJS.AES.encrypt(value, key).toString();
     return `${PREFIX}${encrypted}`;
   } catch {
+    console.warn('Encryption failed; storing value unencrypted (platform limitation).');
     return value;
   }
 }

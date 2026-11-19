@@ -44,9 +44,20 @@
       "notification": {
         "channels": [
           {
-            "name": "Batch Notifications",
-            "id": "batch",
-            "description": "Notifications for batch updates",
+            "name": "Ride Offers",
+            "id": "driver-rides",
+            "description": "Notifications for ride offers",
+            "sound": true,
+            "vibration": [0, 250, 250, 250],
+            "importance": "high",
+            "visibility": "private",
+            "vibrate": true,
+            "showBadge": true
+          },
+          {
+            "name": "General Updates",
+            "id": "user-updates",
+            "description": "Notifications for general updates",
             "sound": true,
             "vibration": [0, 250, 250, 250],
             "importance": "high",
@@ -87,7 +98,7 @@
         "expo-notifications",
         {
           "color": "#ffffff",
-          "defaultChannel": "batch"
+          "defaultChannel": "driver-rides"
         }
       ],
       [

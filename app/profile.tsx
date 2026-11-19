@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl, Image } from 'react-native';
+import type { FC, ReactNode } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  Image,
+} from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useSettings } from '../src/context/SettingsContext';
 import { useRouter } from 'expo-router';
@@ -18,7 +29,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { t, isRTL } = useTranslation();
   const themeColors = getThemeColors(isDarkMode);
-  
+
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +107,9 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>
+            {t('profile')}
+          </Text>
         </View>
         <View style={styles.loadingContainer}>
           <Loading size="large" isDarkMode={isDarkMode} text={t('profile_loading')} />
@@ -112,7 +125,9 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={goBack}>
             <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
+          <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>
+            {t('profile')}
+          </Text>
         </View>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color={colors.danger[500]} />
@@ -129,7 +144,8 @@ export default function ProfileScreen() {
     );
   }
 
-  const isDriverActive = profileData?.isActive === 1 || profileData?.isActive === true || profileData?.isActive === '1';
+  const isDriverActive =
+    profileData?.isActive === 1 || profileData?.isActive === true || profileData?.isActive === '1';
   const statusLabel = isDriverActive ? t('driver_active') : t('driver_inactive');
   const statusColors = isDriverActive
     ? { background: colors.success[100], text: colors.success[700], dot: colors.success[500] }
@@ -143,22 +159,32 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: themeColors.neutral.background }]}>
-      <View style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}>
+      <View
+        style={[styles.header, { backgroundColor: themeColors.neutral.surface, ...shadows.sm }]}
+      >
         <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={colors.primary[500]} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>{t('profile')}</Text>
-        <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={isRefreshing}>
-          <Ionicons name={isRefreshing ? "refresh-outline" : "refresh"} size={20} color={colors.primary[500]} />
+        <Text style={[styles.headerTitle, { color: themeColors.neutral.text }]}>
+          {t('profile')}
+        </Text>
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <Ionicons
+            name={isRefreshing ? 'refresh-outline' : 'refresh'}
+            size={20}
+            color={colors.primary[500]}
+          />
         </TouchableOpacity>
       </View>
 
       <ScrollView
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
       >
         {/* Profile Header Card */}
         <Card variant="elevated" isDarkMode={isDarkMode} style={styles.profileCard}>
@@ -197,7 +223,7 @@ export default function ProfileScreen() {
               {t('personal_info')}
             </Text>
           </View>
-          
+
           <InfoRow
             icon="person-outline"
             label={t('full_name')}
@@ -239,7 +265,7 @@ export default function ProfileScreen() {
               {t('company_info')}
             </Text>
           </View>
-          
+
           <InfoRow
             icon="business-outline"
             label={t('company_name')}
@@ -274,7 +300,7 @@ export default function ProfileScreen() {
               {t('vehicle_info')}
             </Text>
           </View>
-          
+
           <InfoRow
             icon="car-sport-outline"
             label={t('license_plate')}
@@ -316,7 +342,7 @@ export default function ProfileScreen() {
               {t('actions')}
             </Text>
           </View>
-          
+
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: themeColors.neutral.surfaceVariant }]}
             onPress={() => handleActionPress('change_password')}
@@ -342,13 +368,21 @@ interface InfoRowProps {
   value: string;
   isDarkMode: boolean;
   isLast?: boolean;
-  renderValue?: () => React.ReactNode;
+  renderValue?: () => ReactNode;
   isRTL?: boolean;
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value, isDarkMode, isLast, renderValue, isRTL }) => {
+const InfoRow: FC<InfoRowProps> = ({
+  icon,
+  label,
+  value,
+  isDarkMode,
+  isLast,
+  renderValue,
+  isRTL,
+}) => {
   const themeColors = getThemeColors(isDarkMode);
-  
+
   return (
     <View
       style={[
@@ -359,16 +393,29 @@ const InfoRow: React.FC<InfoRowProps> = ({ icon, label, value, isDarkMode, isLas
     >
       <View style={[styles.infoLeft, isRTL && styles.infoLeftRtl]}>
         <Ionicons name={icon} size={18} color={themeColors.neutral.textSecondary} />
-        <Text style={[styles.infoLabel, isRTL && styles.infoLabelRtl, { color: themeColors.neutral.textSecondary }]}>
+        <Text
+          style={[
+            styles.infoLabel,
+            isRTL && styles.infoLabelRtl,
+            { color: themeColors.neutral.textSecondary },
+          ]}
+        >
           {label}
         </Text>
       </View>
       {renderValue ? (
         renderValue()
       ) : (
-      <Text style={[styles.infoValue, isRTL && styles.infoValueRtl, { color: themeColors.neutral.text }]} numberOfLines={2}>
-        {value}
-      </Text>
+        <Text
+          style={[
+            styles.infoValue,
+            isRTL && styles.infoValueRtl,
+            { color: themeColors.neutral.text },
+          ]}
+          numberOfLines={2}
+        >
+          {value}
+        </Text>
       )}
     </View>
   );
@@ -380,12 +427,12 @@ interface LicensePlateProps {
   notAvailableLabel: string;
 }
 
-const LicensePlate: React.FC<LicensePlateProps> = ({ value, isDarkMode, notAvailableLabel }) => {
+const LicensePlate: FC<LicensePlateProps> = ({ value, isDarkMode, notAvailableLabel }) => {
   const { t } = useTranslation();
   const plateValue = value && value.trim().length > 0 ? value.toUpperCase() : notAvailableLabel;
 
   return (
-    <View style={[styles.plateContainer, { backgroundColor: isDarkMode ? '#f8fafc' : '#ffffff' }]}> 
+    <View style={[styles.plateContainer, { backgroundColor: isDarkMode ? '#f8fafc' : '#ffffff' }]}>
       <View style={styles.plateCountry}>
         <Text style={styles.plateCountryText}>{t('license_plate_country_code')}</Text>
       </View>

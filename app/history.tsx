@@ -11,8 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { getDriverHistory } from '../src/services/api';
 import { useRideOfferRedirect } from '../src/hooks/useRideOfferRedirect';
 import { useTranslation } from '../src/hooks/useTranslation';
@@ -568,7 +567,7 @@ export default function HistoryScreen() {
               {item.canceledBy ? (
                 <Text
                   style={styles.cancellationText}
-                >{`${t('canceled_by')}: ${t(`canceled_by_${item.canceledBy}`)}`}</Text>
+                >{`${t('canceled_by')}: ${t(`canceled_by_${String(item.canceledBy).toLowerCase()}`)}`}</Text>
               ) : null}
             </View>
           )}

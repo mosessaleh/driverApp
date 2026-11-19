@@ -26,6 +26,8 @@ type Props = {
   onRidePreferences: () => void;
   onToggleBusy: () => void;
   onEndShift: () => void;
+  onOpenRidesOverview: () => void;
+  ridesOverviewBadgeCount?: number;
 };
 
 export default function HamburgerMenu({
@@ -51,6 +53,8 @@ export default function HamburgerMenu({
   onRidePreferences,
   onToggleBusy,
   onEndShift,
+  onOpenRidesOverview,
+  ridesOverviewBadgeCount = 0,
 }: Props) {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
@@ -72,6 +76,18 @@ export default function HamburgerMenu({
               style={[styles.pendingBadgeOnMenuButton, { backgroundColor: pendingUrgencyColor }]}
             >
               <Text style={styles.pendingBadgeText}>{pendingScheduledCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.menuButton, styles.ridesButton]}
+          activeOpacity={0.85}
+          onPress={onOpenRidesOverview}
+        >
+          <Text style={styles.ridesButtonIcon}>📋</Text>
+          {ridesOverviewBadgeCount > 0 && (
+            <View style={styles.ridesButtonBadge}>
+              <Text style={styles.pendingBadgeText}>{ridesOverviewBadgeCount}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -283,6 +299,26 @@ const getStyles = (isDarkMode: boolean, isRTL: boolean) =>
       borderColor: isDarkMode ? 'rgba(56,189,248,0.6)' : '#7dd3fc',
       shadowColor: '#38bdf8',
       shadowOpacity: 0.4,
+    },
+    ridesButton: {
+      marginTop: 14,
+    },
+    ridesButtonIcon: {
+      fontSize: 20,
+    },
+    ridesButtonBadge: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#2563eb',
+      borderWidth: 1,
+      borderColor: '#fff',
     },
     pendingBadgeOnMenuButton: {
       position: 'absolute',

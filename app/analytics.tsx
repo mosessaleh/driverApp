@@ -139,7 +139,15 @@ export default function AnalyticsScreen() {
     );
   }
 
-  const { summary, charts, insights } = analytics;
+  const { summary, charts = {}, insights = {} } = analytics;
+  const dailyChart: any[] = Array.isArray((charts as any)?.daily) ? (charts as any).daily : [];
+  const hourlyChart: any[] = Array.isArray((charts as any)?.hourly) ? (charts as any).hourly : [];
+  const peakHoursList: any[] = Array.isArray((insights as any)?.peakHours)
+    ? (insights as any).peakHours
+    : [];
+  const topPickupAreasList: any[] = Array.isArray((insights as any)?.topPickupAreas)
+    ? (insights as any).topPickupAreas
+    : [];
   const averageRating = Number(summary?.averageRating ?? 0);
   const acceptanceRate = Number(summary?.acceptanceRate ?? 0);
   const completionRate = Number(summary?.completionRate ?? 0);
@@ -306,15 +314,15 @@ export default function AnalyticsScreen() {
         </View>
 
         {/* Daily Earnings Chart */}
-        {charts.daily && charts.daily.length > 0 && (
+        {dailyChart.length > 0 && (
           <View style={styles.chartContainer}>
             <Text style={styles.chartTitle}>{t('daily_earnings')}</Text>
             <LineChart
               data={{
-                labels: charts.daily.map((d: any) => d.date.slice(-2)), // Last 2 chars of date
+                labels: dailyChart.map((d: any) => d.date.slice(-2)), // Last 2 chars of date
                 datasets: [
                   {
-                    data: charts.daily.map((d: any) => d.earnings),
+                    data: dailyChart.map((d: any) => d.earnings),
                   },
                 ],
               }}
@@ -332,10 +340,10 @@ export default function AnalyticsScreen() {
           <Text style={styles.chartTitle}>{t('rides_by_hour')}</Text>
           <BarChart
             data={{
-              labels: charts.hourly.slice(0, 12).map((h: any) => h.hour), // First 12 hours
+              labels: hourlyChart.slice(0, 12).map((h: any) => h.hour), // First 12 hours
               datasets: [
                 {
-                  data: charts.hourly.slice(0, 12).map((h: any) => h.rides),
+                  data: hourlyChart.slice(0, 12).map((h: any) => h.rides),
                 },
               ],
             }}
@@ -353,13 +361,13 @@ export default function AnalyticsScreen() {
         <View style={styles.insightsContainer}>
           <Text style={styles.sectionTitle}>{t('insights')}</Text>
 
-          {insights.peakHours.length > 0 && (
+          {peakHoursList.length > 0 && (
             <View style={styles.insightCard}>
               <Ionicons name="time" size={20} color="#007bff" />
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>{t('peak_hours')}</Text>
                 <Text style={styles.insightText}>
-                  {insights.peakHours
+                  {peakHoursList
                     .slice(0, 3)
                     .map((h: any) => h.hour)
                     .join(', ')}
@@ -368,13 +376,13 @@ export default function AnalyticsScreen() {
             </View>
           )}
 
-          {insights.topPickupAreas.length > 0 && (
+          {topPickupAreasList.length > 0 && (
             <View style={styles.insightCard}>
               <Ionicons name="location" size={20} color="#28a745" />
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>{t('top_areas')}</Text>
                 <Text style={styles.insightText}>
-                  {insights.topPickupAreas
+                  {topPickupAreasList
                     .slice(0, 3)
                     .map((a: any) => a.area)
                     .join(', ')}
@@ -388,7 +396,7 @@ export default function AnalyticsScreen() {
               <Ionicons name="calendar" size={20} color="#ffc107" />
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>{t('busiest_day')}</Text>
-                <Text style={styles.insightText}>{insights.busiestDay.date}</Text>
+                <Text style={styles.insightText}>{insights.busiestDay?.date}</Text>
               </View>
             </View>
           )}

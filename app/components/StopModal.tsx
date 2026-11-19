@@ -25,6 +25,8 @@ type Props = {
   isContinueLoading: boolean;
   onNav: (origin: string, destination: string) => void;
   onContinueTrip: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 };
 
 export default function StopModal({
@@ -34,6 +36,8 @@ export default function StopModal({
   isContinueLoading,
   onNav,
   onContinueTrip,
+  collapsed,
+  onToggleCollapse,
 }: Props) {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
@@ -45,118 +49,140 @@ export default function StopModal({
 
   return (
     <View style={styles.rideModalContainer}>
-      <View style={styles.pickupModalCard}>
-        <View style={styles.pickupHandle} />
-        <View style={styles.pickupHeaderRow}>
-          <View style={styles.pickupBadge}>
-            <Text style={styles.pickupBadgeText}>{t('stop')}</Text>
-          </View>
-          <View style={styles.pickupHeaderMeta}>
-            <View style={styles.pickupIdPill}>
-              <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+      <View style={[styles.pickupModalCard, collapsed && styles.stopModalCardCollapsed]}>
+        <TouchableOpacity
+          style={styles.modalCollapseHeader}
+          activeOpacity={0.85}
+          onPress={onToggleCollapse}
+        >
+          <Text style={styles.modalCollapseArrow}>{collapsed ? '▲' : '▼'}</Text>
+          {collapsed && (
+            <Text style={styles.modalCollapsedTitle} numberOfLines={1}>
+              #{activeRide.id} · {t('stop')} · {activeRide.stopAddress}
+            </Text>
+          )}
+        </TouchableOpacity>
+        {!collapsed && (
+          <>
+            <View style={styles.pickupHeaderRow}>
+              <View style={styles.pickupBadge}>
+                <Text style={styles.pickupBadgeText}>{t('stop')}</Text>
+              </View>
+              <View style={styles.pickupHeaderMeta}>
+                <View style={styles.pickupIdPill}>
+                  <Text style={styles.pickupIdText}>#{activeRide.id}</Text>
+                </View>
+                {activeRide.riderPhone && (
+                  <TouchableOpacity
+                    style={styles.callIconInModal}
+                    onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
+                  >
+                    <Text style={styles.callIconText}>📞</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-            {activeRide.riderPhone && (
-              <TouchableOpacity
-                style={styles.callIconInModal}
-                onPress={() => Linking.openURL(`tel:${activeRide.riderPhone}`)}
-              >
-                <Text style={styles.callIconText}>📞</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-        {activeRide.riderName ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: isDarkMode ? '#f1f5f9' : '#0f172a' }}
-            >
-              👤 {t('rider')}: {activeRide.riderName}
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.pickupInfoRow}>
-          <View style={styles.pickupInfoCard}>
-            <Text style={styles.pickupInfoLabel}>
-              {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
-                ? t('approximate_price')
-                : t('price')}
-            </Text>
-            {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash' ? (
-              <>
+            {activeRide.riderName ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                 <Text
-                  style={[
-                    styles.pickupInfoValue,
-                    styles.pickupInfoValueAccent,
-                    { color: '#f59e0b' },
-                  ]}
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '700',
+                    color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                  }}
                 >
-                  ~{activeRide.price} DKK
-                </Text>
-                <Text
-                  style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}
-                >
-                  {t('meter_runs_on_meter')}
-                </Text>
-              </>
-            ) : (
-              <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
-                {activeRide.price} DKK
-              </Text>
-            )}
-          </View>
-          <View style={styles.pickupInfoCard}>
-            <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
-            <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
-          </View>
-        </View>
-        <View style={styles.stopAddressCard}>
-          <View style={styles.stopAddressHeader}>
-            <View style={styles.stopDot} />
-            <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
-          </View>
-          <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
-            {activeRide.stopAddress}
-          </Text>
-        </View>
-        {activeRide.vehicleTypeName ? (
-          <View style={styles.rideTypeBadge}>
-            <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
-          </View>
-        ) : null}
-        <View style={styles.pickupActions}>
-          <View style={styles.pickupActionRow}>
-            <TouchableOpacity
-              style={[styles.pickupNavButton, styles.pickupActionButton]}
-              onPress={() =>
-                onNav(
-                  `${currentLocation?.latitude},${currentLocation?.longitude}`,
-                  activeRide.stopAddress || '',
-                )
-              }
-            >
-              <Text style={styles.pickupNavText} numberOfLines={1} ellipsizeMode="tail">
-                {activeRide.stopAddress || t('nav')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={styles.pickupButton}
-            onLongPress={onContinueTrip}
-            delayLongPress={1500}
-            disabled={isContinueLoading}
-          >
-            {isContinueLoading ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>
-                  {t('continuing_trip')}
+                  👤 {t('rider')}: {activeRide.riderName}
                 </Text>
               </View>
-            ) : (
-              <Text style={styles.pickupButtonText}>{t('hold_to_continue_trip')}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            ) : null}
+            <View style={styles.pickupInfoRow}>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>
+                  {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash'
+                    ? t('approximate_price')
+                    : t('price')}
+                </Text>
+                {activeRide.paymentMethod === 'meter' || activeRide.paymentMethod === 'cash' ? (
+                  <>
+                    <Text
+                      style={[
+                        styles.pickupInfoValue,
+                        styles.pickupInfoValueAccent,
+                        { color: '#f59e0b' },
+                      ]}
+                    >
+                      ~{activeRide.price} DKK
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pickupInfoLabel,
+                        { fontSize: 11, marginTop: 2, color: '#f59e0b' },
+                      ]}
+                    >
+                      {t('meter_runs_on_meter')}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
+                    {activeRide.price} DKK
+                  </Text>
+                )}
+              </View>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+              </View>
+            </View>
+            <View style={styles.stopAddressCard}>
+              <View style={styles.stopAddressHeader}>
+                <View style={styles.stopDot} />
+                <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+              </View>
+              <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                {activeRide.stopAddress}
+              </Text>
+            </View>
+            {activeRide.vehicleTypeName ? (
+              <View style={styles.rideTypeBadge}>
+                <Text style={styles.rideTypeBadgeText}>{activeRide.vehicleTypeName}</Text>
+              </View>
+            ) : null}
+            <View style={styles.pickupActions}>
+              <View style={styles.pickupActionRow}>
+                <TouchableOpacity
+                  style={[styles.pickupNavButton, styles.pickupActionButton]}
+                  onPress={() =>
+                    onNav(
+                      `${currentLocation?.latitude},${currentLocation?.longitude}`,
+                      activeRide.stopAddress || '',
+                    )
+                  }
+                >
+                  <Text style={styles.pickupNavText} numberOfLines={1} ellipsizeMode="tail">
+                    {activeRide.stopAddress || t('nav')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.pickupButton}
+                onLongPress={onContinueTrip}
+                delayLongPress={1500}
+                disabled={isContinueLoading}
+              >
+                {isContinueLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.pickupButtonText, { marginLeft: 10 }]}>
+                      {t('continuing_trip')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pickupButtonText}>{t('hold_to_continue_trip')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -166,12 +192,9 @@ const getModalStyles = (isDarkMode: boolean) =>
   StyleSheet.create({
     rideModalContainer: {
       position: 'absolute',
-      top: 0,
+      bottom: 0,
       left: 0,
       right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.4)',
-      justifyContent: 'flex-end',
       zIndex: 3000,
     },
     pickupModalCard: {
@@ -193,6 +216,29 @@ const getModalStyles = (isDarkMode: boolean) =>
       borderRadius: 2,
       alignSelf: 'center',
       marginBottom: 16,
+    },
+    stopModalCardCollapsed: {
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    modalCollapseHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 24,
+    },
+    modalCollapseArrow: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: isDarkMode ? '#cbd5e1' : '#475569',
+    },
+    modalCollapsedTitle: {
+      flex: 1,
+      marginLeft: 10,
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+      textAlign: 'center',
     },
     pickupHeaderRow: {
       flexDirection: 'row',

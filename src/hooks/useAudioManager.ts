@@ -1,9 +1,10 @@
 import { useRef, useCallback } from 'react';
+import type { MutableRefObject } from 'react';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
 const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-type SoundRef = React.MutableRefObject<Audio.Sound | null>;
+type SoundRef = MutableRefObject<Audio.Sound | null>;
 
 const getAudioMode = () => ({
   allowsRecordingIOS: false,
@@ -130,15 +131,12 @@ export function useAudioManager() {
     [runWithAudioFocusRetry],
   );
 
-  const stopLoopingSound = useCallback(
-    async (ref: SoundRef, context: string) => {
-      const sound = ref.current;
-      if (!sound) return;
-      ref.current = null;
-      await safelyUnload(sound, context);
-    },
-    [],
-  );
+  const stopLoopingSound = useCallback(async (ref: SoundRef, context: string) => {
+    const sound = ref.current;
+    if (!sound) return;
+    ref.current = null;
+    await safelyUnload(sound, context);
+  }, []);
 
   return {
     ensureAudioMode,

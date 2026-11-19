@@ -151,16 +151,23 @@ const refreshAccessToken = async (): Promise<{ token: string; refreshToken: stri
   return refreshPromise;
 };
 
-const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
+const retry = async (
+  fn: (effectiveToken: string | undefined) => Promise<any>,
+  retries = 3,
+  delay = 1000,
+  token?: string,
+) => {
   try {
-    return await fn();
+    return await fn(token);
   } catch (error) {
     if (error instanceof HttpError) {
       // Try refresh on 401
       if (error.status === 401 && retries === 3) {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
-          return retry(fn, retries - 1, delay);
+          // Re-read the freshly stored token so the retry does not reuse the stale one
+          const freshToken = (await getAuthToken()) || undefined;
+          return retry(fn, retries - 1, delay, freshToken);
         }
         await removeAuthToken();
         await removeRefreshToken();
@@ -172,7 +179,7 @@ const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
     }
     if (retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
-      return retry(fn, retries - 1, delay * 2);
+      return retry(fn, retries - 1, delay * 2, token);
     }
     throw error;
   }
@@ -180,101 +187,116 @@ const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
 
 export const api = {
   post: async (endpoint: string, data: any, token?: string) => {
-    return retry(async () => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      if (getDeviceIdFn) {
-        const deviceId = await getDeviceIdFn();
-        if (deviceId) headers['X-Device-Id'] = deviceId;
-      }
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          } else if (errorData.error) {
-            errorMessage = errorData.error;
-          }
-        } catch (e) {
-          // If not JSON, use the text as is
+    return retry(
+      async (effectiveToken) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        };
+        if (effectiveToken) {
+          headers.Authorization = `Bearer ${effectiveToken}`;
         }
-        throw new HttpError(errorMessage, response.status);
-      }
-      return response.json();
-    });
+        if (getDeviceIdFn) {
+          const deviceId = await getDeviceIdFn();
+          if (deviceId) headers['X-Device-Id'] = deviceId;
+        }
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            // If not JSON, use the text as is
+          }
+          throw new HttpError(errorMessage, response.status);
+        }
+        return response.json();
+      },
+      3,
+      1000,
+      token,
+    );
   },
   get: async (endpoint: string, token?: string) => {
-    return retry(async () => {
-      const headers: Record<string, string> = {
-        'Cache-Control': 'no-cache',
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      if (getDeviceIdFn) {
-        const deviceId = await getDeviceIdFn();
-        if (deviceId) headers['X-Device-Id'] = deviceId;
-      }
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'GET',
-        headers,
-      });
-      if (!response.ok) {
-        throw new HttpError(
-          `API Error: ${response.status} ${response.statusText}`,
-          response.status,
-        );
-      }
-      return response.json();
-    });
+    return retry(
+      async (effectiveToken) => {
+        const headers: Record<string, string> = {
+          'Cache-Control': 'no-cache',
+        };
+        if (effectiveToken) {
+          headers.Authorization = `Bearer ${effectiveToken}`;
+        }
+        if (getDeviceIdFn) {
+          const deviceId = await getDeviceIdFn();
+          if (deviceId) headers['X-Device-Id'] = deviceId;
+        }
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'GET',
+          headers,
+        });
+        if (!response.ok) {
+          throw new HttpError(
+            `API Error: ${response.status} ${response.statusText}`,
+            response.status,
+          );
+        }
+        return response.json();
+      },
+      3,
+      1000,
+      token,
+    );
   },
   put: async (endpoint: string, data: any, token?: string) => {
-    return retry(async () => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      if (getDeviceIdFn) {
-        const deviceId = await getDeviceIdFn();
-        if (deviceId) headers['X-Device-Id'] = deviceId;
-      }
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          } else if (errorData.error) {
-            errorMessage = errorData.error;
-          }
-        } catch (e) {
-          // If not JSON, use the text as is
+    return retry(
+      async (effectiveToken) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        };
+        if (effectiveToken) {
+          headers.Authorization = `Bearer ${effectiveToken}`;
         }
-        throw new HttpError(errorMessage, response.status);
-      }
-      return response.json();
-    });
+        if (getDeviceIdFn) {
+          const deviceId = await getDeviceIdFn();
+          if (deviceId) headers['X-Device-Id'] = deviceId;
+        }
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          let errorMessage = `API Error ${response.status}: ${response.statusText || errorText}`;
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            // If not JSON, use the text as is
+          }
+          throw new HttpError(errorMessage, response.status);
+        }
+        return response.json();
+      },
+      3,
+      1000,
+      token,
+    );
   },
   // Add other methods as needed
 };
@@ -305,7 +327,7 @@ export const getRide = async (rideId: string, token: string) => {
   return api.get(`/api/driver/rides/${rideId}`, token);
 };
 
-export const acceptRide = async (rideId: string, token: string) => {
+export const acceptRideViaHttp = async (rideId: string, token: string) => {
   return api.post(`/api/bookings/${rideId}/accept`, {}, token);
 };
 

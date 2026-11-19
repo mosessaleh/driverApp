@@ -29,6 +29,8 @@ type Props = {
   isDropoffLoading: boolean;
   onNav: (origin: string, destination: string) => void;
   onDropoff: (meterPrice?: number) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 };
 
 export default function DropoffModal({
@@ -38,6 +40,8 @@ export default function DropoffModal({
   isDropoffLoading,
   onNav,
   onDropoff,
+  collapsed,
+  onToggleCollapse,
 }: Props) {
   const { isDarkMode } = useSettings();
   const { t, getCurrentLanguage } = useTranslation();
@@ -87,135 +91,157 @@ export default function DropoffModal({
 
   return (
     <View style={styles.rideModalContainer}>
-      <View style={styles.dropoffModalCard}>
-        <View style={styles.dropoffHandle} />
-        <View style={styles.dropoffHeaderRow}>
-          <View style={styles.dropoffBadge}>
-            <Text style={styles.dropoffBadgeText}>{t('dropoff')}</Text>
-          </View>
-          <View style={styles.dropoffIdPill}>
-            <Text style={styles.dropoffIdText}>#{activeRide.id}</Text>
-          </View>
-        </View>
-        {activeRide.riderName ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: isDarkMode ? '#f1f5f9' : '#0f172a' }}
-            >
-              👤 {t('rider')}: {activeRide.riderName}
+      <View style={[styles.dropoffModalCard, collapsed && styles.dropoffModalCardCollapsed]}>
+        <TouchableOpacity
+          style={styles.modalCollapseHeader}
+          activeOpacity={0.85}
+          onPress={onToggleCollapse}
+        >
+          <Text style={styles.modalCollapseArrow}>{collapsed ? '▲' : '▼'}</Text>
+          {collapsed && (
+            <Text style={styles.modalCollapsedTitle} numberOfLines={1}>
+              #{activeRide.id} · {t('dropoff')} · {activeRide.dropoffAddress}
             </Text>
-          </View>
-        ) : null}
-        <View style={styles.pickupInfoRow}>
-          <View style={styles.pickupInfoCard}>
-            <Text style={styles.pickupInfoLabel}>
-              {isMeter ? t('approximate_price') : t('price')}
-            </Text>
-            {isMeter ? (
-              <>
-                <Text
-                  style={[
-                    styles.pickupInfoValue,
-                    styles.pickupInfoValueAccent,
-                    { color: '#f59e0b' },
-                  ]}
-                >
-                  ~{activeRide.price} DKK
-                </Text>
-                <Text
-                  style={[styles.pickupInfoLabel, { fontSize: 11, marginTop: 2, color: '#f59e0b' }]}
-                >
-                  {t('meter_runs_on_meter')}
-                </Text>
-              </>
-            ) : (
-              <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
-                {activeRide.price} DKK
-              </Text>
-            )}
-          </View>
-          <View style={styles.pickupInfoCard}>
-            <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
-            <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
-          </View>
-        </View>
-
-        {isMeter && (
-          <View style={styles.meterPriceContainer}>
-            <Text style={styles.meterPriceLabel}>
-              {lang === 'ar'
-                ? 'سعر العداد (إجباري)'
-                : lang === 'da'
-                  ? 'Taxameter pris (påkrævet)'
-                  : 'Meter Price (required)'}
-            </Text>
-            <TextInput
-              style={[styles.meterPriceInput, priceError ? { borderColor: '#ef4444' } : {}]}
-              value={meterPrice}
-              onChangeText={(t) => {
-                setMeterPrice(t);
-                setPriceError('');
-              }}
-              keyboardType="numeric"
-              placeholder="0.00"
-              placeholderTextColor={isDarkMode ? '#666' : '#aaa'}
-            />
-            {priceError ? <Text style={styles.meterPriceError}>{priceError}</Text> : null}
-          </View>
-        )}
-
-        {!!activeRide.stopAddress && (
-          <View style={styles.stopAddressCard}>
-            <View style={styles.stopAddressHeader}>
-              <View style={styles.stopDot} />
-              <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+          )}
+        </TouchableOpacity>
+        {!collapsed && (
+          <>
+            <View style={styles.dropoffHeaderRow}>
+              <View style={styles.dropoffBadge}>
+                <Text style={styles.dropoffBadgeText}>{t('dropoff')}</Text>
+              </View>
+              <View style={styles.dropoffIdPill}>
+                <Text style={styles.dropoffIdText}>#{activeRide.id}</Text>
+              </View>
             </View>
-            <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
-              {activeRide.stopAddress}
-            </Text>
-          </View>
-        )}
-        <View style={styles.dropoffAddressCard}>
-          <View style={styles.dropoffAddressHeader}>
-            <View style={styles.dropoffDot} />
-            <Text style={styles.dropoffAddressLabel}>{t('dropoff')}</Text>
-          </View>
-          <Text style={styles.dropoffAddressValue} numberOfLines={2} ellipsizeMode="tail">
-            {activeRide.dropoffAddress}
-          </Text>
-        </View>
-        <View style={styles.dropoffActions}>
-          <View style={styles.dropoffActionRow}>
-            <TouchableOpacity
-              style={styles.dropoffNavButton}
-              onPress={() => {
-                const navOrigin = currentLocation
-                  ? `${currentLocation.latitude},${currentLocation.longitude}`
-                  : activeRide.stopAddress || activeRide.pickupAddress || '';
-                onNav(navOrigin, activeRide.dropoffAddress || '');
-              }}
-            >
-              <Text style={styles.dropoffNavText}>{t('nav')}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={styles.dropoffButton}
-            onLongPress={validateAndDropoff}
-            delayLongPress={1500}
-            disabled={isDropoffLoading}
-          >
-            {isDropoffLoading ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>
-                  {t('dropoff_in_progress')}
+            {activeRide.riderName ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '700',
+                    color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                  }}
+                >
+                  👤 {t('rider')}: {activeRide.riderName}
                 </Text>
               </View>
-            ) : (
-              <Text style={styles.dropoffButtonText}>{t('hold_to_dropoff')}</Text>
+            ) : null}
+            <View style={styles.pickupInfoRow}>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>
+                  {isMeter ? t('approximate_price') : t('price')}
+                </Text>
+                {isMeter ? (
+                  <>
+                    <Text
+                      style={[
+                        styles.pickupInfoValue,
+                        styles.pickupInfoValueAccent,
+                        { color: '#f59e0b' },
+                      ]}
+                    >
+                      ~{activeRide.price} DKK
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pickupInfoLabel,
+                        { fontSize: 11, marginTop: 2, color: '#f59e0b' },
+                      ]}
+                    >
+                      {t('meter_runs_on_meter')}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={[styles.pickupInfoValue, styles.pickupInfoValueAccent]}>
+                    {activeRide.price} DKK
+                  </Text>
+                )}
+              </View>
+              <View style={styles.pickupInfoCard}>
+                <Text style={styles.pickupInfoLabel}>{t('distance')}</Text>
+                <Text style={styles.pickupInfoValue}>{activeRide.distanceKm} km</Text>
+              </View>
+            </View>
+
+            {isMeter && (
+              <View style={styles.meterPriceContainer}>
+                <Text style={styles.meterPriceLabel}>
+                  {lang === 'ar'
+                    ? 'سعر العداد (إجباري)'
+                    : lang === 'da'
+                      ? 'Taxameter pris (påkrævet)'
+                      : 'Meter Price (required)'}
+                </Text>
+                <TextInput
+                  style={[styles.meterPriceInput, priceError ? { borderColor: '#ef4444' } : {}]}
+                  value={meterPrice}
+                  onChangeText={(t) => {
+                    setMeterPrice(t);
+                    setPriceError('');
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  placeholderTextColor={isDarkMode ? '#666' : '#aaa'}
+                />
+                {priceError ? <Text style={styles.meterPriceError}>{priceError}</Text> : null}
+              </View>
             )}
-          </TouchableOpacity>
-        </View>
+
+            {!!activeRide.stopAddress && (
+              <View style={styles.stopAddressCard}>
+                <View style={styles.stopAddressHeader}>
+                  <View style={styles.stopDot} />
+                  <Text style={styles.stopAddressLabel}>{t('stop')}</Text>
+                </View>
+                <Text style={styles.stopAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                  {activeRide.stopAddress}
+                </Text>
+              </View>
+            )}
+            <View style={styles.dropoffAddressCard}>
+              <View style={styles.dropoffAddressHeader}>
+                <View style={styles.dropoffDot} />
+                <Text style={styles.dropoffAddressLabel}>{t('dropoff')}</Text>
+              </View>
+              <Text style={styles.dropoffAddressValue} numberOfLines={2} ellipsizeMode="tail">
+                {activeRide.dropoffAddress}
+              </Text>
+            </View>
+            <View style={styles.dropoffActions}>
+              <View style={styles.dropoffActionRow}>
+                <TouchableOpacity
+                  style={styles.dropoffNavButton}
+                  onPress={() => {
+                    const navOrigin = currentLocation
+                      ? `${currentLocation.latitude},${currentLocation.longitude}`
+                      : activeRide.stopAddress || activeRide.pickupAddress || '';
+                    onNav(navOrigin, activeRide.dropoffAddress || '');
+                  }}
+                >
+                  <Text style={styles.dropoffNavText}>{t('nav')}</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.dropoffButton}
+                onLongPress={validateAndDropoff}
+                delayLongPress={1500}
+                disabled={isDropoffLoading}
+              >
+                {isDropoffLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.dropoffButtonText, { marginLeft: 10 }]}>
+                      {t('dropoff_in_progress')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.dropoffButtonText}>{t('hold_to_dropoff')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -225,12 +251,9 @@ const getModalStyles = (isDarkMode: boolean) =>
   StyleSheet.create({
     rideModalContainer: {
       position: 'absolute',
-      top: 0,
+      bottom: 0,
       left: 0,
       right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.4)',
-      justifyContent: 'flex-end',
       zIndex: 3000,
     },
     dropoffModalCard: {
@@ -252,6 +275,29 @@ const getModalStyles = (isDarkMode: boolean) =>
       borderRadius: 2,
       alignSelf: 'center',
       marginBottom: 16,
+    },
+    dropoffModalCardCollapsed: {
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    modalCollapseHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 24,
+    },
+    modalCollapseArrow: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: isDarkMode ? '#cbd5e1' : '#475569',
+    },
+    modalCollapsedTitle: {
+      flex: 1,
+      marginLeft: 10,
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+      textAlign: 'center',
     },
     dropoffHeaderRow: {
       flexDirection: 'row',

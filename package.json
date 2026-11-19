@@ -52,6 +52,7 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.0",
     "@sentry/react-native": "^8.16.0",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^14.0.1",
@@ -60,6 +61,7 @@
     "@types/react": "~19.1.0",
     "@typescript-eslint/eslint-plugin": "^8.62.1",
     "@typescript-eslint/parser": "^8.62.1",
+    "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -68,14 +70,13 @@
     "jest-expo": "~54.0.11",
     "lint-staged": "^17.0.8",
     "prettier": "^3.9.4",
-    "react-test-renderer": "^19.2.7",
+    "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
   },
   "private": true,
   "overrides": {
     "minimatch": "10.2.4",
     "tar": "7.5.10",
-    "ajv": "8.18.0",
     "@isaacs/brace-expansion": "5.0.1"
   },
   "lint-staged": {

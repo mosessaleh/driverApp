@@ -255,11 +255,11 @@ export default function RideDetailsScreen() {
 
             <View style={styles.customerInfo}>
               <View style={styles.customerAvatar}>
-                <Text style={styles.avatarText}>{ride.user.firstName.charAt(0)}</Text>
+                <Text style={styles.avatarText}>{(ride.user.firstName || '?').charAt(0)}</Text>
               </View>
 
               <View style={styles.customerDetails}>
-                <Text style={styles.customerName}>{ride.user.firstName}</Text>
+                <Text style={styles.customerName}>{ride.user.firstName || t('not_available')}</Text>
               </View>
             </View>
           </View>
@@ -323,7 +323,7 @@ export default function RideDetailsScreen() {
                 ) : null}
                 {ride.canceledBy ? (
                   <Text style={styles.cancellationText}>
-                    {t('canceled_by')}: {t(`canceled_by_${ride.canceledBy}`)}
+                    {t('canceled_by')}: {t(`canceled_by_${String(ride.canceledBy).toLowerCase()}`)}
                   </Text>
                 ) : null}
               </View>

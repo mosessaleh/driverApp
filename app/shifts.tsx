@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -156,14 +155,14 @@ export default function ShiftsScreen() {
         minute: '2-digit',
       });
     },
-    [locale, t]
+    [locale, t],
   );
 
   const formatNumber = useCallback(
     (value?: number | null, maximumFractionDigits = 0) => {
       return new Intl.NumberFormat(locale, { maximumFractionDigits }).format(toSafeNumber(value));
     },
-    [locale]
+    [locale],
   );
 
   const loadShifts = useCallback(
@@ -222,7 +221,7 @@ export default function ShiftsScreen() {
           const fallbackHistory = await getDriverHistory(
             authState.token,
             formatIsoDate(threeMonthsAgo),
-            formatIsoDate(today)
+            formatIsoDate(today),
           );
 
           if (!isMountedRef.current) return;
@@ -249,7 +248,7 @@ export default function ShiftsScreen() {
         }
       }
     },
-    [authState.token, t]
+    [authState.token, t],
   );
 
   useFocusEffect(
@@ -257,7 +256,7 @@ export default function ShiftsScreen() {
       loadShifts(false);
 
       return () => {};
-    }, [loadShifts])
+    }, [loadShifts]),
   );
 
   const onRefreshData = useCallback(async () => {
@@ -285,7 +284,7 @@ export default function ShiftsScreen() {
         },
       });
     },
-    [router, t]
+    [router, t],
   );
 
   const summaryCards = useMemo(
@@ -315,7 +314,14 @@ export default function ShiftsScreen() {
         value: `${formatNumber(summary.totalDistance, 1)} ${t('kilometers_short')}`,
       },
     ],
-    [formatNumber, summary.totalDistance, summary.totalEarnings, summary.totalShifts, summary.totalWorkHours, t]
+    [
+      formatNumber,
+      summary.totalDistance,
+      summary.totalEarnings,
+      summary.totalShifts,
+      summary.totalWorkHours,
+      t,
+    ],
   );
 
   const renderShiftItem = useCallback(
@@ -384,7 +390,7 @@ export default function ShiftsScreen() {
         </TouchableOpacity>
       );
     },
-    [formatDateTime, formatNumber, openShiftHistory, t]
+    [formatDateTime, formatNumber, openShiftHistory, t],
   );
 
   const renderEmptyState = useCallback(() => {
@@ -430,7 +436,9 @@ export default function ShiftsScreen() {
           </View>
         }
         ListEmptyComponent={renderEmptyState}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshData} tintColor="#1d4ed8" />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefreshData} tintColor="#1d4ed8" />
+        }
       />
     </View>
   );

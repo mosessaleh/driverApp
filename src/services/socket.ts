@@ -31,10 +31,22 @@ const API_BASE_URL = getApiBaseUrl();
 
 let socket: Socket | null = null;
 
-let locationInterval: ReturnType<typeof setInterval> | null = null;
+let locationInterval: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let isReconnecting = false;
 let shouldReconnect = true;
+
+let locationUpdateMode: 'idle' | 'active' = 'idle';
+let trackedDriverId: number | null = null;
+let lastSentLocation: { lat: number; lng: number } | null = null;
+let locationTickInFlight = false;
+
+const LOCATION_ACTIVE_INTERVAL_MS = 5000;
+const LOCATION_IDLE_INTERVAL_MS = 30000;
+const LOCATION_MIN_DISTANCE_METERS: Record<'idle' | 'active', number> = {
+  active: 5,
+  idle: 15,
+};
 
 const RECONNECT_BASE_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 10000;
@@ -100,30 +112,75 @@ const attachPersistentListeners = (targetSocket: Socket) => {
 
 const stopLocationUpdates = () => {
   if (locationInterval) {
-    clearInterval(locationInterval);
+    clearTimeout(locationInterval);
     locationInterval = null;
   }
 };
 
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const h = sinDLat * sinDLat + sinDLng * sinDLng * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+const sendLocationTick = async (driverId: number) => {
+  if (locationTickInFlight) return;
+  locationTickInFlight = true;
+  try {
+    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    const locationData = {
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
+    };
+
+    const minDistance = LOCATION_MIN_DISTANCE_METERS[locationUpdateMode];
+    if (lastSentLocation && haversineMeters(lastSentLocation, locationData) < minDistance) {
+      return;
+    }
+
+    if (socket && socket.connected) {
+      lastSentLocation = locationData;
+      socket.emit('updateLocation', { driverId, location: locationData });
+      devLog('Location updated via socket');
+    }
+  } catch (error) {
+    devWarn('Error updating location via socket:', error);
+  } finally {
+    locationTickInFlight = false;
+  }
+};
+
+const getLocationIntervalMs = () =>
+  locationUpdateMode === 'active' ? LOCATION_ACTIVE_INTERVAL_MS : LOCATION_IDLE_INTERVAL_MS;
+
 const startLocationUpdates = (driverId: number) => {
   stopLocationUpdates();
+  trackedDriverId = driverId;
+  lastSentLocation = null;
 
-  locationInterval = setInterval(async () => {
-    try {
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const locationData = {
-        lat: location.coords.latitude,
-        lng: location.coords.longitude,
-      };
+  const tick = async () => {
+    if (trackedDriverId !== driverId || !shouldReconnect) return;
+    await sendLocationTick(driverId);
+    if (trackedDriverId !== driverId || !shouldReconnect) return;
+    locationInterval = setTimeout(tick, getLocationIntervalMs());
+  };
 
-      if (socket && socket.connected) {
-        socket.emit('updateLocation', { driverId, location: locationData });
-        devLog('Location updated via socket');
-      }
-    } catch (error) {
-      devWarn('Error updating location via socket:', error);
-    }
-  }, 30000);
+  locationInterval = setTimeout(tick, getLocationIntervalMs());
+};
+
+export const setLocationUpdateMode = (mode: 'idle' | 'active') => {
+  if (locationUpdateMode === mode) return;
+  locationUpdateMode = mode;
+  if (trackedDriverId != null) {
+    startLocationUpdates(trackedDriverId);
+  }
 };
 
 const joinDriverRoom = () => {
@@ -287,6 +344,8 @@ export const disconnectSocket = () => {
   }
 
   stopLocationUpdates();
+  trackedDriverId = null;
+  lastSentLocation = null;
 
   if (socket) {
     socket.removeAllListeners();
