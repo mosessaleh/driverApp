@@ -98,6 +98,10 @@ import {
   offChainAcceptFailed,
   onChainRideCancelled,
   offChainRideCancelled,
+  onCustomerLocationUpdate,
+  offCustomerLocationUpdate,
+  onCustomerLocationCleared,
+  offCustomerLocationCleared,
   getSocket,
   setLocationUpdateMode,
 } from '../src/services/socket';
@@ -196,7 +200,7 @@ function distanceToPolylineKm(
 }
 
 export default function DashboardScreen() {
-  const { authState, logout } = useAuth();
+  const { authState, logout, updateUser } = useAuth();
   const { settings, isDarkMode, isRTL } = useSettings();
   const insets = useSafeAreaInsets();
   const { t, getCurrentLanguage } = useTranslation();
@@ -234,6 +238,10 @@ export default function DashboardScreen() {
   const [activeRide, setActiveRide] = useState<any>(null);
   const [currentRideId, setCurrentRideId] = useState<number | null>(null);
   const [showPickupModal, setShowPickupModal] = useState(false);
+  const [customerLocation, setCustomerLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [showDropoffModal, setShowDropoffModal] = useState(false);
   const [showStopModal, setShowStopModal] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
@@ -1160,6 +1168,7 @@ export default function DashboardScreen() {
           setActiveRide(null);
           setCurrentRideId(null);
           setShowPickupModal(false);
+          setCustomerLocation(null);
           setShowStopModal(false);
           setShowDropoffModal(false);
           setShowCancelText(false);
@@ -1499,6 +1508,26 @@ export default function DashboardScreen() {
       onChainAcceptFailed(handleChainAcceptFailed);
       onChainRideCancelled(handleChainRideCancelled);
 
+      // موقع العميل الحي أثناء مرحلة التقاط فقط — يظهر كعلامة شخص على الخريطة
+      const handleCustomerLocationUpdate = (data: {
+        rideId: number;
+        location?: { lat?: number; lng?: number };
+        ts?: number;
+      }) => {
+        if (!activeRideRef.current || activeRideRef.current.id !== data.rideId) return;
+        const lat = Number(data?.location?.lat);
+        const lng = Number(data?.location?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setCustomerLocation({ latitude: lat, longitude: lng });
+      };
+      const handleCustomerLocationCleared = (data: { rideId: number }) => {
+        if (activeRideRef.current && activeRideRef.current.id === data.rideId) {
+          setCustomerLocation(null);
+        }
+      };
+      onCustomerLocationUpdate(handleCustomerLocationUpdate);
+      onCustomerLocationCleared(handleCustomerLocationCleared);
+
       // Periodic status check to ensure driver stays connected
       const statusCheckInterval = setInterval(() => {
         if (authState.token) {
@@ -1534,6 +1563,8 @@ export default function DashboardScreen() {
         offChainAccepted();
         offChainAcceptFailed();
         offChainRideCancelled();
+        offCustomerLocationUpdate();
+        offCustomerLocationCleared();
         if (offerTimeoutRef.current) {
           clearInterval(offerTimeoutRef.current);
           offerTimeoutRef.current = null;
@@ -1930,6 +1961,26 @@ export default function DashboardScreen() {
 
       setTotalRidesToday(typeof res.totalRidesToday === 'number' ? res.totalRidesToday : 0);
       setEarningsToday(typeof res.earningsToday === 'number' ? res.earningsToday : 0);
+
+      // تحديث التقييم المعروض من حالة الخادم الحية — كان يبقى مجمداً على
+      // قيمة تسجيل الدخول فلا يرى السائق تقييمات العملاء الجديدة
+      if (typeof res.rating === 'number' && authState.user) {
+        const serverRating = Number(res.rating);
+        const localRating = Number(authState.user.rating);
+        if (
+          Number.isFinite(serverRating) &&
+          Number.isFinite(localRating) &&
+          serverRating !== localRating
+        ) {
+          updateUser({
+            rating: serverRating,
+            fiveStarCount:
+              typeof res.fiveStarCount === 'number'
+                ? res.fiveStarCount
+                : authState.user.fiveStarCount,
+          });
+        }
+      }
 
       if (res.schedule) {
         setScheduleEligibility(res.schedule);
@@ -2411,6 +2462,8 @@ export default function DashboardScreen() {
     // Update ride status locally for immediate UI update
     setActiveRide((prev: any) => (prev ? { ...prev, status: 'PICKED_UP' } : null));
     setShowPickupModal(false);
+    // انتهت مرحلة التقاط: إخفاء علامة موقع العميل
+    setCustomerLocation(null);
     if (hasStop) {
       setShowStopModal(true);
       setShowDropoffModal(false);
@@ -3362,6 +3415,11 @@ export default function DashboardScreen() {
     setLocationUpdateMode(hasActiveRide ? 'active' : 'idle');
   }, [hasActiveRide]);
 
+  // تغيّرت الرحلة (أو انتهت): لا موقع عميل من رحلة سابقة
+  useEffect(() => {
+    setCustomerLocation(null);
+  }, [activeRide?.id]);
+
   useEffect(() => {
     if (showPickupModal) {
       setPickupCollapsed(true);
@@ -3388,6 +3446,7 @@ export default function DashboardScreen() {
           height="100%"
           rounded={false}
           driverLocation={currentLocation}
+          riderLocation={showPickupModal ? customerLocation : undefined}
           route={routeCoordinates?.length > 1 ? routeCoordinates : undefined}
           destinations={mapDestinations}
           darkMode={isDarkMode}

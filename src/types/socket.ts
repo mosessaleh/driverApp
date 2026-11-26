@@ -166,6 +166,16 @@ export interface PickupCountdownExpiredPayload {
   rideId: number;
 }
 
+export interface CustomerLocationUpdatePayload {
+  rideId: number;
+  location: { lat: number; lng: number };
+  ts: number;
+}
+
+export interface CustomerLocationClearedPayload {
+  rideId: number;
+}
+
 export interface ScheduledLateWarningPayload {
   rideId: number;
   lateMinutes: number;

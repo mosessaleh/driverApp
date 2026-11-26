@@ -12,6 +12,7 @@ export type MapDestination = MapLatLng & {
 
 type LiveMapProps = {
   driverLocation?: MapLatLng | null;
+  riderLocation?: MapLatLng | null;
   route?: MapLatLng[] | null;
   destinations?: MapDestination[];
   darkMode?: boolean;
@@ -44,8 +45,12 @@ function pinSvg(color: string, letter: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 1.3C7.9 1.3 4.5 4.7 4.5 8.9c0 4.9 7.5 13.3 7.5 13.3s7.5-8.4 7.5-13.3c0-4.2-3.4-7.6-7.5-7.6z" fill="${color}" stroke="#ffffff" stroke-width="1.3"/><circle cx="12" cy="8.9" r="3.4" fill="#ffffff"/><text x="12" y="10.7" text-anchor="middle" font-size="5.5" font-weight="700" font-family="sans-serif" fill="${color}">${letter}</text></svg>`;
 }
 
+const RIDER_MARKER_COLOR = '#2563eb';
+const RIDER_MARKER_BORDER = '#374151';
+
 type HtmlState = {
   driver: [number, number] | null;
+  rider: [number, number] | null;
   route: [number, number][];
   destinations: Array<{ lat: number; lng: number; kind: string; label?: string }>;
   followDriver: boolean;
@@ -78,10 +83,18 @@ function buildHtml(initial: HtmlState, darkMode: boolean) {
   var DEST_STYLES = ${JSON.stringify(DESTINATION_STYLES)};
   var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   var DRIVER_ICON_URL = ${JSON.stringify(DRIVER_ICON_URL)};
+  var RIDER_MARKER_COLOR = ${JSON.stringify(RIDER_MARKER_COLOR)};
+  var RIDER_MARKER_BORDER = ${JSON.stringify(RIDER_MARKER_BORDER)};
+
+  // أيقونة المستخدم: أزرق بحدود رمادية غامقة، والتوهج الأزرق يُطبق كـ drop-shadow
+  function personSvg(color, border) {
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.2" fill="' + color + '" stroke="' + border + '" stroke-width="2.4"/><circle cx="12" cy="8.6" r="2.9" fill="#ffffff"/><path d="M5.7 18.3c0-3.1 2.8-5.2 6.3-5.2s6.3 2.1 6.3 5.2" fill="#ffffff"/></svg>';
+  }
 
   var map = null;
   var driverMarker = null;
   var driverImg = null;
+  var riderMarker = null;
   var prevDriverLatLng = null;
   var driverRotation = 0;
   var DRIVER_BASE_SIZE = 58;
@@ -249,6 +262,31 @@ function buildHtml(initial: HtmlState, darkMode: boolean) {
     setTimeout(function () { fittingNow = false; }, 900);
   }
 
+  function setRider(lat, lng) {
+    if (!map) return;
+    if (riderMarker) {
+      riderMarker.setLatLng([lat, lng]);
+    } else {
+      riderMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: '',
+          html: '<img src="data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(personSvg(RIDER_MARKER_COLOR, RIDER_MARKER_BORDER)) + '" style="display:block;width:32px;height:32px;filter:drop-shadow(0 0 6px rgba(37,99,235,0.7)) drop-shadow(0 1px 3px rgba(0,0,0,0.35));"/>',
+          iconSize: [32, 32],
+          iconAnchor: [16, 32]
+        }),
+        title: 'Rider'
+      }).addTo(map);
+    }
+  }
+
+  function clearRider() {
+    if (!map) return;
+    if (riderMarker) {
+      map.removeLayer(riderMarker);
+      riderMarker = null;
+    }
+  }
+
   function fitRemainingRoute() {
     if (!map) return;
     var bounds = [];
@@ -290,6 +328,7 @@ function buildHtml(initial: HtmlState, darkMode: boolean) {
 
   initMap();
   if (INITIAL.driver) setDriver(INITIAL.driver[0], INITIAL.driver[1]);
+  if (INITIAL.rider) setRider(INITIAL.rider[0], INITIAL.rider[1]);
   if (INITIAL.route && INITIAL.route.length) setRoute(INITIAL.route);
   if (INITIAL.destinations && INITIAL.destinations.length) setDestinations(INITIAL.destinations);
   if (INITIAL.driver || (INITIAL.route && INITIAL.route.length) || (INITIAL.destinations && INITIAL.destinations.length)) {
@@ -310,6 +349,10 @@ function buildHtml(initial: HtmlState, darkMode: boolean) {
     }
     if (state.fit) autoFit = true;
     if (state.driver) setDriver(state.driver[0], state.driver[1]);
+    if (state.rider !== undefined) {
+      if (state.rider) setRider(state.rider[0], state.rider[1]);
+      else clearRider();
+    }
     if (state.route !== undefined) setRoute(state.route);
     if (state.destinations !== undefined) setDestinations(state.destinations);
     if (autoFit) fitRemainingRoute();
@@ -323,6 +366,7 @@ function buildHtml(initial: HtmlState, darkMode: boolean) {
 
 type RuntimeState = {
   driver: [number, number] | null;
+  rider: [number, number] | null;
   route: [number, number][] | null;
   destinations: Array<{ lat: number; lng: number; kind: string; label?: string }>;
   followDriver: boolean;
@@ -332,6 +376,7 @@ type RuntimeState = {
 
 export default function LiveMap({
   driverLocation,
+  riderLocation,
   route,
   destinations,
   darkMode = false,
@@ -344,6 +389,7 @@ export default function LiveMap({
   const [failed, setFailed] = useState(false);
   const latestState = useRef<RuntimeState>({
     driver: null,
+    rider: null,
     route: null,
     destinations: [],
     followDriver,
@@ -358,6 +404,9 @@ export default function LiveMap({
       {
         driver: driverLocation
           ? ([driverLocation.latitude, driverLocation.longitude] as [number, number])
+          : null,
+        rider: riderLocation
+          ? ([riderLocation.latitude, riderLocation.longitude] as [number, number])
           : null,
         route: (route || []).map((p) => [p.latitude, p.longitude] as [number, number]),
         destinations: (destinations || []).map((d) => ({
@@ -391,6 +440,9 @@ export default function LiveMap({
       driver: driverLocation
         ? ([driverLocation.latitude, driverLocation.longitude] as [number, number])
         : null,
+      rider: riderLocation
+        ? ([riderLocation.latitude, riderLocation.longitude] as [number, number])
+        : null,
       route: (route || []).map((p) => [p.latitude, p.longitude] as [number, number]),
       destinations: (destinations || []).map((d) => ({
         lat: d.latitude,
@@ -403,7 +455,7 @@ export default function LiveMap({
       darkMode,
     };
     injectLatest();
-  }, [driverLocation, route, destinations, followDriver, darkMode, injectLatest]);
+  }, [driverLocation, riderLocation, route, destinations, followDriver, darkMode, injectLatest]);
 
   if (failed) {
     return (

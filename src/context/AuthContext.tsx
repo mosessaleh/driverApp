@@ -53,6 +53,7 @@ const AuthContext = createContext<{
     options?: LoginOptions,
   ) => Promise<DriverLoginResponse>;
   logout: () => Promise<void>;
+  updateUser: (patch: Partial<any>) => void;
 } | null>(null);
 
 export const useAuth = () => {
@@ -436,7 +437,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const updateUser = (patch: Partial<any>) => {
+    setAuthState((prev) => (prev.user ? { ...prev, user: { ...prev.user, ...patch } } : prev));
+  };
+
   return (
-    <AuthContext.Provider value={{ authState, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ authState, login, logout, updateUser }}>
+      {children}
+    </AuthContext.Provider>
   );
 };

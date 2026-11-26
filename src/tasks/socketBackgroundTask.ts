@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectSocket, getSocket } from '../services/socket';
 import * as Location from 'expo-location';
 import { getAuthToken } from '../services/secureStorage';
+import { encryptString } from '../services/storageEncryption';
 import { jwtDecode } from 'jwt-decode';
 import { updateDriverLocation } from '../services/api';
 
@@ -109,10 +110,11 @@ if (Constants.appOwnership !== 'expo') {
 
         await updateDriverLocation(latitude, longitude, token, timestamp);
 
-        await AsyncStorage.setItem(
-          'driverapp.lastBackgroundLocation',
+        // آخر موقع خلفي يُخزَّن مشفراً (AES + مفتاح في SecureStore)
+        const encryptedLastLocation = await encryptString(
           JSON.stringify({ latitude, longitude, timestamp }),
         );
+        await AsyncStorage.setItem('driverapp.lastBackgroundLocation', encryptedLastLocation);
       } catch (locationUpdateError) {
         console.error('Failed to sync background location for driver:', locationUpdateError);
       }

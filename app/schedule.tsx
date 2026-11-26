@@ -128,7 +128,7 @@ function hhmmToMinute(value: string) {
 
 function windowDurationMinutes(startMinute: number, endMinute: number) {
   if (endMinute > startMinute) return endMinute - startMinute;
-  return (1440 - startMinute) + endMinute;
+  return 1440 - startMinute + endMinute;
 }
 
 function clampEndByMaxDuration(start: string, end: string, maxMinutes: number) {
@@ -166,6 +166,10 @@ export default function DriverScheduleScreen() {
   const [applyingSuggestions, setApplyingSuggestions] = useState(false);
 
   const [days, setDays] = useState<DayDraft[]>([]);
+  const [originalWindowsByDay, setOriginalWindowsByDay] = useState<Map<number, ScheduleWindow[]>>(
+    new Map(),
+  );
+  const [dirtyDays, setDirtyDays] = useState<Set<number>>(new Set());
   const [preferences, setPreferences] = useState<PreferencesDraft>({
     maxDailyMinutes: '600',
     maxWeeklyMinutes: '3360',
@@ -174,12 +178,14 @@ export default function DriverScheduleScreen() {
     allowEmergencyOverride: true,
   });
   const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
-  const [lockStatus, setLockStatus] = useState<{ locked?: boolean; reasonMessage?: string } | null>(null);
+  const [lockStatus, setLockStatus] = useState<{ locked?: boolean; reasonMessage?: string } | null>(
+    null,
+  );
   const [eligibilityMessage, setEligibilityMessage] = useState('');
 
   const maxDailyMinutes = Math.min(
     LEGAL_MAX_DAILY_MINUTES,
-    Math.max(1, Number.parseInt(preferences.maxDailyMinutes || '600', 10) || 600)
+    Math.max(1, Number.parseInt(preferences.maxDailyMinutes || '600', 10) || 600),
   );
 
   const [exceptionDraft, setExceptionDraft] = useState<ExceptionDraft>({
@@ -203,14 +209,17 @@ export default function DriverScheduleScreen() {
     return Array.from({ length: 7 }, (_, dayOfWeek) => {
       const row = byDay.get(dayOfWeek);
       const windows = Array.isArray(row?.windows) ? row!.windows! : [];
-      const selectedWindow = windows.find((window) => window && window.isActive !== false) || windows[0];
+      const selectedWindow =
+        windows.find((window) => window && window.isActive !== false) || windows[0];
 
-      const start = typeof selectedWindow?.start === 'string'
-        ? selectedWindow.start
-        : minuteToHHmm(selectedWindow?.startMinute) || '08:00';
-      const end = typeof selectedWindow?.end === 'string'
-        ? selectedWindow.end
-        : minuteToHHmm(selectedWindow?.endMinute) || '16:00';
+      const start =
+        typeof selectedWindow?.start === 'string'
+          ? selectedWindow.start
+          : minuteToHHmm(selectedWindow?.startMinute) || '08:00';
+      const end =
+        typeof selectedWindow?.end === 'string'
+          ? selectedWindow.end
+          : minuteToHHmm(selectedWindow?.endMinute) || '16:00';
 
       return {
         dayOfWeek,
@@ -224,6 +233,18 @@ export default function DriverScheduleScreen() {
 
   const applyResponseToState = (response: ScheduleResponse) => {
     setDays(normalizeTemplate(response.template || []));
+
+    // الاحتفاظ بالنوافذ الأصلية لكل يوم (بما فيها النوافذ المتعددة القادمة من
+    // الأدمن/الـAPI) حتى لا تُسحق أيام لم يلمسها السائق عند الحفظ.
+    const windowsByDay = new Map<number, ScheduleWindow[]>();
+    for (const day of response.template || []) {
+      if (Number.isInteger(day?.dayOfWeek)) {
+        windowsByDay.set(Number(day.dayOfWeek), Array.isArray(day.windows) ? day.windows : []);
+      }
+    }
+    setOriginalWindowsByDay(windowsByDay);
+    setDirtyDays(new Set());
+
     setPreferences({
       maxDailyMinutes: String(response.preferences?.maxDailyMinutes ?? 600),
       maxWeeklyMinutes: String(response.preferences?.maxWeeklyMinutes ?? 3360),
@@ -256,32 +277,44 @@ export default function DriverScheduleScreen() {
     loadSchedule();
   }, [authState.token]);
 
-  const updateDayDraft = (dayOfWeek: number, patch: Partial<DayDraft>, source: 'start' | 'end' | 'other' = 'other') => {
-    setDays((prev) => prev.map((day) => {
-      if (day.dayOfWeek !== dayOfWeek) return day;
-      let nextDay = { ...day, ...patch };
+  const updateDayDraft = (
+    dayOfWeek: number,
+    patch: Partial<DayDraft>,
+    source: 'start' | 'end' | 'other' = 'other',
+  ) => {
+    setDirtyDays((prev) => {
+      const next = new Set(prev);
+      next.add(dayOfWeek);
+      return next;
+    });
 
-      if (nextDay.enabled && isHHmm(nextDay.start) && isHHmm(nextDay.end)) {
-        if (source === 'start') {
-          nextDay = {
-            ...nextDay,
-            end: clampEndByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes)
-          };
-        } else if (source === 'end') {
-          nextDay = {
-            ...nextDay,
-            start: clampStartByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes)
-          };
-        } else {
-          nextDay = {
-            ...nextDay,
-            end: clampEndByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes)
-          };
+    setDays((prev) =>
+      prev.map((day) => {
+        if (day.dayOfWeek !== dayOfWeek) return day;
+        let nextDay = { ...day, ...patch };
+
+        if (nextDay.enabled && isHHmm(nextDay.start) && isHHmm(nextDay.end)) {
+          if (source === 'start') {
+            nextDay = {
+              ...nextDay,
+              end: clampEndByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes),
+            };
+          } else if (source === 'end') {
+            nextDay = {
+              ...nextDay,
+              start: clampStartByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes),
+            };
+          } else {
+            nextDay = {
+              ...nextDay,
+              end: clampEndByMaxDuration(nextDay.start, nextDay.end, maxDailyMinutes),
+            };
+          }
         }
-      }
 
-      return nextDay;
-    }));
+        return nextDay;
+      }),
+    );
   };
 
   const handleSaveTemplate = async () => {
@@ -303,7 +336,10 @@ export default function DriverScheduleScreen() {
 
       const duration = windowDurationMinutes(startMinute, endMinute);
       if (duration > maxDailyMinutes) {
-        Alert.alert(t('error'), t('schedule_daily_max_exceeded', { hours: Math.floor(maxDailyMinutes / 60) }));
+        Alert.alert(
+          t('error'),
+          t('schedule_daily_max_exceeded', { hours: Math.floor(maxDailyMinutes / 60) }),
+        );
         return;
       }
     }
@@ -312,13 +348,31 @@ export default function DriverScheduleScreen() {
       setSavingTemplate(true);
       await updateDriverScheduleTemplate(
         authState.token,
-        days.map((day) => ({
-          dayOfWeek: day.dayOfWeek,
-          windows: day.enabled
-            ? [{ start: day.start.trim(), end: day.end.trim(), isActive: true }]
-            : [],
-        }))
+        days.map((day) => {
+          // اليوم الذي عدّله السائق: يُرسل نافذة المسودة (أو [] عند التعطيل).
+          if (dirtyDays.has(day.dayOfWeek)) {
+            return {
+              dayOfWeek: day.dayOfWeek,
+              windows: day.enabled
+                ? [{ start: day.start.trim(), end: day.end.trim(), isActive: true }]
+                : [],
+            };
+          }
+
+          // اليوم الذي لم يلمسه السائق: تُحفظ نوافذه الأصلية كما هي
+          // (يشمل ذلك الأيام متعددة النوافذ القادمة من لوحة الإدارة).
+          const original = originalWindowsByDay.get(day.dayOfWeek) || [];
+          return {
+            dayOfWeek: day.dayOfWeek,
+            windows: original.map((window) => ({
+              startMinute: window.startMinute,
+              endMinute: window.endMinute,
+              isActive: window.isActive !== false,
+            })),
+          };
+        }),
       );
+      setDirtyDays(new Set());
       Alert.alert(t('success'), t('schedule_save_success'));
       await loadSchedule();
     } catch (error: any) {
@@ -337,7 +391,11 @@ export default function DriverScheduleScreen() {
     }
 
     if (exceptionDraft.type === 'CUSTOM') {
-      if (!isHHmm(exceptionDraft.start) || !isHHmm(exceptionDraft.end) || exceptionDraft.start === exceptionDraft.end) {
+      if (
+        !isHHmm(exceptionDraft.start) ||
+        !isHHmm(exceptionDraft.end) ||
+        exceptionDraft.start === exceptionDraft.end
+      ) {
         Alert.alert(t('error'), t('schedule_invalid_time'));
         return;
       }
@@ -416,7 +474,7 @@ export default function DriverScheduleScreen() {
 
   const sortedExceptions = useMemo(
     () => [...exceptions].sort((a, b) => String(a.date).localeCompare(String(b.date))),
-    [exceptions]
+    [exceptions],
   );
 
   const disabled = loading || editingLocked;
@@ -441,7 +499,9 @@ export default function DriverScheduleScreen() {
           {editingLocked && (
             <View style={[styles.noticeCard, styles.noticeWarning]}>
               <Text style={styles.noticeTitle}>{t('schedule_locked_title')}</Text>
-              <Text style={styles.noticeBody}>{lockStatus?.reasonMessage || t('schedule_locked_default')}</Text>
+              <Text style={styles.noticeBody}>
+                {lockStatus?.reasonMessage || t('schedule_locked_default')}
+              </Text>
             </View>
           )}
 
@@ -476,7 +536,9 @@ export default function DriverScheduleScreen() {
                       <TextInput
                         style={[styles.input, disabled && styles.inputDisabled]}
                         value={day.start}
-                        onChangeText={(text) => updateDayDraft(day.dayOfWeek, { start: text }, 'start')}
+                        onChangeText={(text) =>
+                          updateDayDraft(day.dayOfWeek, { start: text }, 'start')
+                        }
                         editable={!disabled}
                         placeholder="08:00"
                         autoCapitalize="none"
@@ -538,11 +600,16 @@ export default function DriverScheduleScreen() {
             </View>
             <View style={styles.readonlyRow}>
               <Text style={styles.readonlyLabel}>{t('schedule_allow_emergency_override')}</Text>
-              <Text style={styles.readonlyValue}>{preferences.allowEmergencyOverride ? t('yes') : t('no')}</Text>
+              <Text style={styles.readonlyValue}>
+                {preferences.allowEmergencyOverride ? t('yes') : t('no')}
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.secondaryButton, (disabled || applyingSuggestions) && styles.buttonDisabled]}
+              style={[
+                styles.secondaryButton,
+                (disabled || applyingSuggestions) && styles.buttonDisabled,
+              ]}
               onPress={handleApplySuggestions}
               disabled={disabled || applyingSuggestions}
             >
@@ -574,11 +641,17 @@ export default function DriverScheduleScreen() {
                 return (
                   <TouchableOpacity
                     key={type}
-                    style={[styles.typeButton, active && styles.typeButtonActive, disabled && styles.buttonDisabled]}
+                    style={[
+                      styles.typeButton,
+                      active && styles.typeButtonActive,
+                      disabled && styles.buttonDisabled,
+                    ]}
                     onPress={() => setExceptionDraft((prev) => ({ ...prev, type }))}
                     disabled={disabled}
                   >
-                    <Text style={[styles.typeText, active && styles.typeTextActive]}>{getExceptionTypeLabel(type)}</Text>
+                    <Text style={[styles.typeText, active && styles.typeTextActive]}>
+                      {getExceptionTypeLabel(type)}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -637,9 +710,10 @@ export default function DriverScheduleScreen() {
                 sortedExceptions.map((item) => {
                   const customStart = minuteToHHmm(item.startMinute);
                   const customEnd = minuteToHHmm(item.endMinute);
-                  const customWindow = String(item.type).toUpperCase() === 'CUSTOM'
-                    ? ` ${t('schedule_custom_window')}: ${customStart || '--:--'} - ${customEnd || '--:--'}`
-                    : '';
+                  const customWindow =
+                    String(item.type).toUpperCase() === 'CUSTOM'
+                      ? ` ${t('schedule_custom_window')}: ${customStart || '--:--'} - ${customEnd || '--:--'}`
+                      : '';
 
                   return (
                     <View key={`${item.date}-${item.type}`} style={styles.exceptionItem}>
@@ -656,7 +730,9 @@ export default function DriverScheduleScreen() {
                         onPress={() => handleDeleteException(item.date)}
                         disabled={disabled}
                       >
-                        <Text style={styles.deleteButtonText}>{t('schedule_delete_exception')}</Text>
+                        <Text style={styles.deleteButtonText}>
+                          {t('schedule_delete_exception')}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   );

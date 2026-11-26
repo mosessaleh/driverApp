@@ -23,6 +23,8 @@ import type {
   RideProposalCancelledPayload,
   OpenRidesUpdatePayload,
   ChainRideOfferPayload,
+  CustomerLocationUpdatePayload,
+  CustomerLocationClearedPayload,
 } from '../types/socket';
 
 export type { ScheduledUpcomingOffersUpdatePayload };
@@ -580,6 +582,26 @@ export const onChainRideCancelled = (
 
 export const offChainRideCancelled = () => {
   removePersistentListener('chainRideCancelled');
+};
+
+export const onCustomerLocationUpdate = (
+  callback: (data: CustomerLocationUpdatePayload) => void,
+) => {
+  addPersistentListener('customerLocationUpdate', callback as SocketListener);
+};
+
+export const offCustomerLocationUpdate = () => {
+  removePersistentListener('customerLocationUpdate');
+};
+
+export const onCustomerLocationCleared = (
+  callback: (data: CustomerLocationClearedPayload) => void,
+) => {
+  addPersistentListener('customerLocationCleared', callback as SocketListener);
+};
+
+export const offCustomerLocationCleared = () => {
+  removePersistentListener('customerLocationCleared');
 };
 
 export const getSocket = (): Socket | null => socket;

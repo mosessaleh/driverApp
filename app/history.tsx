@@ -177,13 +177,23 @@ export default function HistoryScreen() {
             : response.rides;
 
           const computedSummary = currentShiftWindow
-            ? {
-                totalRides: filteredRides.length,
-                totalAmount: filteredRides.reduce((sum: number, ride: RideItem) => {
-                  const price = Number(ride.price ?? 0);
-                  return sum + (Number.isFinite(price) ? price : 0);
-                }, 0),
-              }
+            ? (() => {
+                // إجمالي النافذة من الرحلات المنجزة فقط — الملغاة ليست إيراداً
+                const completedOnly = filteredRides.filter(
+                  (ride: RideItem) => (ride.status as string) !== 'CANCELED',
+                );
+                return {
+                  totalRides: completedOnly.length,
+                  totalAmount: completedOnly.reduce((sum: number, ride: RideItem) => {
+                    const finalOre = Number((ride as any).finalPriceOre);
+                    const value =
+                      Number.isFinite(finalOre) && finalOre > 0
+                        ? finalOre / 100
+                        : Number(ride.price ?? 0);
+                    return sum + (Number.isFinite(value) ? value : 0);
+                  }, 0),
+                };
+              })()
             : response.summary || { totalRides: 0, totalAmount: 0 };
 
           setRides(filteredRides);
