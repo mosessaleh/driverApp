@@ -27,6 +27,7 @@ type RideItem = {
   cancellationReason?: string | null;
   canceledBy?: string | null;
   price?: number | null;
+  finalPriceOre?: number | null;
 };
 
 type HistorySummary = {
@@ -178,10 +179,13 @@ export default function HistoryScreen() {
 
           const computedSummary = currentShiftWindow
             ? (() => {
-                // إجمالي النافذة من الرحلات المنجزة فقط — الملغاة ليست إيراداً
-                const completedOnly = filteredRides.filter(
-                  (ride: RideItem) => (ride.status as string) !== 'CANCELED',
-                );
+                // إجمالي النافذة من الرحلات المنجزة فقط — الملغاة (بأي تهجئة)
+                // ليست إيراداً، والحالات غير المكتملة (PENDING وغيرها) كانت
+                // تُحسب كإيراد رغم التعليق "المنجزة فقط".
+                const completedOnly = filteredRides.filter((ride: RideItem) => {
+                  const status = String(ride.status || '').toUpperCase();
+                  return status === 'COMPLETED' || status === 'DONE';
+                });
                 return {
                   totalRides: completedOnly.length,
                   totalAmount: completedOnly.reduce((sum: number, ride: RideItem) => {
@@ -373,12 +377,23 @@ export default function HistoryScreen() {
   const formatAmount = useCallback(
     (amount?: number | null) => {
       const numeric = Number(amount ?? 0);
-      return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
+      // خانتان عشريتان كحد أقصى (كان التقريب لأعداد صحيحة يخفي الفروشات
+      // ويجعل مجموع البطاقات لا يطابق الإجمالي ظاهرياً).
+      return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(
         Number.isFinite(numeric) ? numeric : 0,
       );
     },
     [locale],
   );
+
+  // المبلغ الفعلي الموحد للرحلة: نفس معادلة الخادم (السعر النهائي المعتمد
+  // أولاً ثم التقديري) — كانت البطاقة تعرض price التقديري فقط فيختلف
+  // مجموع البطاقات عن الإجمالي المعروض.
+  const resolveRideAmount = useCallback((item: RideItem): number => {
+    const ore = Number(item.finalPriceOre);
+    if (Number.isFinite(ore) && ore > 0) return ore / 100;
+    return Number(item.price ?? 0);
+  }, []);
 
   const buildQuickFilterRange = useCallback(
     (
@@ -584,12 +599,12 @@ export default function HistoryScreen() {
 
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>{t('price')}</Text>
-            <Text style={styles.amountValue}>{formatAmount(item.price)} DKK</Text>
+            <Text style={styles.amountValue}>{formatAmount(resolveRideAmount(item))} DKK</Text>
           </View>
         </TouchableOpacity>
       );
     },
-    [formatAmount, formatDate, formatTime, router, t],
+    [formatAmount, formatDate, formatTime, resolveRideAmount, router, t],
   );
 
   const renderEmptyState = useCallback(() => {

@@ -71,21 +71,21 @@ export default function RideDetailsScreen() {
     });
   };
 
-  const getRideStatusLabel = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
+  const getRideStatusLabel = (status?: string | null) => {
+    const normalizedStatus = String(status || '').toLowerCase();
     if (normalizedStatus === 'completed') return t('ride_status_completed');
     if (normalizedStatus === 'pending') return t('ride_status_pending');
     if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled')
       return t('ride_status_cancelled');
-    return status;
+    return status || t('not_available');
   };
 
   const goBack = () => {
     router.back();
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusStyle = (status?: string | null) => {
+    switch (String(status || '').toLowerCase()) {
       case 'completed':
         return styles.status_completed;
       case 'pending':
@@ -312,7 +312,8 @@ export default function RideDetailsScreen() {
             </View>
           )}
 
-          {ride.status?.toLowerCase() === 'canceled' &&
+          {(String(ride.status || '').toLowerCase() === 'canceled' ||
+            String(ride.status || '').toLowerCase() === 'cancelled') &&
             (ride.cancellationReason || ride.canceledBy) && (
               <View style={styles.cancellationDetails}>
                 <Text style={styles.cancellationTitle}>{t('cancellation_details')}</Text>

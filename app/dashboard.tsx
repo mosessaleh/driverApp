@@ -62,6 +62,7 @@ import {
   onRideCancelled,
   offRideCancelled,
   onRideAccepted,
+  onRideAcceptFailed,
   sendRideTimeout,
   acceptRide,
   rejectRide,
@@ -264,6 +265,7 @@ export default function DashboardScreen() {
   const chainOfferRef = useRef<any>(null);
   const chainTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rideOfferRef = useRef<any>(null);
+  const acceptLockRef = useRef<boolean>(false);
   const offerTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const settingsRef = useRef(settings);
   useEffect(() => {
@@ -1014,6 +1016,14 @@ export default function DashboardScreen() {
       const handleRideOffer = async (data: any) => {
         devLog('Ride offer received');
 
+        // عرض وصل أثناء رحلة نشطة أو "مشغول": رفض فوري بلا عرض —
+        // كان يظهر فوق الرحلة الجارية ويفتح باب قبول خاطئ.
+        if (activeRideRef.current || driverBusyRef?.current) {
+          devLog('Ignoring ride offer: driver has active ride or is busy');
+          sendRideTimeout(data?.rideId);
+          return;
+        }
+
         const isScheduledOffer = !!(
           data?.scheduled ||
           data?.offerType === 'scheduled' ||
@@ -1047,13 +1057,12 @@ export default function DashboardScreen() {
         const timeout = setInterval(() => {
           setOfferCountdown((prev) => {
             if (prev <= 1) {
-              // Timeout - automatically reject the ride like clicking reject button
-              devLog('Ride offer timed out, auto rejecting');
-              if (!isScheduledOffer && authState.token) {
-                // Automatically reject the ride
-                rejectRide(data.rideId);
-              } else if (isScheduledOffer && authState.token) {
-                rejectRide(data.rideId);
+              // انتهاء المهلة حدث "مهلة" للخادم وليس رفضاً — كان إرسال
+              // rejectRide يسجِّل انتهاء المهلة كرفض فعلي يؤثر على سجل
+              // الرفض/الأسبقية لدى التوزيع.
+              devLog('Ride offer timed out, sending timeout');
+              if (authState.token) {
+                sendRideTimeout(data.rideId);
               }
               rideOfferRef.current = null;
               setRideOffer(null);
@@ -1213,6 +1222,23 @@ export default function DashboardScreen() {
       };
 
       onRideAccepted(handleRideAccepted);
+
+      // فشل القبول لم يكن مسجلاً — السائق لا يعلم أن الرحلة أخذها غيره
+      const handleRideAcceptFailed = (data: { rideId: number; reason?: string }) => {
+        devLog('Ride accept failed event', data?.reason);
+        if (rideOfferRef.current && rideOfferRef.current.rideId === data.rideId) {
+          stopRideOfferSound().catch(() => {});
+          rideOfferRef.current = null;
+          setRideOffer(null);
+          setOfferCountdown(0);
+          if (offerTimeoutRef.current) {
+            clearInterval(offerTimeoutRef.current);
+            offerTimeoutRef.current = null;
+          }
+          Alert.alert(t('ride_unavailable'), t('ride_taken_by_other'));
+        }
+      };
+      onRideAcceptFailed(handleRideAcceptFailed);
 
       // Listen for pickup proximity notifications
       const handlePickupProximity = async (data: {
@@ -2358,27 +2384,33 @@ export default function DashboardScreen() {
   };
 
   const handleEndShift = async () => {
-    if (!endKM || isNaN(Number(endKM))) {
+    if (!endKM || isNaN(Number(endKM)) || Number(endKM) < 0) {
       alert(t('shift_end_km_invalid'));
       return;
     }
 
     if (authState.token) {
       try {
-        // Stop tracking first
-        stopLocationTracking();
-
-        // Call end shift API
+        // Call end shift API أولاً — كان تتبع الموقع يتوقف قبل نجاح الطلب،
+        // فإذا فشل يبقى السائق "متصل" دون إرسال موقع.
         const data = await endShift(Number(endKM), authState.token);
+
+        stopLocationTracking();
 
         setDriverOnline(false);
         setShowEndKMModal(false);
         setEndKM('');
         alert(
           t('end_shift_success_message', {
-            workTime: data.shiftData.workTime.toFixed(2),
-            totalSalary: data.shiftData.totalSalary,
-            hourSalary: data.shiftData.hourSalary.toFixed(2),
+            workTime:
+              data?.shiftData?.workTime != null
+                ? Number(data.shiftData.workTime).toFixed(2)
+                : '0.00',
+            totalSalary: data?.shiftData?.totalSalary ?? 0,
+            hourSalary:
+              data?.shiftData?.hourSalary != null
+                ? Number(data.shiftData.hourSalary).toFixed(2)
+                : '0.00',
           }),
         );
 
@@ -3647,6 +3679,12 @@ export default function DashboardScreen() {
                           <TouchableOpacity
                             style={styles.openRideAcceptBtn}
                             onPress={async () => {
+                              // بدون اتصال مقبس لا يُرسل القبول وكان العرض
+                              // يُحذف محلياً رغم ذلك — ضياع صامت للرحلة.
+                              if (!getSocket()) {
+                                Alert.alert(t('offline'), t('ride_unavailable'));
+                                return;
+                              }
                               acceptRide(ride.id);
                               setOpenRides((prev) => prev.filter((r) => r.id !== ride.id));
                               await loadDriverStatus();
@@ -4252,20 +4290,31 @@ export default function DashboardScreen() {
                   <TouchableOpacity
                     style={[styles.rideOfferButton, styles.acceptButton, styles.rideOfferPrimary]}
                     onPress={async () => {
-                      acceptRide(rideOffer.rideId);
-                      rideOfferRef.current = null;
-                      setRideOffer(null);
-                      setOfferCountdown(0);
-                      stopRideOfferSound().then(() => {
-                        devLog('Ride offer sound stopped after accept');
-                      });
-                      if (offerTimeout) {
-                        clearInterval(offerTimeout);
-                        offerTimeoutRef.current = null;
-                        setOfferTimeout(null);
+                      // حماية النقر المزدوج والقبول بعد انتهاء العرض: القفل يمنع
+                      // إرسال accept وreject معاً في نفس اللحظة (سباق العدّاد).
+                      if (acceptLockRef.current) return;
+                      if (!rideOfferRef.current || rideOfferRef.current.rideId !== rideOffer.rideId)
+                        return;
+                      if (offerCountdown <= 0) return;
+                      acceptLockRef.current = true;
+                      try {
+                        acceptRide(rideOffer.rideId);
+                        rideOfferRef.current = null;
+                        setRideOffer(null);
+                        setOfferCountdown(0);
+                        stopRideOfferSound().then(() => {
+                          devLog('Ride offer sound stopped after accept');
+                        });
+                        if (offerTimeout) {
+                          clearInterval(offerTimeout);
+                          offerTimeoutRef.current = null;
+                          setOfferTimeout(null);
+                        }
+                        await loadDriverStatus();
+                        loadUpcomingRides().catch(() => {});
+                      } finally {
+                        acceptLockRef.current = false;
                       }
-                      await loadDriverStatus();
-                      loadUpcomingRides().catch(() => {});
                     }}
                   >
                     <Text style={styles.acceptButtonText}>

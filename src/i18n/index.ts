@@ -216,6 +216,8 @@ const resources = {
       ride_preferences_min_time: 'Maximum time (minutes)',
       ride_preferences_min_distance_hint: 'Maximum distance between pickup and your location',
       ride_preferences_min_time_hint: 'Maximum travel time to the pickup point',
+      ride_preferences_warning:
+        'Note: A very short distance or time may prevent you from receiving rides. You are responsible for these limits.',
       ride_preferences_save: 'Save & Continue',
       ride_preferences_required: 'Please fill in both values',
 
@@ -356,6 +358,9 @@ const resources = {
       end_shift_error_message: 'Error ending shift: {{message}}',
       ride_status_update_failed: 'Failed to update ride status',
       ride_pickup_error: 'Error picking up ride',
+      ride_unavailable: 'Ride unavailable',
+      ride_taken_by_other:
+        'This ride is no longer available. It may have been assigned to another driver.',
       ride_completed_payment_failed: 'Ride completed but payment failed: {{error}}',
       ride_completed_success: 'Ride completed successfully',
       ride_complete_failed: 'Failed to complete ride',
@@ -686,6 +691,8 @@ const resources = {
       ride_preferences_min_time: 'أقصى وقت (دقائق)',
       ride_preferences_min_distance_hint: 'أقصى مسافة بين نقطة الانطلاق وموقعك',
       ride_preferences_min_time_hint: 'أقصى وقت للوصول إلى نقطة الانطلاق',
+      ride_preferences_warning:
+        'تنبيه: مسافة أو وقت قصير جداً قد يمنع وصول الرحلات إليك. أنت مسؤول عن هذه الحدود.',
       ride_preferences_save: 'حفظ ومتابعة',
       ride_preferences_required: 'الرجاء ملء القيمتين',
 
@@ -826,6 +833,8 @@ const resources = {
       end_shift_error_message: 'خطأ أثناء إنهاء الوردية: {{message}}',
       ride_status_update_failed: 'فشل تحديث حالة الرحلة',
       ride_pickup_error: 'خطأ أثناء تأكيد الاستلام',
+      ride_unavailable: 'الرحلة غير متاحة',
+      ride_taken_by_other: 'هذه الرحلة لم تعد متاحة. ربما أُسندت لسائق آخر.',
       ride_completed_payment_failed: 'تم إنهاء الرحلة لكن فشلت عملية الدفع: {{error}}',
       ride_completed_success: 'تم إنهاء الرحلة بنجاح',
       ride_complete_failed: 'فشل إنهاء الرحلة',
@@ -1156,6 +1165,8 @@ const resources = {
       ride_preferences_min_time: 'Maksimal tid (minutter)',
       ride_preferences_min_distance_hint: 'Maksimal afstand mellem opsamling og din placering',
       ride_preferences_min_time_hint: 'Maksimal rejsetid til opsamlingspunktet',
+      ride_preferences_warning:
+        'Bemærk: En meget kort afstand eller tid kan forhindre dig i at modtage ture. Du er ansvarlig for disse grænser.',
       ride_preferences_save: 'Gem og fortsæt',
       ride_preferences_required: 'Udfyld venligst begge værdier',
 
@@ -1297,6 +1308,9 @@ const resources = {
       end_shift_error_message: 'Fejl ved afslutning af vagt: {{message}}',
       ride_status_update_failed: 'Kunne ikke opdatere turstatus',
       ride_pickup_error: 'Fejl ved afhentning',
+      ride_unavailable: 'Tur ikke tilgængelig',
+      ride_taken_by_other:
+        'Denne tur er ikke længere tilgængelig. Den kan være tildelt en anden chauffør.',
       ride_completed_payment_failed: 'Turen blev afsluttet, men betalingen mislykkedes: {{error}}',
       ride_completed_success: 'Tur afsluttet',
       ride_complete_failed: 'Kunne ikke afslutte tur',

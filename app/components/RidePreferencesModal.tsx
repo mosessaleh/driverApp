@@ -21,8 +21,8 @@ type Props = {
 export default function RidePreferencesModal({ visible, token, onSave, onCancel }: Props) {
   const { isDarkMode } = useSettings();
   const { t } = useTranslation();
-  const [minDistance, setMinDistance] = useState('');
-  const [minTime, setMinTime] = useState('');
+  const [maxPickupDistance, setMaxPickupDistance] = useState('');
+  const [maxPickupTime, setMaxPickupTime] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -33,11 +33,11 @@ export default function RidePreferencesModal({ visible, token, onSave, onCancel 
       getRidePreferences(token)
         .then((res) => {
           if (res?.preferences) {
-            setMinDistance(String(res.preferences.minDistanceKm));
-            setMinTime(String(res.preferences.minTimeMinutes));
+            setMaxPickupDistance(String(res.preferences.maxPickupDistanceKm));
+            setMaxPickupTime(String(res.preferences.maxPickupTimeMinutes));
           } else {
-            setMinDistance('10');
-            setMinTime('15');
+            setMaxPickupDistance('10');
+            setMaxPickupTime('15');
           }
         })
         .catch(() => {})
@@ -46,9 +46,9 @@ export default function RidePreferencesModal({ visible, token, onSave, onCancel 
   }, [visible, token]);
 
   const handleSave = async () => {
-    const distance = parseFloat(minDistance);
-    const time = parseInt(minTime, 10);
-    if (isNaN(distance) || isNaN(time)) {
+    const distance = parseFloat(maxPickupDistance);
+    const time = parseInt(maxPickupTime, 10);
+    if (isNaN(distance) || isNaN(time) || distance < 0 || time < 0) {
       Alert.alert(t('error'), t('ride_preferences_required'));
       return;
     }
@@ -86,8 +86,8 @@ export default function RidePreferencesModal({ visible, token, onSave, onCancel 
             <Text style={s.hint}>{t('ride_preferences_min_distance_hint')}</Text>
             <TextInput
               style={s.input}
-              value={minDistance}
-              onChangeText={setMinDistance}
+              value={maxPickupDistance}
+              onChangeText={setMaxPickupDistance}
               keyboardType="numeric"
               placeholder="0"
               placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
@@ -97,12 +97,14 @@ export default function RidePreferencesModal({ visible, token, onSave, onCancel 
             <Text style={s.hint}>{t('ride_preferences_min_time_hint')}</Text>
             <TextInput
               style={s.input}
-              value={minTime}
-              onChangeText={setMinTime}
+              value={maxPickupTime}
+              onChangeText={setMaxPickupTime}
               keyboardType="numeric"
               placeholder="0"
               placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
             />
+
+            <Text style={s.warning}>{t('ride_preferences_warning')}</Text>
           </>
         )}
 
@@ -167,6 +169,12 @@ const getStyles = (isDark: boolean) =>
       marginBottom: 4,
     },
     hint: { fontSize: 12, color: isDark ? '#64748b' : '#94a3b8', marginBottom: 8 },
+    warning: {
+      fontSize: 12,
+      color: isDark ? '#fbbf24' : '#b45309',
+      marginBottom: 12,
+      lineHeight: 18,
+    },
     input: {
       borderWidth: 1,
       borderColor: isDark ? 'rgba(148,163,184,0.3)' : '#cbd5e1',

@@ -148,10 +148,14 @@ export default function AnalyticsScreen() {
   const topPickupAreasList: any[] = Array.isArray((insights as any)?.topPickupAreas)
     ? (insights as any).topPickupAreas
     : [];
-  const averageRating = Number(summary?.averageRating ?? 0);
-  const acceptanceRate = Number(summary?.acceptanceRate ?? 0);
-  const completionRate = Number(summary?.completionRate ?? 0);
-  const acceptedStreak = Number(summary?.acceptedStreak ?? 0);
+  const toSafeNumber = (value: any): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const averageRating = toSafeNumber(summary?.averageRating);
+  const acceptanceRate = toSafeNumber(summary?.acceptanceRate);
+  const completionRate = toSafeNumber(summary?.completionRate);
+  const acceptedStreak = toSafeNumber(summary?.acceptedStreak);
   const peakHours: string[] = Array.isArray(insights?.peakHours)
     ? insights.peakHours
         .map((entry: any) => entry?.hour)
@@ -319,10 +323,10 @@ export default function AnalyticsScreen() {
             <Text style={styles.chartTitle}>{t('daily_earnings')}</Text>
             <LineChart
               data={{
-                labels: dailyChart.map((d: any) => d.date.slice(-2)), // Last 2 chars of date
+                labels: dailyChart.map((d: any) => String(d?.date ?? '').slice(-2)), // Last 2 chars of date
                 datasets: [
                   {
-                    data: dailyChart.map((d: any) => d.earnings),
+                    data: dailyChart.map((d: any) => toSafeNumber(d?.earnings)),
                   },
                 ],
               }}
@@ -340,10 +344,10 @@ export default function AnalyticsScreen() {
           <Text style={styles.chartTitle}>{t('rides_by_hour')}</Text>
           <BarChart
             data={{
-              labels: hourlyChart.slice(0, 12).map((h: any) => h.hour), // First 12 hours
+              labels: hourlyChart.slice(0, 12).map((h: any) => String(h?.hour ?? '')),
               datasets: [
                 {
-                  data: hourlyChart.slice(0, 12).map((h: any) => h.rides),
+                  data: hourlyChart.slice(0, 12).map((h: any) => toSafeNumber(h?.rides)),
                 },
               ],
             }}

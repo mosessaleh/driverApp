@@ -106,6 +106,15 @@ const isRetryableHttpError = (status: number): boolean => {
 
 let isRefreshing = false;
 let refreshPromise: Promise<{ token: string; refreshToken: string } | null> | null = null;
+let onAuthFailure: (() => void) | null = null;
+
+/**
+ * تسجيل معالج انتهاء الجلسة: يُستدعى عندما يفشل تجديد التوكن على 401 —
+ * على طبقة المصادقة مسح الحالة المحلية وتوجيه السائق لشاشة الدخول.
+ */
+export const setOnAuthFailure = (callback: (() => void) | null) => {
+  onAuthFailure = callback;
+};
 
 const refreshAccessToken = async (): Promise<{ token: string; refreshToken: string } | null> => {
   if (isRefreshing && refreshPromise) return refreshPromise;
@@ -156,30 +165,41 @@ const retry = async (
   retries = 3,
   delay = 1000,
   token?: string,
+  opts?: { retryOnFailure?: boolean },
 ) => {
+  // GET آمنة تُعاد المحاولة على أخطاء الشبكة/5xx، أما POST/PUT فقد نفّذت
+  // أثراً جانبياً (بدء/إنهاء رحلة أو وردية) — تكرارها قد يضاعف العملية.
+  const retryOnFailure = opts?.retryOnFailure ?? true;
   try {
     return await fn(token);
   } catch (error) {
     if (error instanceof HttpError) {
-      // Try refresh on 401
+      // Try refresh on 401 (مرة واحدة فقط — من الاستدعاء الأول)
       if (error.status === 401 && retries === 3) {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
           // Re-read the freshly stored token so the retry does not reuse the stale one
           const freshToken = (await getAuthToken()) || undefined;
-          return retry(fn, retries - 1, delay, freshToken);
+          return retry(fn, retries - 1, delay, freshToken, { retryOnFailure: false });
         }
         await removeAuthToken();
         await removeRefreshToken();
+        // إخطار طبقة المصادقة: كانت التوكنات تُحذف بصمت ويبقى التطبيق
+        // "مسجلاً دخول" بتوكن ميت في الذاكرة دون أي توجيه.
+        if (onAuthFailure) {
+          try {
+            onAuthFailure();
+          } catch {}
+        }
       }
 
       if (!isRetryableHttpError(error.status)) {
         throw error;
       }
     }
-    if (retries > 0) {
+    if (retryOnFailure && retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
-      return retry(fn, retries - 1, delay * 2, token);
+      return retry(fn, retries - 1, delay * 2, token, { retryOnFailure });
     }
     throw error;
   }
@@ -225,6 +245,7 @@ export const api = {
       3,
       1000,
       token,
+      { retryOnFailure: false },
     );
   },
   get: async (endpoint: string, token?: string) => {
@@ -296,6 +317,7 @@ export const api = {
       3,
       1000,
       token,
+      { retryOnFailure: false },
     );
   },
   // Add other methods as needed
@@ -627,11 +649,15 @@ export const getRidePreferences = async (token: string) => {
 };
 
 export const saveRidePreferences = async (
-  minDistanceKm: number,
-  minTimeMinutes: number,
+  maxPickupDistanceKm: number,
+  maxPickupTimeMinutes: number,
   token: string,
 ) => {
-  return api.post('/api/driver/ride-preferences', { minDistanceKm, minTimeMinutes }, token);
+  return api.post(
+    '/api/driver/ride-preferences',
+    { maxPickupDistanceKm, maxPickupTimeMinutes },
+    token,
+  );
 };
 
 export const getAnalytics = async (token: string, period: string = 'month') => {

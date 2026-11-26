@@ -15,6 +15,7 @@ import {
   isDriverLoginSuccessResponse,
   setTokenRefreshCallback,
   setDeviceIdProvider,
+  setOnAuthFailure,
 } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import {
@@ -440,6 +441,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = (patch: Partial<any>) => {
     setAuthState((prev) => (prev.user ? { ...prev, user: { ...prev.user, ...patch } } : prev));
   };
+
+  // انتهاء الجلسة عند فشل تجديد التوكن (401): مسح محلي كامل وتوجيه
+  // ضمني لشاشة الدخول عبر token=null — كان التوكن الميت يبقى في الذاكرة
+  // والتطبيق يبدو "مسجلاً دخول" مع طلبات تفشل بصمت.
+  useEffect(() => {
+    setOnAuthFailure(() => {
+      (async () => {
+        await removeAuthToken();
+        await removeRefreshToken();
+        await removeStoredAuthUser();
+        await AsyncStorage.removeItem('vehicleTypeId');
+        await removeStoredPushToken();
+        await removeStoredRestrictedOffers();
+        await removeStoredRestrictedOffersUntil();
+        await unregisterBackgroundTasks();
+        setAuthState({
+          user: null,
+          token: null,
+          isLoading: false,
+          restrictedOffers: false,
+          restrictedOffersUntil: null,
+        });
+      })();
+    });
+    return () => setOnAuthFailure(null);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ authState, login, logout, updateUser }}>

@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { useRouter } from 'expo-router';
@@ -24,6 +25,7 @@ import {
   offOpenRidesUpdate,
   acceptRide,
   rejectRide,
+  getSocket,
 } from '../src/services/socket';
 import { useTranslation } from '../src/hooks/useTranslation';
 import type { ScheduledPendingOffer, OpenRide } from '../src/types';
@@ -312,6 +314,12 @@ export default function UpcomingScreen() {
                   <TouchableOpacity
                     style={[styles.offerActionBtn, styles.acceptBtn]}
                     onPress={() => {
+                      // قبول العرض يتطلب مقبساً متصلاً — كان يُحذف محلياً
+                      // حتى عند الانقطاع فيضيع العرض بصمت.
+                      if (!getSocket()) {
+                        Alert.alert(t('offline'), t('ride_unavailable'));
+                        return;
+                      }
                       acceptRide(ride.id);
                       setOpenRides((prev) => prev.filter((x) => x.id !== ride.id));
                     }}
